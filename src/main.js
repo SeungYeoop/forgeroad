@@ -20472,7 +20472,10 @@ class Pr extends zt.Scene {
     Z(this, "pad");
   }
   init(T) {
-    ((this.result = T.result ?? it.data.pendingResult), (this.leaving = !1));
+    ((this.result = T.result ?? it.data.pendingResult),
+      (this.leaving = !1),
+      (this.frPicked = !1),
+      (this.frPicking = !1));
   }
   create() {
     const T = this.result;
