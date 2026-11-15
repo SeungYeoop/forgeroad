@@ -11,8 +11,8 @@ self.onmessage = (ev) => {
     const g = pixSteps({ grid: { length: ch.n }, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, base, raw, region);
     let s;
     do s = g.next(); while (!s.done);
-    const { img, front } = s.value;
-    self.postMessage({ id, h: img.height, img: img.data.buffer, front: front.buffer }, [img.data.buffer, front.buffer]);
+    const { img, front, wall } = s.value;
+    self.postMessage({ id, h: img.height, img: img.data.buffer, front: front.buffer, wall: wall.buffer }, [img.data.buffer, front.buffer, wall.buffer]);
   } catch (e) {
     self.postMessage({ id, error: String(e) });
   }

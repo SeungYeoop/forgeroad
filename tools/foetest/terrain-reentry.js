@@ -1,6 +1,7 @@
 const terrainUrl = performance.getEntriesByType('resource').find(entry => new URL(entry.name).pathname === '/src/forge/terrain.js')?.name;
 const terrain = await import(terrainUrl || '/src/forge/terrain.js');
 if (terrain._wkState !== window.__FG._wkState) throw new Error('Terrain test must use the running game module');
+const atmo = await import(performance.getEntriesByType('resource').find(entry => new URL(entry.name).pathname === '/src/forge/atmo.js').name);
 const game = window.__game;
 game.loop.stop();
 const cycles = [];
@@ -15,11 +16,16 @@ for (let cycle = 0; cycle < 8; cycle++) {
     terrain.prepaintStep(10000);
   }
   const oldKeys = Object.keys(sc.textures.list).filter(key => key.startsWith('frterr'));
+  sc.player.body.x = sc.world.lx(5 * 32 + 16);
+  sc.player.body.y = (ch.ug.top + 12) * 16;
+  atmo.update(sc, 1 / 60);
+  const caveObjects = [...sc._ugFx.objects];
   sc.cleanup();
   game.scene.stop('Run');
   game.scene.stop('Hud');
   const afterStop = {...terrain._wkState(), textures: sc._frTerr?.size ?? 0};
   const leakedTextures = oldKeys.filter(key => sc.textures.exists(key)).length;
+  const leakedCaveEffects = caveObjects.filter(object => object.scene).length;
   game.scene.start('Run');
   sc = window.__run;
   // Consume a completed old prepaint on even cycles; on odd cycles let its late reply arrive.
@@ -37,7 +43,10 @@ for (let cycle = 0; cycle < 8; cycle++) {
     const actual = entry.ctx.getImageData(0, 0, 512, entry.cv.height).data;
     const expected = result.value.img.data;
     for (let i = 0; i < actual.length; i += 4) if (actual[i] !== expected[i] || actual[i+1] !== expected[i+1] || actual[i+2] !== expected[i+2] || actual[i+3] !== expected[i+3]) mismatchedPixels++;
+    const actualWall = entry.ctxW.getImageData(0, 0, 512, entry.cvW.height).data;
+    const expectedWall = result.value.wall;
+    for (let i = 0; i < actualWall.length; i++) if (actualWall[i] !== expectedWall[i]) mismatchedPixels++;
   }
-  cycles.push({cycle, waitForWorker, previousSeed, newSeed: sc.world.gen.seed, stalePrepaints: afterStop.pre, staleJobs: afterStop.jobs, stalePoolEntries: afterStop.textures, leakedTextures, mismatchedPixels});
+  cycles.push({cycle, waitForWorker, previousSeed, newSeed: sc.world.gen.seed, stalePrepaints: afterStop.pre, staleJobs: afterStop.jobs, stalePoolEntries: afterStop.textures, leakedTextures, leakedCaveEffects, mismatchedPixels});
 }
-return {passed: cycles.every(c => c.stalePrepaints === 0 && c.staleJobs === 0 && c.stalePoolEntries === 0 && c.leakedTextures === 0 && c.mismatchedPixels === 0), cycles};
+return {passed: cycles.every(c => c.stalePrepaints === 0 && c.staleJobs === 0 && c.stalePoolEntries === 0 && c.leakedTextures === 0 && c.leakedCaveEffects === 0 && c.mismatchedPixels === 0), cycles};

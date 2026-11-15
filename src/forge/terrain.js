@@ -97,6 +97,7 @@ function trackEntries(scene) {
     for (const entry of entries) {
       scene.textures.remove(entry.key);
       scene.textures.remove(entry.keyF);
+      scene.textures.remove(entry.keyW);
     }
     entries.clear();
     scene._frTerr?.clear();
@@ -118,8 +119,8 @@ function makeEntry(scene, PH) {
     scene.textures.addCanvas(k, cv);
     return cv;
   };
-  const cv = mk(`frterr_${id}`), cvF = mk(`frterrF_${id}`);
-  const entry = { scene, key: `frterr_${id}`, keyF: `frterrF_${id}`, cv, cvF, ctx: cv.getContext("2d"), ctxF: cvF.getContext("2d") };
+  const cv = mk(`frterr_${id}`), cvF = mk(`frterrF_${id}`), cvW = mk(`frterrW_${id}`);
+  const entry = { scene, key: `frterr_${id}`, keyF: `frterrF_${id}`, keyW: `frterrW_${id}`, cv, cvF, cvW, ctx: cv.getContext("2d"), ctxF: cvF.getContext("2d"), ctxW: cvW.getContext("2d") };
   trackEntries(scene).add(entry);
   return entry;
 }
@@ -142,11 +143,12 @@ function worker() {
       if (d.error) return void (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region), (j.wait = !1));
       const img = new ImageData(new Uint8ClampedArray(d.img), PW, d.h);
       j.gen = (function* () {
-        finishPut(j.S, img, new Uint8ClampedArray(d.front));
+        finishPut(j.S, img, new Uint8ClampedArray(d.front), new Uint8ClampedArray(d.wall));
         yield;
         j.scene.textures.get(j.S.key).refresh();
         yield;
         j.scene.textures.get(j.S.keyF).refresh();
+        j.scene.textures.get(j.S.keyW).refresh();
       })();
       j.wait = !1;
     };
@@ -216,18 +218,20 @@ export function paintChunk(scene, rt, ch, base, raw, region) {
   rt.draw(S.key, 0, 0);
 }
 function* paintSteps(scene, S, ch, base, raw, region) {
-  const { img, front } = yield* pixSteps(ch, base, raw, region);
+  const { img, front, wall } = yield* pixSteps(ch, base, raw, region);
   yield;
-  finishPut(S, img, front);
+  finishPut(S, img, front, wall);
   yield;
   scene.textures.get(S.key).refresh();
   yield;
   scene.textures.get(S.keyF).refresh();
+  scene.textures.get(S.keyW).refresh();
 }
-function finishPut(S, img, front) {
+function finishPut(S, img, front, wall) {
   const PH = img.height;
   S.ctx.putImageData(img, 0, 0);
   S.ctxF.putImageData(new ImageData(front, PW, PH), 0, 0);
+  S.ctxW.putImageData(new ImageData(wall, PW, PH), 0, 0);
 }
 // 픽셀 계산만 (DOM 없이 — 작업 스레드에서도 돈다)
 export function* pixSteps(ch, base, raw, region) {
@@ -464,6 +468,8 @@ export function* pixSteps(ch, base, raw, region) {
     }
   // 입체 레이어용: 밟을 수 있는 것만 담은 그림
   const front = new Uint8ClampedArray(img.data);
+  const wall = new Uint8ClampedArray(img.data.length);
+  const wallBuf = new Uint32Array(wall.buffer);
 
   // ── 4) 지하 뒷벽 ──
   const wallBase = BI ? BI.wall : mix(regionBase, 0x0e0a14, 0.7);
@@ -484,7 +490,8 @@ export function* pixSteps(ch, base, raw, region) {
           let L = L0 >= 5 ? 5 : L0 >= 3 ? 4 : 3;
           // 가장자리(바위 옆) 그늘
           (solid(c, r - 1) && y - r * T < 6) || (solid(c - 1, r) && x - c * T < 4) || (solid(c + 1, r) && x - c * T > 11) ? (L = Math.min(5, L + 1)) : 0;
-          put(x, y, WR[L]);
+          // Keep the rear wall behind the extruded terrain faces, not in the front texture.
+          wallBuf[y * PW + x] = pack(WR[L]);
         }
     }
   // ── 5) 장식 ──
@@ -623,7 +630,7 @@ export function* pixSteps(ch, base, raw, region) {
         const col = k === 0 ? 0xc0f0ff : k === 1 ? 0x70b8f0 : (wx + k * 3) % 11 === 0 && k < 8 ? 0x5aa0e8 : mix(0x3a78d0, 0x1a2a6a, Math.min(1, k / 26));
         put(x, y, col);
       }
-  return { img, front };
+  return { img, front, wall };
 }
 
 // ── 도감용 지형 그림: 32칸 너비 격자를 지역 재질로 한 장 그려 텍스처 키를 돌려준다 ──

@@ -1,4 +1,5 @@
 // 지역 분위기 연출: 안개·빛줄기·번개·오로라·생물·전경 실루엣
+import { undergroundState, CAVE_STYLES } from "./underground.js";
 let Z = null, ADD = 1, R = null;
 export function bindAtmo(refs) {
   R = refs;
@@ -195,8 +196,12 @@ function critter(sc, A, anywhere) {
   }
 }
 export function update(sc, dt) {
+  const underground = updateUnderground(sc, dt);
+  surfaceVisibility(sc.ambient, underground);
   const A = sc.frAtmo;
   if (!A) return;
+  for (const object of A.objs) surfaceVisibility(object, underground);
+  if (underground) return;
   A.t += dt;
   const c = A.c;
   if (A.fog) (A.fog[0].tilePositionX += dt * 8, A.fog[1].tilePositionX += dt * 16);
@@ -271,8 +276,74 @@ export function parallax(sc, C, up = 0) {
 export function clear(sc) {
   const A = sc.frAtmo;
   if (!A) return;
-  for (const o of A.objs) o.active && o.destroy();
+  for (const o of A.objs) o.scene && o.destroy();
   sc.frAtmo = null;
+}
+
+function surfaceVisibility(object, hidden) {
+  if (!object?.scene || object._frUndergroundHidden === hidden) return;
+  object._frUndergroundHidden = hidden;
+  object.setVisible(!hidden);
+  if (object.type === "ParticleEmitter") {
+    if (hidden) object.killAll();
+    object.setActive(!hidden);
+  }
+}
+
+function clearUnderground(sc) {
+  for (const object of sc._ugFx?.objects ?? []) if (object.scene) object.destroy();
+  sc._ugFx = null;
+}
+
+function updateUnderground(sc, dt) {
+  const { amount, biome } = undergroundState(sc);
+  if (!amount) {
+    if (sc._ugFx) clearUnderground(sc);
+    return false;
+  }
+  if (!sc._ugFxBound) {
+    sc._ugFxBound = true;
+    sc.events.once("shutdown", () => { clearUnderground(sc); sc._ugFxBound = false; });
+  }
+  if (sc._ugFx?.biome !== biome) {
+    clearUnderground(sc);
+    const style = CAVE_STYLES[biome] ?? CAVE_STYLES.drip;
+    const D = sc._ugFx = { biome, objects: [], fog: [], t: 0, dripT: 0, style };
+    const add = object => (D.objects.push(object), object);
+    for (let i = 0; i < 2; i++) D.fog.push(add(sc.add.tileSprite(W / 2, H * (0.65 + i * 0.24), W, 90, "at_fog").setScrollFactor(0).setDepth(i ? 7 : -0.7).setTint(style.fog)));
+    D.motes = add(sc.add.particles(0, 0, style.crystal ? "vx_star" : "vx_px", {
+      x: { min: 0, max: W }, y: { min: 20, max: H },
+      speedX: { min: -8, max: 8 }, speedY: style.rise ? { min: -24, max: -8 } : { min: -5, max: 7 },
+      lifespan: 5000, frequency: 100, maxAliveParticles: 38,
+      alpha: { start: 0.65, end: 0 }, scale: style.crystal ? { start: 0.6, end: 0 } : { start: 1, end: 0.3 },
+      tint: style.particles, blendMode: ADD,
+    }).setScrollFactor(0).setDepth(8));
+    D.motes.emitParticle(12);
+    if (style.drips) D.drops = add(sc.add.particles(0, 0, "vx_px", {
+      emitting: false, speedY: 35, gravityY: 100, lifespan: 1200,
+      scaleX: 0.7, scaleY: { start: 2, end: 0.5 }, alpha: { start: 0.7, end: 0 },
+      tint: 0x9dcbdc, maxAliveParticles: 12,
+    }).setDepth(8));
+  }
+  const D = sc._ugFx, cam = sc.cameras.main;
+  D.t += dt;
+  D.motes.setAlpha(amount * 0.8);
+  D.fog.forEach((fog, i) => fog.setAlpha(amount * (i ? 0.12 : 0.22)).setTilePosition(cam.scrollX * (0.12 + i * 0.12) + D.t * (3 + i * 3), 0));
+  if (D.drops && (D.dripT -= dt) <= 0) {
+    D.dripT = rnd(0.25, 0.65);
+    const world = sc.world, col = world.gtx(cam.scrollX + rnd(16, W - 16));
+    const first = Math.max(0, Math.floor(cam.scrollY / 16) - 1), last = Math.min(114, Math.ceil((cam.scrollY + H) / 16));
+    for (let row = first; row < last; row++) {
+      if (world.code(col, row) !== 1 || world.code(col, row + 1) !== 0) continue;
+      let floor = row + 2;
+      while (floor < 116 && world.code(col, floor) === 0) floor++;
+      const fall = Math.max(0, (floor - row - 1) * 16 - 4);
+      D.drops.setParticleLifespan(Math.min(2200, 1000 * (Math.sqrt(35 * 35 + 200 * fall) - 35) / 100));
+      D.drops.emitParticleAt(world.lx(col) + 8, (row + 1) * 16 + 1);
+      break;
+    }
+  }
+  return true;
 }
 
 // 허브: 화로 마을 분위기

@@ -29,5 +29,9 @@ try {
   const code = fs.readFileSync(process.argv[2], 'utf8');
   const report = await evaluate(`(async()=>{${code}})()`);
   console.log(JSON.stringify(report, null, 2));
+  if (process.argv[3]) {
+    const shot = await send('Page.captureScreenshot', {format: 'png'});
+    fs.writeFileSync(process.argv[3], Buffer.from(shot.result.data, 'base64'));
+  }
   if (report?.passed !== true) process.exitCode = 1;
 } finally { await send('Page.close'); ws.close(); }
