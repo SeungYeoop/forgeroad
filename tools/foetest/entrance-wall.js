@@ -10,22 +10,20 @@ for (let chunk = 3; chunk < 400 && new Set(checks.map(c => c.biome)).size < 5; c
   const painter = pixSteps(data, chunk * 32, raw, data.region);
   let result;
   do result = painter.next(); while (!result.done);
-  const { front, wall } = result.value;
+  const { wall } = result.value;
   let checked = 0, gaps = 0, aboveLip = 0;
   for (const entrance of data.ug.entrances) {
     for (let col = entrance.x; col < entrance.x + entrance.w; col++) {
-      for (let row = entrance.top; row < data.ug.top + 4; row++) {
-        if (![0, 2, 3].includes(data.grid[row * 32 + col])) continue;
+      for (let row = entrance.top; row < data.grid.length / 32; row++) {
         for (let y = row * 16; y < (row + 1) * 16; y++) for (let x = col * 16; x < (col + 1) * 16; x++) {
           const alpha = (y * 512 + x) * 4 + 3;
-          if (front[alpha]) continue;
           checked++;
           if (wall[alpha] !== 255) gaps++;
         }
       }
       if (entrance.top < data.ug.top - 2) {
         const alpha = (((entrance.top - 1) * 16 + 8) * 512 + col * 16 + 8) * 4 + 3;
-        if (wall[alpha]) aboveLip++;
+        if (entrance.top <= data.ug.surface[col] && wall[alpha]) aboveLip++;
       }
     }
   }
