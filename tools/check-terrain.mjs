@@ -13,6 +13,10 @@ const evaluate = async expression => {
   return result.result?.result?.value;
 };
 try {
+  if (process.env.DISABLE_WORKERS === '1') {
+    await send('Page.addScriptToEvaluateOnNewDocument', {source: 'window.Worker = undefined;'});
+    await send('Page.reload');
+  }
   for (let i = 0; i < 120; i++) {
     if (await evaluate('!!window.__game')) break;
     await new Promise(resolve => setTimeout(resolve, 500));

@@ -79,6 +79,36 @@ const lvq = (wx, wy, G) => {
 };
 // 그림판 하나 (전체 그림 + 밟을 수 있는 것만 담은 그림)
 let ENTRY_N = 0;
+function trackEntries(scene) {
+  if (scene._frTerrainEntries) return scene._frTerrainEntries;
+  const entries = new Set();
+  scene._frTerrainEntries = entries;
+  const cleanup = () => {
+    // Phaser reuses the Scene object between runs, but each run has a new map.
+    for (const [base, job] of PRE) if (job.scene === scene) {
+      job.dead = !0;
+      PRE.delete(base);
+    }
+    for (const [id, job] of WK_JOBS) if (job.scene === scene) {
+      job.dead = !0;
+      WK_JOBS.delete(id);
+    }
+    for (let i = FREE.length - 1; i >= 0; i--) if (FREE[i].scene === scene) FREE.splice(i, 1);
+    for (const entry of entries) {
+      scene.textures.remove(entry.key);
+      scene.textures.remove(entry.keyF);
+    }
+    entries.clear();
+    scene._frTerr?.clear();
+    scene._frTerr = null;
+    scene._frTerrainEntries = null;
+    scene.events.off("shutdown", cleanup);
+    scene.events.off("destroy", cleanup);
+  };
+  scene.events.once("shutdown", cleanup);
+  scene.events.once("destroy", cleanup);
+  return entries;
+}
 function makeEntry(scene, PH) {
   const id = `${ENTRY_N++}_${Math.random().toString(36).slice(2, 7)}`;
   const mk = (k) => {
@@ -89,7 +119,9 @@ function makeEntry(scene, PH) {
     return cv;
   };
   const cv = mk(`frterr_${id}`), cvF = mk(`frterrF_${id}`);
-  return { key: `frterr_${id}`, keyF: `frterrF_${id}`, cv, cvF, ctx: cv.getContext("2d"), ctxF: cvF.getContext("2d") };
+  const entry = { scene, key: `frterr_${id}`, keyF: `frterrF_${id}`, cv, cvF, ctx: cv.getContext("2d"), ctxF: cvF.getContext("2d") };
+  trackEntries(scene).add(entry);
+  return entry;
 }
 // ── 미리 그리기: 곧 불러올 구역을 여러 프레임에 나눠 그려 둔다 (불러오는 순간의 끊김 제거) ──
 const PRE = new Map(), FREE = [];
@@ -133,7 +165,7 @@ export function prepaint(scene, ch, base, raw, region) {
   if (PRE.has(base) || PRE.size >= 2) return;
   const PH = Math.round(ch.grid.length / COLS) * T;
   let S = FREE.pop();
-  (!S || S.cv.height !== PH) && (S = makeEntry(scene, PH));
+  (!S || S.scene !== scene || S.cv.height !== PH) && (S = makeEntry(scene, PH));
   const j = { scene, S, ch, base, raw, region, gen: null, done: !1, wait: !1 };
   PRE.set(base, j);
   const W = worker();
@@ -165,7 +197,7 @@ export function paintChunk(scene, rt, ch, base, raw, region) {
   const pre = PRE.get(base);
   if (pre) {
     PRE.delete(base);
-    if (pre.scene === scene && pre.S.cv.height === PH && !pre.wait) {
+    if (pre.scene === scene && pre.ch === ch && pre.S.cv.height === PH && !pre.wait) {
       // 남은 단계가 있으면 마저 그린다
       if (!pre.done) for (;;) if (pre.gen.next().done) break;
       const old = pool.get(rt);
