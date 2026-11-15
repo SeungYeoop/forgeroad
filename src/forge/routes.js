@@ -124,7 +124,7 @@ export function carveUnderground(r, l, ctx) {
   let bio = BIO_LIST[Math.floor(hh(Math.floor(S / 3), seed + 41) * BIO_LIST.length)];
   bio === "magma" && regionIdx < 3 && (bio = "drip");
   bio === "deep" && regionIdx < 1 && (bio = "lush");
-  out.ug = { top, biome: bio };
+  out.ug = { top, biome: bio, entrances: [] };
   // 본길 바닥: 크게 오르내린다 (한 칸에 1줄 이하 → 경사로 걸어갈 수 있다)
   const F = (gx) => Ft - 19 + Math.round(10 * (2 * vnoise(gx, 46, seed + 11) - 1));
   const CH = (gx) => 6 + Math.round(3 * vnoise(gx, 9, seed + 12));
@@ -209,6 +209,7 @@ export function carveUnderground(r, l, ctx) {
       row -= 3;
     }
     out.shafts.push([sx, 3]);
+    out.ug.entrances.push({ x: sx, w: 3, top: s });
   }
   out.slopes = out.slopes.filter((s) => !out.shafts.some(([sx]) => s.x >= sx && s.x < sx + 3) && !out.pools.some((p) => s.x >= p.x - 1 && s.x <= p.x + p.w));
   // 강한 적 (본길 바닥)

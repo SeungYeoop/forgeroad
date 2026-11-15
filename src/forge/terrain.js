@@ -474,12 +474,15 @@ export function* pixSteps(ch, base, raw, region) {
   // ── 4) 지하 뒷벽 ──
   const wallBase = BI ? BI.wall : mix(regionBase, 0x0e0a14, 0.7);
   const WR = rampOf(sh(wallBase, 0.08));
-  for (let c = 0; c < COLS; c++, yield)
-    for (let r = ug.top - 2; r < ROWS; r++) {
+  for (let c = 0; c < COLS; c++, yield) {
+    const entrance = ug.entrances?.find(e => c >= e.x && c < e.x + e.w);
+    const wallTop = entrance ? Math.min(ug.top - 2, entrance.top) : ug.top - 2;
+    for (let r = wallTop; r < ROWS; r++) {
       const v = code(c, r);
       if (v !== 0 && v !== 2 && v !== 3) continue;
       // 위로 바위가 덮여 있어야 굴 안
-      let covered = !1;
+      // Open shafts need the same rear wall all the way up to the surface lip.
+      let covered = entrance != null && r >= entrance.top;
       for (let k = 1; k <= 60 && r - k >= 0; k++) if (solid(c, r - k)) { covered = !0; break; }
       if (!covered) continue;
       for (let y = r * T; y < r * T + T; y++)
@@ -494,6 +497,7 @@ export function* pixSteps(ch, base, raw, region) {
           wallBuf[y * PW + x] = pack(WR[L]);
         }
     }
+  }
   // ── 5) 장식 ──
   const decoFloor = (x, y, wx, r) => {
     const h = H(wx, r, 21);
