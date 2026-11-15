@@ -154,23 +154,21 @@ const HAZ = [["spikes", "spikes"], ["poison", "poison"], ["voidPool", "voidpool"
 export function designChunk(b, ctx) {
   const { rng, region, Ft } = ctx;
   const st = ctx.state;
-  let name = st.get(ctx.S);
-  if (!name) {
-    const prev = st.get(ctx.S - 1);
-    const tp = POOL[region.theme] ?? ALL;
-    const pool = ctx.dist < 120 ? Object.entries(tp).filter(([k]) => !/sky|cavern|tunnels|mineshaft/.test(k)).concat([["meadow", 1]]) : Object.entries(tp);
-    for (let k = 0; k < 6; k++) {
-      name = rng.weighted(pool, (e) => e[1])[0];
-      if (name !== prev) break;
-    }
+  const planKey = "plan:" + ctx.S;
+  let plan = st.get(planKey);
+  if (plan) {
+    // Regeneration must leave the shared RNG at the same point as the first build.
+    for (let i = 0; i < plan.draws; i++) rng.next();
+  } else {
+    let draws = 0;
+    const planningRng = Object.create(rng);
+    planningRng.next = () => { draws++; return rng.next(); };
+    plan = planChunk({ ...ctx, rng: planningRng });
+    plan.draws = draws;
+    st.set(planKey, plan);
   }
-  name === "skyA" && st.set(ctx.S + 1, "skyB");
-  st.set(ctx.S, name);
+  const { name, L, Ln } = plan;
   b.blocks = b.blocks ?? [];
-  // 조각마다 지면 높이가 달라진다 (2칸씩 오르내리는 길)
-  const L = liftOf(st, ctx.S, rng);
-  name === "skyA" && !st.has("L" + (ctx.S + 1)) && st.set("L" + (ctx.S + 1), L);
-  const Ln = liftOf(st, ctx.S + 1, rng);
   const base = BASE_H + L, target = BASE_H + Ln;
   const ab = (row) => Math.max(2, row + TOP - L);
   if (b.h !== base) {
@@ -236,6 +234,26 @@ export function designChunk(b, ctx) {
     b.extraSpawns = A.spawns.map(([x, r]) => ({ x, row: ab(r) }));
   }
   return name;
+}
+
+function planChunk(ctx) {
+  const { rng, region, state: st } = ctx;
+  let name = st.get(ctx.S);
+  if (!name) {
+    const prev = st.get(ctx.S - 1);
+    const tp = POOL[region.theme] ?? ALL;
+    const pool = ctx.dist < 120 ? Object.entries(tp).filter(([k]) => !/sky|cavern|tunnels|mineshaft/.test(k)).concat([["meadow", 1]]) : Object.entries(tp);
+    for (let k = 0; k < 6; k++) {
+      name = rng.weighted(pool, (e) => e[1])[0];
+      if (name !== prev) break;
+    }
+  }
+  name === "skyA" && st.set(ctx.S + 1, "skyB");
+  st.set(ctx.S, name);
+  const L = liftOf(st, ctx.S, rng);
+  name === "skyA" && !st.has("L" + (ctx.S + 1)) && st.set("L" + (ctx.S + 1), L);
+  const Ln = liftOf(st, ctx.S + 1, rng);
+  return { name, L, Ln };
 }
 
 // 조각별 지면 높이 (0~8칸, 2칸씩 변화). 처음 몇 조각은 평탄.

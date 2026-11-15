@@ -9,5 +9,7 @@
 - `foetest/step.js`: 몬스터마다 update를 직접 90번 돌려 오류 확인.
 - `foetest/fight.js`: 탐험 장면에서 몬스터들을 소환해 0.6초마다 상태 기록.
 - `foetest/teleport.js`: `window.__D=거리;` 를 붙여 지역 이동.
+- 지형 회귀 검사: Vite를 `node node_modules/vite/bin/vite.js --port 5198`로 실행하고, 디버깅 포트 9333의 크롬에서 `node tools/check-terrain.mjs tools/foetest/terrain.js`를 실행한다. `TEST_URL` 환경 변수로 다른 서버 주소를 지정할 수 있다.
+- 지형 검사는 별도 탭에서 맵 캐시 삭제·역순 재생성, 화면과 충돌 데이터 일치, 빈 공간 이동·벽 충돌·바닥 착지를 확인한다. 실패하면 종료 코드 1을 반환한다.
 - 탐험 장면 시작: `window.__game.scene.start("Run")`, 장면 객체: `window.__run`, 글루: `window.__FG`.
 - 주의: 헤드리스는 느려서 게임 시간이 실제보다 천천히 간다(속도 판단 금지). 페이지 새로고침 직후 7~10초 기다릴 것(부팅 렌더링).
