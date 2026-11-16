@@ -1,3 +1,4 @@
+import { titleScene } from "./forge/title-scene.js";
 import Phaser from "phaser";
 import "./style.css";
 import * as FG from "./forge/glue.js";
@@ -7417,9 +7418,6 @@ class Ln extends zt.Scene {
   constructor() {
     super("Boot");
   }
-  preload() {
-    this.load.image("reforge_title", new URL("./assets/title/reforge-infinite-road.png", import.meta.url).href);
-  }
   async create() {
     var C;
     const S = performance.now();
@@ -8654,36 +8652,26 @@ class Bn extends zt.Scene {
     this.menuSel = 0;
     this.wipeArmed = false;
     this.wipeTimer = null;
-    // The supplied key art is kept intact: logo above, adventurer at left.
-    this.add.image(W / 2, H / 2, "reforge_title").setDisplaySize(W, H);
-    const shade = this.add.graphics();
-    for (let i = 0; i < 32; i++) {
-      shade.fillStyle(0x100d25, 0.62 * (1 - i / 32) ** 1.5).fillRect(0, H - i * 2 - 2, W, 2);
+    titleScene(this, ct, zt.BlendModes.ADD);
+    // Centered menu follows the sword and the title's central axis.
+    const veil = this.add.graphics();
+    for (let i = 48; i > 0; i--) {
+      veil.fillStyle(0x160d30, 0.022).fillEllipse(320, 274, 220 + i * 4, 70 + i * 2);
     }
-    // Small glints continue the magic in the illustration without moving the logo.
-    const glints = [[239, 50], [402, 62], [318, 13], [544, 36], [566, 157]];
-    glints.forEach(([x, y], i) => {
-      const star = this.add.image(x, y, "vx_glow").setTint(i % 2 ? 0xffd4a0 : 0xdfa2ff)
-        .setBlendMode(zt.BlendModes.ADD).setScale(0.16).setAlpha(0.15);
-      this.tweens.add({ targets: star, alpha: 0.65, duration: 1500 + i * 270,
-        delay: i * 320, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
-    });
-    // A compact, inset menu sits over the mist, clear of the hero and wordmark.
-    this.add.rectangle(389, 232, 228, 100, 0x110d28, 0.88).setOrigin(0).setStrokeStyle(1, 0xb49bd8, 0.4);
-    this.add.rectangle(393, 236, 220, 92).setOrigin(0).setStrokeStyle(1, 0xa888cc, 0.13);
-    const ornament = this.add.graphics().lineStyle(1, 0xf0c68b, 0.9);
-    for (const [x, y, dx, dy] of [[389, 232, 1, 1], [617, 232, -1, 1], [389, 332, 1, -1], [617, 332, -1, -1]]) {
-      ornament.lineBetween(x, y + dy * 8, x, y);
-      ornament.lineBetween(x, y, x + dx * 8, y);
-    }
+    const ornament = this.add.graphics();
+    ornament.lineStyle(1, 0xe8bb7c, 0.65);
+    ornament.lineBetween(231, 229, 296, 229);
+    ornament.lineBetween(344, 229, 409, 229);
+    ornament.fillStyle(0xf6d49b, 1).fillPoints([{x:320,y:225},{x:324,y:229},{x:320,y:233},{x:316,y:229}], true);
+    ornament.lineStyle(1, 0xe8bb7c, 0.22).lineBetween(250, 322, 390, 322);
     const items = [
       { label: this.recovered ? "지난 탐험 이어보기" : "모험 시작", sub: this.recovered ? "끝나지 않은 탐험의 기록" : "당신의 다음 전설을 벼려라",
-        x: 400, y: 243, w: 206, h: 31, primary: true, act: () => this.go() },
-      { label: "기록 게시판", sub: "최고 기록 · 업적 · 도감", x: 400, y: 280, w: 100, h: 23,
+        x: 210, y: 241, w: 220, h: 34, primary: true, act: () => this.go() },
+      { label: "기록 게시판", sub: "최고 기록 · 업적 · 도감", x: 210, y: 283, w: 106, h: 25,
         act: () => this.openPanel(() => new (FG.panels().Board)(this, () => this.closePanel())) },
-      { label: "설정", sub: "소리 · 화면 · 조작법", x: 506, y: 280, w: 100, h: 23,
+      { label: "설정", sub: "소리 · 화면 · 조작법", x: 324, y: 283, w: 106, h: 25,
         act: () => this.openPanel(() => new dr(this, () => this.closePanel(), () => {})) },
-      { label: "데이터 초기화", sub: "한 번 더 누르면 모든 진행이 삭제됩니다", x: 448, y: 308, w: 110, h: 17,
+      { label: "데이터 초기화", sub: "한 번 더 누르면 모든 진행이 삭제됩니다", x: 265, y: 325, w: 110, h: 17,
         act: () => {
           if (!this.wipeArmed) {
             this.wipeArmed = true;
@@ -8708,8 +8696,8 @@ class Bn extends zt.Scene {
     });
     ct(this, 24, 333, "리포지 : 무한의 길", "tiny", "#eee0fb", { stroke: "#1a1030", strokeThickness: 2 });
     ct(this, 24, 346, `최고 ${yt(it.data.best)}m   ·   탐험 ${it.data.runs ?? 0}회`, "tiny", "#c5b3da", { stroke: "#1a1030", strokeThickness: 2 });
-    this.subText = ct(this, 503, 340, "", "tiny", "#f2e2ff", { stroke: "#1a1030", strokeThickness: 2 }).setOrigin(0.5, 0);
-    ct(this, 260, 346, "↑↓ 선택  ·  ENTER 확인", "tiny", "#c5b3da", { stroke: "#1a1030", strokeThickness: 2 });
+    this.subText = ct(this, 320, 210, "", "tiny", "#f2e2ff", { stroke: "#1a1030", strokeThickness: 2 }).setOrigin(0.5, 0);
+    ct(this, 480, 346, "↑↓ 선택  ·  ENTER 확인", "tiny", "#c5b3da", { stroke: "#1a1030", strokeThickness: 2 });
     this.pick(0, true);
     const key = (k, f) => this.input.keyboard.on("keydown-" + k, () => { if (!this.panelOpen && !this.started) f(); });
     const move = (d) => this.pick((this.menuSel + d + this.menu.length) % this.menu.length);
@@ -8736,6 +8724,8 @@ class Bn extends zt.Scene {
       const selected = i === this.menuSel;
       const g = m.bg.clear();
       if (m.primary) {
+        g.fillStyle(0x10091f, 0.7).fillRect(m.x - 3, m.y - 3, m.w + 6, m.h + 9);
+        g.lineStyle(1, 0xe9c18b, selected ? 0.8 : 0.35).strokeRect(m.x - 3.5, m.y - 3.5, m.w + 7, m.h + 7);
         g.fillGradientStyle(selected ? 0xffe2a8 : 0xdcb77d, selected ? 0xffe2a8 : 0xdcb77d,
           selected ? 0xd79750 : 0xb8804b, selected ? 0xd79750 : 0xb8804b, 1);
         g.fillRect(m.x, m.y, m.w, m.h);
