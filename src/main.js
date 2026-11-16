@@ -12182,7 +12182,7 @@ class Ws {
     Z(this, "idleT", 0);
     Z(this, "regenAcc", 0);
     Z(this, "lastHitT", 0);
-    Z(this, "airJumps", 0);
+    Z(this, "airJumps", 1);
     Z(this, "frenzyStacks", 0);
     Z(this, "frenzyT", 0);
     ((this.host = S), (this.stats = T));
@@ -12387,7 +12387,7 @@ class Ws {
       (R && (T.left && (h -= 1), T.right && (h += 1)),
       T.jump ? (this.jumpBuf = Vt.jumpBuffer) : (this.jumpBuf = Math.max(0, this.jumpBuf - S)),
       C.onGround
-        ? ((this.coyote = Vt.coyote), (this.airJumps = this.run.extraJumps))
+        ? ((this.coyote = Vt.coyote), (this.airJumps = 1 + this.run.extraJumps))
         : (this.coyote = Math.max(0, this.coyote - S)),
       T.dash &&
         this.dashCd <= 0 &&
@@ -12969,7 +12969,7 @@ function $s(A) {
   ];
 }
 const Oi = [
-    "키보드: A/D 이동 · Space 점프 · S+Space 발판 내려가기 · Shift 대시",
+    "키보드: A/D 이동 · Space 점프(2단 가능) · S+Space 발판 내려가기 · Shift 대시",
     "좌클릭 공격 · 우클릭 특수 · Q/E/R/F 스킬 · 1/2 무기 · E 상호작용 · Esc 메뉴",
   ],
   ki = { common: "#d8d0c0", rare: "#6ab8ff", epic: "#c58aff", legendary: "#ffa040" },
@@ -18530,7 +18530,7 @@ class Er extends zt.Scene {
             ? void 0
             : v.banner(
                 "조작법",
-                "A/D 이동 · Space 점프 · ↓ 막기(방패) · Shift 대시 · 좌클릭 공격 · 우클릭 특수 · Q/E 스킬 · R 마법 · Tab 가방·융합 · Esc 일시정지",
+                "A/D 이동 · Space 점프(2단 가능) · ↓ 막기(방패) · Shift 대시 · 좌클릭 공격 · 우클릭 특수 · Q/E 스킬 · R 마법 · Tab 가방·융합 · Esc 일시정지",
                 "#80c0ff",
               );
         }),
