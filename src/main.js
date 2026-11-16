@@ -7417,6 +7417,9 @@ class Ln extends zt.Scene {
   constructor() {
     super("Boot");
   }
+  preload() {
+    this.load.image("reforge_title", new URL("./assets/title/reforge-infinite-road.png", import.meta.url).href);
+  }
   async create() {
     var C;
     const S = performance.now();
@@ -8645,99 +8648,118 @@ class Bn extends zt.Scene {
     ((this.recovered = (T == null ? void 0 : T.recovered) ?? null), (this.started = !1));
   }
   create() {
-    const T = Ht[[0, 3, 4][Math.floor(Math.random() * 3)]],
-      C = Ai(this, T),
-      W = ot,
-      H = xt,
-      ADD = zt.BlendModes.ADD;
-    (this.add.image(W / 2, H / 2, C + "_sky"),
-      (this.layers = [0, 1, 2].map((m) =>
-        this.add.tileSprite(W / 2, H / 2, W, H, `${C}_${m}`).setData("f", [0.2, 0.5, 1][m]),
-      )));
-    // 왼쪽을 어둡게 눌러 메뉴 자리를 만든다
-    const g = this.add.graphics().setDepth(5);
-    for (let i = 0; i < 64; i++) g.fillStyle(0x0a0710, 0.82 * (1 - i / 64) ** 1.4).fillRect(i * 6, 0, 6, H);
-    for (let i = 0; i < 30; i++) g.fillStyle(0, 0.025 * i).fillRect(0, H - 60 + i * 2, W, 2);
-    for (let i = 0; i < 4; i++) {
-      const r = this.add.image(380 + i * 70, -10, "at_ray").setOrigin(0.5, 0).setDepth(4).setTint(0xffb060).setBlendMode(ADD).setAlpha(0.1).setAngle(-14 + i * 6).setScale(1.6, 1.3);
-      this.tweens.add({ targets: r, alpha: 0.03, duration: 2000 + i * 300, yoyo: !0, repeat: -1 });
-    }
-    this.add.particles(0, 0, "vx_soft", { x: { min: 0, max: W }, y: H + 6, speedY: { min: -60, max: -20 }, speedX: { min: -12, max: 12 }, lifespan: 6000, frequency: 70, scale: { start: 0.35, end: 0 }, alpha: { start: 1, end: 0 }, tint: [0xffc060, 0xff7a30, 0xffe0a0], blendMode: ADD }).setDepth(9);
-    // 오른쪽: 주인공
-    (this.add.ellipse(470, H - 44, 70, 12, 0, 0.45).setDepth(6),
-      this.add
-        .sprite(470, H - 44, `player_${it.data.equip.armor}`, 4)
-        .setOrigin(0.5, 1)
-        .setScale(3)
-        .setDepth(7)
-        .play(`pl_${it.data.equip.armor}_run`));
-    // 문장 + 제목
-    const em = this.add.image(76, 60, "fr_emblem").setDepth(11);
-    this.tweens.add({ targets: em, y: 56, duration: 1800, yoyo: !0, repeat: -1, ease: "Sine.easeInOut" });
-    const glow = this.add.image(76, 60, "vx_glow").setDepth(10).setTint(0xff8a30).setBlendMode(ADD).setScale(2.6).setAlpha(0.45);
-    this.tweens.add({ targets: glow, alpha: 0.2, duration: 1400, yoyo: !0, repeat: -1 });
-    (ct(this, 128, 28, "리포지", "title", "#ffd84a", { stroke: "#2a1408", strokeThickness: 8, fontSize: "40px" }).setDepth(12),
-      ct(this, 132, 78, "THE  FORGE  ROAD", "small", "#ffcf80", { stroke: "#140e18", strokeThickness: 3, letterSpacing: 3 }).setDepth(12),
-      this.add.rectangle(32, 104, 230, 1, 0xc89a40, 0.8).setOrigin(0).setDepth(12),
-      this.add.rectangle(32, 105, 230, 1, 0, 0.6).setOrigin(0).setDepth(12));
-    // 메뉴
-    let wipe = !1;
-    const items = [
-      { label: this.recovered ? "지난 탐험 결과 보기" : "탐험 시작", sub: this.recovered ? "끝나지 않은 기록이 있습니다" : "대장간 마을로 향한다", act: () => this.go() },
-      { label: "기록 게시판", sub: "최고 기록 · 업적 · 도감", act: () => this.openPanel(() => new (FG.panels().Board)(this, () => this.closePanel())) },
-      { label: "설정", sub: "소리 · 화면 · 조작법", act: () => this.openPanel(() => new dr(this, () => this.closePanel(), () => {})) },
-      {
-        label: "데이터 초기화",
-        sub: "모든 진행이 사라집니다",
-        act: () => {
-          if (!wipe) return ((wipe = !0), this.menu[3].txt.setText("정말 초기화할까요?  (한 번 더)"), j.play("error"));
-          (it.reset(), this.scene.restart({ recovered: null }));
-        },
-      },
-    ];
-    this.menuSel = 0;
+    const W = ot, H = xt;
+    this.layers = [];
     this.panelOpen = null;
-    this.marker = ct(this, 34, 0, "▶", "body", "#ffd84a", { stroke: "#140e18", strokeThickness: 3 }).setDepth(12);
-    this.bar = this.add.rectangle(30, 0, 240, 22, 0xffb040, 0.16).setOrigin(0, 0).setDepth(11);
-    this.subText = ct(this, 52, 0, "", "tiny", "#c8b090", { stroke: "#140e18", strokeThickness: 2 }).setDepth(12);
-    this.menu = items.map((m, i) => {
-      const y = 124 + i * 30;
-      const txt = ct(this, 52, y, m.label, "big", i === 3 ? "#d88a7a" : "#f2e6c4", { stroke: "#140e18", strokeThickness: 4 }).setDepth(12);
-      const hit = this.add.rectangle(30, y - 2, 240, 24, 0, 0).setOrigin(0).setDepth(13).setInteractive({ useHandCursor: !0 });
-      hit.on("pointerover", () => this.pick(i)).on("pointerdown", () => (this.pick(i), this.activate()));
-      return { ...m, txt, y };
+    this.menuSel = 0;
+    this.wipeArmed = false;
+    this.wipeTimer = null;
+    // The supplied key art is kept intact: logo above, adventurer at left.
+    this.add.image(W / 2, H / 2, "reforge_title").setDisplaySize(W, H);
+    const shade = this.add.graphics();
+    for (let i = 0; i < 32; i++) {
+      shade.fillStyle(0x100d25, 0.62 * (1 - i / 32) ** 1.5).fillRect(0, H - i * 2 - 2, W, 2);
+    }
+    // Small glints continue the magic in the illustration without moving the logo.
+    const glints = [[239, 50], [402, 62], [318, 13], [544, 36], [566, 157]];
+    glints.forEach(([x, y], i) => {
+      const star = this.add.image(x, y, "vx_glow").setTint(i % 2 ? 0xffd4a0 : 0xdfa2ff)
+        .setBlendMode(zt.BlendModes.ADD).setScale(0.16).setAlpha(0.15);
+      this.tweens.add({ targets: star, alpha: 0.65, duration: 1500 + i * 270,
+        delay: i * 320, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     });
-    this.pick(0, !0);
-    // 기록 패
-    (this.add.nineslice(30, H - 64, "ui_hud_panel", void 0, 240, 40, 6, 6, 6, 6).setOrigin(0).setDepth(11),
-      this.add.image(46, H - 52, "icon_flag").setDepth(12),
-      ct(this, 56, H - 59, `최고 ${yt(it.data.best)}m`, "small", "#f2e6c4").setDepth(12),
-      this.add.image(46, H - 36, "icon_gold").setDepth(12),
-      ct(this, 56, H - 43, `${yt(it.data.gold)} 골드`, "small", "#ffd84a").setDepth(12),
-      ct(this, 262, H - 59, `탐험 ${it.data.runs ?? 0}회`, "tiny", "#a89d82").setOrigin(1, 0).setDepth(12),
-      ct(this, 262, H - 43, `처치 ${yt(it.data.kills ?? 0)}`, "tiny", "#a89d82").setOrigin(1, 0).setDepth(12),
-      0);
-    const key = (k, f) => this.input.keyboard.on("keydown-" + k, () => this.panelOpen || f());
-    (key("UP", () => this.pick((this.menuSel + 3) % 4)),
-      key("W", () => this.pick((this.menuSel + 3) % 4)),
-      key("DOWN", () => this.pick((this.menuSel + 1) % 4)),
-      key("S", () => this.pick((this.menuSel + 1) % 4)),
-      key("ENTER", () => this.activate()),
-      key("SPACE", () => this.activate()),
-      (this.pad = new ri(this)),
-      this.cameras.main.fadeIn(600));
+    // A compact, inset menu sits over the mist, clear of the hero and wordmark.
+    this.add.rectangle(389, 232, 228, 100, 0x110d28, 0.88).setOrigin(0).setStrokeStyle(1, 0xb49bd8, 0.4);
+    this.add.rectangle(393, 236, 220, 92).setOrigin(0).setStrokeStyle(1, 0xa888cc, 0.13);
+    const ornament = this.add.graphics().lineStyle(1, 0xf0c68b, 0.9);
+    for (const [x, y, dx, dy] of [[389, 232, 1, 1], [617, 232, -1, 1], [389, 332, 1, -1], [617, 332, -1, -1]]) {
+      ornament.lineBetween(x, y + dy * 8, x, y);
+      ornament.lineBetween(x, y, x + dx * 8, y);
+    }
+    const items = [
+      { label: this.recovered ? "지난 탐험 이어보기" : "모험 시작", sub: this.recovered ? "끝나지 않은 탐험의 기록" : "당신의 다음 전설을 벼려라",
+        x: 400, y: 243, w: 206, h: 31, primary: true, act: () => this.go() },
+      { label: "기록 게시판", sub: "최고 기록 · 업적 · 도감", x: 400, y: 280, w: 100, h: 23,
+        act: () => this.openPanel(() => new (FG.panels().Board)(this, () => this.closePanel())) },
+      { label: "설정", sub: "소리 · 화면 · 조작법", x: 506, y: 280, w: 100, h: 23,
+        act: () => this.openPanel(() => new dr(this, () => this.closePanel(), () => {})) },
+      { label: "데이터 초기화", sub: "한 번 더 누르면 모든 진행이 삭제됩니다", x: 448, y: 308, w: 110, h: 17,
+        act: () => {
+          if (!this.wipeArmed) {
+            this.wipeArmed = true;
+            this.menu[3].txt.setText("한 번 더 눌러 초기화").setColor("#ffb3bb");
+            this.wipeTimer = this.time.delayedCall(4000, () => this.cancelWipe());
+            j.play("error");
+            return;
+          }
+          it.reset();
+          this.scene.restart({ recovered: null });
+        } },
+    ];
+    this.menu = items.map((m, i) => {
+      const bg = this.add.graphics();
+      const txt = ct(this, m.x + m.w / 2, m.y + m.h / 2, m.label,
+        m.primary ? "big" : i === 3 ? "tiny" : "small", "#eee4ff").setOrigin(0.5);
+      const arrow = m.primary ? ct(this, m.x + m.w - 15, m.y + m.h / 2, "›", "big", "#45233b").setOrigin(0.5) : null;
+      const hit = this.add.zone(m.x, m.y, m.w, m.h).setOrigin(0).setInteractive({ useHandCursor: true });
+      hit.on("pointerover", () => { if (!this.panelOpen && !this.started) this.pick(i); })
+        .on("pointerdown", () => { if (!this.panelOpen && !this.started) { this.pick(i); this.activate(); } });
+      return { ...m, bg, txt, arrow, hit };
+    });
+    ct(this, 24, 333, "리포지 : 무한의 길", "tiny", "#eee0fb", { stroke: "#1a1030", strokeThickness: 2 });
+    ct(this, 24, 346, `최고 ${yt(it.data.best)}m   ·   탐험 ${it.data.runs ?? 0}회`, "tiny", "#c5b3da", { stroke: "#1a1030", strokeThickness: 2 });
+    this.subText = ct(this, 503, 340, "", "tiny", "#f2e2ff", { stroke: "#1a1030", strokeThickness: 2 }).setOrigin(0.5, 0);
+    ct(this, 260, 346, "↑↓ 선택  ·  ENTER 확인", "tiny", "#c5b3da", { stroke: "#1a1030", strokeThickness: 2 });
+    this.pick(0, true);
+    const key = (k, f) => this.input.keyboard.on("keydown-" + k, () => { if (!this.panelOpen && !this.started) f(); });
+    const move = (d) => this.pick((this.menuSel + d + this.menu.length) % this.menu.length);
+    key("UP", () => move(-1));
+    key("W", () => move(-1));
+    key("DOWN", () => move(1));
+    key("S", () => move(1));
+    key("LEFT", () => move(-1));
+    key("RIGHT", () => move(1));
+    key("ENTER", () => this.activate());
+    key("SPACE", () => this.activate());
+    this.pad = new ri(this);
+    this.cameras.main.fadeIn(850, 19, 10, 35);
+  }
+  cancelWipe() {
+    this.wipeArmed = false;
+    this.wipeTimer?.remove();
+    this.wipeTimer = null;
+    this.menu[3].txt.setText(this.menu[3].label);
+    this.paintMenu();
+  }
+  paintMenu() {
+    this.menu.forEach((m, i) => {
+      const selected = i === this.menuSel;
+      const g = m.bg.clear();
+      if (m.primary) {
+        g.fillGradientStyle(selected ? 0xffe2a8 : 0xdcb77d, selected ? 0xffe2a8 : 0xdcb77d,
+          selected ? 0xd79750 : 0xb8804b, selected ? 0xd79750 : 0xb8804b, 1);
+        g.fillRect(m.x, m.y, m.w, m.h);
+        g.lineStyle(1, 0xffebc4, selected ? 1 : 0.6).strokeRect(m.x + 0.5, m.y + 0.5, m.w - 1, m.h - 1);
+        g.lineStyle(1, 0x7a482f, 0.6).lineBetween(m.x + 2, m.y + m.h - 2, m.x + m.w - 2, m.y + m.h - 2);
+        m.txt.setColor("#3b2036");
+        m.arrow.setX(m.x + m.w - (selected ? 12 : 16));
+      } else if (i !== 3) {
+        g.fillStyle(selected ? 0x6b4785 : 0x302141, selected ? 0.9 : 0.9).fillRect(m.x, m.y, m.w, m.h);
+        g.lineStyle(1, selected ? 0xf4d3a3 : 0x9e7dba, selected ? 0.95 : 0.4).strokeRect(m.x + 0.5, m.y + 0.5, m.w - 1, m.h - 1);
+        m.txt.setColor(selected ? "#ffe6b4" : "#e1d3ef");
+      } else {
+        if (selected) g.lineStyle(1, 0xcf9da8, 0.7).lineBetween(m.x + 8, m.y + m.h, m.x + m.w - 8, m.y + m.h);
+        m.txt.setColor(selected ? "#ffced3" : "#b8a3c6");
+      }
+    });
   }
   pick(i, quiet) {
+    if (this.wipeArmed && i !== 3) this.cancelWipe();
+    const changed = this.menuSel !== i;
     this.menuSel = i;
-    const m = this.menu[i];
-    (this.marker.setY(m.y + 1), this.bar.setY(m.y - 2), this.subText.setText(m.sub).setY(m.y + 21));
-    this.menu.forEach((o, k) => {
-      (o.txt.setX(k === i ? 58 : 52), k !== 3 && o.txt.setColor(k === i ? "#ffd84a" : "#f2e6c4"));
-      o.y > m.y && o.txt.setY(o.y + 10);
-      o.y <= m.y && o.txt.setY(o.y);
-    });
-    this.tweens.add({ targets: this.marker, x: { from: 28, to: 36 }, duration: 160 });
-    quiet || j.play("click");
+    this.subText.setText(this.menu[i].sub);
+    this.paintMenu();
+    if (!quiet && changed) j.play("click");
   }
   activate() {
     this.panelOpen || this.started || this.menu[this.menuSel].act();
@@ -8758,9 +8780,12 @@ class Bn extends zt.Scene {
         this.recovered ? this.scene.start("Result", { result: this.recovered }) : this.scene.start("Hub");
       }));
   }
-  update(T) {
-    (this.pad.poll(), !this.panelOpen && (this.pad.justDown(Mt.A) || this.pad.justDown(Mt.START)) && this.activate());
-    for (const C of this.layers) C.tilePositionX = (T / 16) * C.getData("f");
+  update() {
+    this.pad.poll();
+    if (this.panelOpen || this.started) return;
+    const direction = this.pad.navY() || this.pad.navX();
+    if (direction) this.pick((this.menuSel + direction + this.menu.length) % this.menu.length);
+    if (this.pad.justDown(Mt.A) || this.pad.justDown(Mt.START)) this.activate();
   }
 }
 const ue = {
