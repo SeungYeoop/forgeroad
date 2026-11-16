@@ -8652,7 +8652,10 @@ class Bn extends zt.Scene {
     this.menuSel = 0;
     this.wipeArmed = false;
     this.wipeTimer = null;
-    titleScene(this, ct, zt.BlendModes.ADD);
+    const titleBackground = Ai(this, Ht[4]);
+    this.add.image(320,180,titleBackground + '_sky');
+    this.layers = [0,1,2].map(i => this.add.tileSprite(320,180,640,360,`${titleBackground}_${i}`).setData('f',[0.08,0.16,0.28][i]));
+    titleScene(this, ct, zt.BlendModes.ADD, it.data.equip.armor);
     // Centered menu follows the sword and the title's central axis.
     const veil = this.add.graphics();
     for (let i = 48; i > 0; i--) {
@@ -8770,7 +8773,8 @@ class Bn extends zt.Scene {
         this.recovered ? this.scene.start("Result", { result: this.recovered }) : this.scene.start("Hub");
       }));
   }
-  update() {
+  update(time) {
+    for (const layer of this.layers) layer.tilePositionX = time / 32 * layer.getData("f");
     this.pad.poll();
     if (this.panelOpen || this.started) return;
     const direction = this.pad.navY() || this.pad.navX();
