@@ -258,7 +258,7 @@ export function makeEmblem(scene, ht, lt) {
 export function titleFx(sc, R) {
   const W = R.ot, Hh = R.xt;
   for (const o of sc.children.list.slice()) if (o.type === "Text" && o.text === "ENDLESS FRONTIER") o.setText("THE  FORGE  ROAD").setColor("#ffcf80");
-  for (const o of sc.children.list.slice()) if (o.type === "Text" && o.text === "포지로드") (o.setY(118), o.setDepth(12));
+  for (const o of sc.children.list.slice()) if (o.type === "Text" && o.text === "리포지") (o.setY(118), o.setDepth(12));
   for (const o of sc.children.list.slice()) if (o.type === "Text" && o.text === "THE  FORGE  ROAD") (o.setY(150), o.setDepth(12));
   for (const o of sc.children.list.slice()) if (o.type === "Text" && String(o.text).startsWith("최고 기록")) o.setY(170).setDepth(12);
   for (const o of sc.children.list.slice()) if (o.type === "Text" && String(o.text).startsWith("클릭")) o.setY(222).setDepth(12);

@@ -8676,7 +8676,7 @@ class Bn extends zt.Scene {
     this.tweens.add({ targets: em, y: 56, duration: 1800, yoyo: !0, repeat: -1, ease: "Sine.easeInOut" });
     const glow = this.add.image(76, 60, "vx_glow").setDepth(10).setTint(0xff8a30).setBlendMode(ADD).setScale(2.6).setAlpha(0.45);
     this.tweens.add({ targets: glow, alpha: 0.2, duration: 1400, yoyo: !0, repeat: -1 });
-    (ct(this, 128, 28, "포지로드", "title", "#ffd84a", { stroke: "#2a1408", strokeThickness: 8, fontSize: "40px" }).setDepth(12),
+    (ct(this, 128, 28, "리포지", "title", "#ffd84a", { stroke: "#2a1408", strokeThickness: 8, fontSize: "40px" }).setDepth(12),
       ct(this, 132, 78, "THE  FORGE  ROAD", "small", "#ffcf80", { stroke: "#140e18", strokeThickness: 3, letterSpacing: 3 }).setDepth(12),
       this.add.rectangle(32, 104, 230, 1, 0xc89a40, 0.8).setOrigin(0).setDepth(12),
       this.add.rectangle(32, 105, 230, 1, 0, 0.6).setOrigin(0).setDepth(12));
