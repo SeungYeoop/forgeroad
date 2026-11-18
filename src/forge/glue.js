@@ -124,7 +124,7 @@ function buildWeaponDef(item) {
   }
   const combo = P.map((p, i) => {
     const t = tpl[Math.min(tpl.length - 1, Math.round((i * (tpl.length - 1)) / Math.max(1, P.length - 1)))];
-    const s = { ...t, power: p * (item.power ?? 1), interval: t.interval / sp, windup: (t.windup ?? 0) / sp };
+    const s = { ...t, power: p * (item.power ?? 1) * IT.gradeMult(item), interval: t.interval / sp, windup: (t.windup ?? 0) / sp };
     t.range && !t.projectile && (s.range = t.range * rng);
     t.height && mods.size && (s.height = t.height * (1 + mods.size));
     mods.knock && (s.knockback = (t.knockback ?? 120) * 2);
@@ -140,7 +140,7 @@ function buildWeaponDef(item) {
     status: void 0,
     combo,
     critBonus: (o.critBonus ?? 0) + (mods.crit ?? 0),
-    special: { ...o.special, name: String(b.special ?? o.special.name).split(":")[0].slice(0, 14), power: o.special.power * (item.power ?? 1) },
+    special: { ...o.special, name: String(b.special ?? o.special.name).split(":")[0].slice(0, 14), power: o.special.power * (item.power ?? 1) * IT.gradeMult(item) },
     look: ec ? { blade: mixc(o.look.blade, ec, 0.55), hilt: o.look.hilt, accent: ec } : { ...o.look },
     upgrade: { ...o.upgrade, perks: [] },
     frItem: item,
@@ -171,11 +171,11 @@ function armorFx(item) {
 function armorDefense(item) {
   if (!item) return 6;
   const AD = item.tier > 0 ? interp(item)?.armor?.def : null;
-  if (AD != null) return AD;
+  if (AD != null) return Math.round(AD * IT.gradeMult(item));
   const arms = (item.mats ?? [item.id]).filter((x) => IT.BASE[x]?.kind === "armor");
   const f = arms.length > 1 ? 0.7 : 1;
   const d = arms.reduce((s, a) => s + (IT.BASE[a].defense ?? 6) * f, 0) || 6;
-  return Math.round(d * (item.tier ? 0.85 + 0.15 * item.power : 1));
+  return Math.round(d * (item.tier ? 0.85 + 0.15 * item.power : 1) * IT.gradeMult(item));
 }
 function overlay(equip, scene) {
   const w = equip.weapon ?? IT.makeBase("W01");
@@ -410,6 +410,27 @@ export function bootTextures(scene) {
   g("perk_fra", 14, 14, (b) => { b.poly([[2, 2], [12, 2], [12, 8], [7, 13], [2, 8]], W); b.rect(6, 4, 2, 6, 0x000000, 90); });
   g("perk_frg", 14, 14, (b) => { b.ring(7, 7, 6, 1.5, W); b.line(7, 2, 7, 12, W); b.line(3, 4, 11, 10, W); b.line(11, 4, 3, 10, W); });
   g("perk_frstone", 14, 14, (b) => { b.poly([[7, 1], [13, 5], [11, 13], [3, 13], [1, 5]], W); });
+  // 지역 재료 아이콘
+  const shade = (c, k) => ((Math.min(255, ((c >> 16) & 255) * k) << 16) | (Math.min(255, ((c >> 8) & 255) * k) << 8) | Math.min(255, (c & 255) * k)) >>> 0;
+  for (const m of IT.MAT_LIST)
+    g(`fr_mat_${m.id}`, 12, 12, (b) => {
+      if (m.id === "ember") (b.circle(6, 7, 4.5, 0x2a1a14), b.circle(5, 6, 2.5, m.color), b.px(7, 8, 0xffe0a0));
+      else if (m.id === "ore") (b.poly([[1, 9], [3, 3], [8, 1], [11, 6], [9, 11], [3, 11]], 0x5a5a66), b.poly([[4, 5], [7, 3], [9, 6], [6, 8]], m.color), b.px(5, 9, 0xe0e8f0));
+      else (b.poly([[6, 0], [10, 5], [6, 11], [2, 5]], shade(m.color, 0.6)), b.poly([[6, 1], [8, 5], [6, 9], [4, 5]], m.color), b.px(5, 3, 0xffffff));
+      b.outline();
+    });
+  // 귀환 표석
+  g("fr_waystone", 18, 36, (b) => {
+    b.rect(2, 30, 14, 6, 0x3a3440);
+    b.rect(1, 33, 16, 3, 0x2a2430);
+    b.poly([[4, 30], [3, 6], [9, 1], [15, 6], [14, 30]], 0x6a6478);
+    b.poly([[5, 29], [5, 7], [9, 3], [9, 29]], 0x847e92);
+    b.line(9, 9, 9, 24, 0x80f0ff);
+    b.line(6, 13, 12, 13, 0x80f0ff);
+    b.line(7, 19, 11, 19, 0x80f0ff);
+    b.ring(9, 16, 3, 1, 0xc0ffff);
+    b.outline();
+  });
   // 드롭 빛기둥
   g("fr_beam", 8, 48, (b) => {
     for (let y = 0; y < 48; y++) b.rect(0, y, 8, 1, 0xffffff, Math.round(200 * (1 - y / 48)));
@@ -448,6 +469,7 @@ export function startRun(scene) {
     charge: 0,
     hits: 0,
     pickups: [],
+    mats: {},
     zones: [],
     ents: [],
     chain: {},
@@ -597,7 +619,7 @@ export function cast(sk, S, T) {
 function base(sc, it, kindMagic) {
   const p = sc.player,
     s = p.stats;
-  return s.atk * p.atkMult() * s.dmgMult * s.skillPower * (it?.power ?? 1) * (kindMagic ? 1 + (sc.fr.magicDmg ?? 0) : 1);
+  return s.atk * p.atkMult() * s.dmgMult * s.skillPower * (it?.power ?? 1) * IT.gradeMult(it) * (kindMagic ? 1 + (sc.fr.magicDmg ?? 0) : 1);
 }
 function params(sc, it, dmg, extra = {}) {
   const el = extra.el !== void 0 ? extra.el : it?.el;
@@ -999,7 +1021,7 @@ export function runAction(sc, actId, it, o = {}) {
       break;
     }
     case "shout": {
-      p.buff("atk", a.dur, a.atk * (it?.power ?? 1), "berserk", "전투 함성");
+      p.buff("atk", a.dur, a.atk * (it?.power ?? 1) * IT.gradeMult(it), "berserk", "전투 함성");
       for (const t of targetsIn(sc, p.cx, p.cy, 100)) t.statuses.apply({ type: "stun", chance: 1, dur: 1 }, 0);
       ringFx(sc, p.cx, p.cy, 100, el ? col : 0xff6040);
       fx.shake(3);
@@ -1975,12 +1997,14 @@ export function onKill(sc, T) {
     const n = 1 + (Math.random() < 0.5 ? 1 : 0);
     for (let i = 0; i < n; i++) sc.time.delayedCall(i * 120, () => dropItem(sc, x, y - 6, randomItem(sc)));
     sc.time.delayedCall(n * 120, () => gainStoneDrop(sc, x, y));
+    dropMat(sc, x, y - 6, 3 + Math.floor(Math.random() * 3));
     sc.dropGold?.(x, y - 10, 220);
     sc.hud?.()?.toast("중간 보스 처치! 보물이 쏟아진다", "#ffd84a");
     sc.cameras.main.flash(300, 255, 220, 160);
     return;
   }
   if (T.isElite) {
+    dropMat(sc, x, y - 6, 1 + Math.floor(Math.random() * 2));
     Math.random() < 0.4 * luck && gainStoneDrop(sc, x, y);
     Math.random() < 0.3 * luck && dropItem(sc, x, y, randomItem(sc, def.frDrop));
     return;
@@ -1988,6 +2012,7 @@ export function onKill(sc, T) {
   const txt = def.frDrop ?? "";
   const m = txt.match(/(무기|스킬|마법|방어구|각인)[^(]*\((\d+)%\)/);
   // 하드 밸런스: 일반 몬스터 드롭율 1/4
+  Math.random() < 0.12 * luck && dropMat(sc, x, y - 6, 1);
   if (m && Math.random() < (Number(m[2]) / 100) * 0.25 * luck) dropItem(sc, x, y, randomItem(sc, m[1]));
   else if (Math.random() < 0.005 * luck) dropItem(sc, x, y, randomItem(sc));
 }
@@ -1997,6 +2022,7 @@ export function chestLoot(sc, x, y, tier) {
   const n = tier === 2 ? 1 : tier === 1 ? (Math.random() < 0.6 ? 1 : 0) : Math.random() < 0.25 ? 1 : 0;
   for (let i = 0; i < n; i++) dropItem(sc, x, y, randomItem(sc));
   tier === 2 && Math.random() < 0.6 && gainStoneDrop(sc, x, y);
+  dropMat(sc, x, y, tier === 2 ? 4 : tier === 1 ? 2 : Math.random() < 0.5 ? 1 : 0);
 }
 const KO2K = { 무기: "weapon", 스킬: "skill", 마법: "magic", 방어구: "armor", 각인: "rune" };
 export function randomItem(sc, hint) {
@@ -2007,8 +2033,9 @@ export function randomItem(sc, hint) {
   const w = { weapon: 2, skill: 3, magic: 3, armor: 1.6, rune: 2.4 };
   let tot = pool.reduce((s, x) => s + w[x.kind], 0);
   let r = Math.random() * tot;
-  for (const x of pool) if ((r -= w[x.kind]) <= 0) return IT.makeBase(x.id);
-  return IT.makeBase(pool[0]?.id ?? "G01");
+  const g = IT.dropGrade(reg);
+  for (const x of pool) if ((r -= w[x.kind]) <= 0) return IT.makeBase(x.id, g);
+  return IT.makeBase(pool[0]?.id ?? "G01", g);
 }
 
 // ── 줍기 ─────────────────────────────────────────────
@@ -2023,6 +2050,23 @@ function dropItem(sc, x, y, item, stone = !1) {
 }
 function gainStoneDrop(sc, x, y) {
   dropItem(sc, x, y, null, !0);
+}
+// 지역 재료: 가방 칸을 쓰지 않는다. 쓰러지면 잃는다
+function dropMat(sc, x, y, n = 1) {
+  if (!sc.fr || n <= 0) return;
+  const m = IT.matOfRegion(sc.currentRegion?.()?.idx ?? 0);
+  for (let i = 0; i < n; i++) {
+    const s = sc.add.image(x, y, `fr_mat_${m.id}`).setDepth(24);
+    const b = sc.add.image(x, y, "fr_beam").setOrigin(0.5, 1).setTint(m.color).setDepth(23).setBlendMode(R.zt.BlendModes.ADD).setAlpha(0.6).setScale(0.7, 0.6);
+    sc.fr.pickups.push({ s, b, x, y, vy: -200 - Math.random() * 90, vx: rnd(-80, 80), mat: m.id, t: 0, ground: !1 });
+  }
+}
+function gainMat(sc, id) {
+  const fr = sc.fr, m = IT.MATS[id];
+  fr.mats = fr.mats ?? {};
+  fr.mats[id] = (fr.mats[id] ?? 0) + 1;
+  sc.fx.text(sc.player.cx, sc.player.body.y - 30, `${m.name} +1`, m.css);
+  R.j.play("coin");
 }
 function updatePickups(sc, dt) {
   const fr = sc.fr;
@@ -2043,7 +2087,7 @@ function updatePickups(sc, dt) {
     k.b.setPosition(k.x, k.y + 8).setAlpha(0.5 + Math.sin(k.t * 4) * 0.25);
     const d = dist2(k.x, k.y, p.cx, p.cy);
     // 가방이 가득 차면 줍지 않고 바닥에 둔다
-    if (!k.stone && fr.bag.length >= fr.bagMax && !autoSlot(fr, k.item)) {
+    if (!k.stone && !k.mat && fr.bag.length >= fr.bagMax && !autoSlot(fr, k.item)) {
       if (d < 20 && (fr.fullWarn ?? 0) < Date.now()) {
         fr.fullWarn = Date.now() + 2500;
         sc.fx.text(p.cx, p.body.y - 36, "가방이 가득 찼습니다", "#ffb0a0");
@@ -2055,7 +2099,7 @@ function updatePickups(sc, dt) {
       k.s.destroy();
       k.b.destroy();
       fr.pickups.splice(i, 1);
-      k.stone ? gainStone(sc, 1) : gain(sc, k.item);
+      k.stone ? gainStone(sc, 1) : k.mat ? gainMat(sc, k.mat) : gain(sc, k.item);
     }
   }
 }
@@ -2163,7 +2207,65 @@ export function onBossKilled(sc, T) {
   if (!fr) return;
   T.def?.relic && fr.relicIds.push(T.def.relic);
   fr.stones += 1;
+  const [bx, by] = T?.body ? tc(T) : [sc.player.cx, sc.player.cy];
+  dropMat(sc, bx, by - 6, 6 + Math.floor(Math.random() * 4));
   fr.restPending = 1;
+}
+
+// ── 귀환 표석: 5초 동안 곁에 머물러야 한다. 맞거나 멀어지면 끊긴다 ─────
+const WAY_T = 5;
+export function waystone(evm, chunk, x, y) {
+  const sc = evm.s;
+  const ADD = R.zt.BlendModes.ADD;
+  const spr = sc.add.image(x, y + 1, "fr_waystone").setOrigin(0.5, 1).setDepth(5);
+  const glow = sc.add.image(x, y - 18, "vx_glow").setTint(0x80f0ff).setBlendMode(ADD).setAlpha(0.3).setScale(1.3).setDepth(4);
+  const gfx = sc.add.graphics().setDepth(40);
+  const PROMPT = "귀환 (5초 집중)";
+  const o = { chunk, x, y, sprites: [spr, glow, gfx], alive: !0, prompt: PROMPT };
+  let ch = null, t = 0, fxT = 0;
+  const stop = (msg) => {
+    ch = null;
+    gfx.clear();
+    o.prompt = PROMPT;
+    msg && sc.fx.text(sc.player.cx, sc.player.body.y - 40, msg, "#ff9a8a");
+    msg && R.j.play("error");
+  };
+  o.update = (dt) => {
+    t += dt;
+    glow.setAlpha((ch ? 0.6 : 0.25) + Math.sin(t * 3) * 0.1);
+    if (!ch) return;
+    const p = sc.player;
+    if (p.dead || sc.dying) return stop();
+    if (Math.abs(p.cx - x) > 48 || Math.abs(p.body.y - y) > 40) return stop("귀환이 끊겼다 · 표석에서 멀어짐");
+    if (p.hp < ch.hp) return stop("귀환이 끊겼다 · 공격받음");
+    ch.hp = p.hp;
+    ch.t += dt;
+    const f = Math.min(1, ch.t / WAY_T);
+    const hx = p.cx, hy = p.body.y - 50;
+    gfx.clear();
+    gfx.lineStyle(4, 0x0a1418, 0.7).beginPath().arc(hx, hy, 10, 0, Math.PI * 2).strokePath();
+    gfx.lineStyle(3, 0x80f0ff, 1).beginPath().arc(hx, hy, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * f).strokePath();
+    gfx.lineStyle(1, 0x80f0ff, 0.25 + 0.5 * f).lineBetween(x, y - 18, hx, p.body.y - 14);
+    fxT -= dt;
+    fxT <= 0 && ((fxT = 0.12), sc.fx.burst("glow", p.cx + rnd(-10, 10), p.body.y - rnd(0, 26), 1, 0x80f0ff));
+    if (ch.t >= WAY_T) {
+      ch = null;
+      gfx.clear();
+      o.prompt = void 0;
+      sc.fx.burst("rise", p.cx, p.cy, 40, 0x80f0ff);
+      sc.cameras.main.flash(300, 160, 240, 255);
+      R.j.play("portal");
+      sc.extract?.();
+    }
+  };
+  o.interact = () => {
+    if (ch || sc.dying || sc.player.dead) return;
+    ch = { t: 0, hp: sc.player.hp };
+    o.prompt = "집중 중… 맞거나 멀어지면 끊긴다";
+    sc.hud?.()?.toast("귀환 집중 시작 · 5초 버텨라", "#80f0ff");
+    R.j.play("magic");
+  };
+  return o;
 }
 
 // ── 휴식처 (보스 처치 후) ───────────────────────────
@@ -2199,7 +2301,8 @@ function openRest(sc) {
         sc.time.delayedCall(30, () => openRest(sc));
       },
     },
-    { label: "출발", desc: "다음 지역으로", cb: () => ((fr.restShop = null), (fr.springUsed = !1)) },
+    { label: "거점으로 귀환", desc: "지금까지 얻은 것을 모두 가지고 돌아간다", icon: "icon_check", cb: () => sc.extract?.() },
+    { label: "출발", desc: "다음 지역으로 · 더 깊이, 더 위험하게", cb: () => ((fr.restShop = null), (fr.springUsed = !1)) },
   ]);
 }
 function waitClose(sc, cb) {
@@ -2260,7 +2363,9 @@ export function hudUpdate(hud) {
     if (t && t._frSig !== sig) (t._frSig = sig), t.setText(it ? (it.kind === "magic" ? "마법" : "스킬") : "").setColor(it ? ICON.KIND_CSS[it.kind] : "#ffffff");
   });
   const wtag = fr.equip.weapon?.cat === "WS" ? `  ·  충전 ${fr.charge}` : "";
-  hud.frBagText.setText(`가방 ${fr.bag.length}/${fr.bagMax} · 융합석 ${fr.stones}${fr.sp ? ` · 스탯 +${fr.sp}` : ""} [Tab]${wtag}`);
+  const mn = Object.values(fr.mats ?? {}).reduce((a, b) => a + b, 0);
+  const sig = `${fr.bag.length}|${fr.stones}|${fr.sp}|${mn}|${wtag}`;
+  hud.frBagSig !== sig && ((hud.frBagSig = sig), hud.frBagText.setText(`가방 ${fr.bag.length}/${fr.bagMax} · 융합석 ${fr.stones} · 재료 ${mn}${fr.sp ? ` · 스탯 +${fr.sp}` : ""} [Tab]${wtag}`));
   const w2 = hud.wSlots[1];
   w2?.icon?.setVisible(!1);
   const f = hud.sSlots[3];
@@ -2475,7 +2580,7 @@ function dropOn(h, src, tgt) {
     R.j.play("coin");
   }
 }
-const sellPrice = (sc, it) => Math.round((10 + sc.dist / 150) * (1 + it.tier));
+const sellPrice = (sc, it) => Math.round((10 + sc.dist / 150) * (1 + it.tier) * IT.GRADE_PRICE[IT.gradeOf(it)] ** 0.6);
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 // 우클릭: 바로 장착·해제 / Shift+클릭: 융합대
 function quickAction(h, e, toForge) {
@@ -2863,7 +2968,7 @@ export function panelFrame(P, S, title) {
   return SCR.panelFrame(P, S, title, R);
 }
 export function makeHubPanels() {
-  if (R) return SCR.makeScreens(R, { mkItem, kindOf, itemIcon, IT, sd, STARTER, elCss, refresh: (sc) => sc.player?.applyStats?.(hubStats(sc)) });
+  if (R) return SCR.makeScreens(R, { mkItem, kindOf, itemIcon, IT, sd, STARTER, elCss, shopPrice, matCost, hubSellPrice, refresh: (sc) => sc.player?.applyStats?.(hubStats(sc)) });
   return makeHubPanelsOld();
 }
 function makeHubPanelsOld() {
@@ -3066,7 +3171,12 @@ export function tiles(scene, reg, key) {
 }
 
 // ── 발견한 아이템 → 상점 등록 ───────────────────────
-const itemKey = (it) => (it.tier === 0 ? it.id : `${it.id}|${it.el ?? "-"}|${it.tier}`);
+// 저장 키: 기본 아이템은 "W02", 등급이 있으면 "W02@3". 융합품은 "id|속성|단계(@등급)"
+const itemKey = (it) => {
+  const g = IT.gradeOf(it);
+  const k = it.tier === 0 ? it.id : `${it.id}|${it.el ?? "-"}|${it.tier}`;
+  return g > 1 ? `${k}@${g}` : k;
+};
 const snapItem = (it) => {
   const o = {};
   for (const [k, v] of Object.entries(it)) k[0] !== "_" && k !== "uid" && (o[k] = v);
@@ -3075,12 +3185,13 @@ const snapItem = (it) => {
 // 저장 키(기본 id 또는 융합 키) → 아이템
 export function mkItem(id) {
   if (!id) return null;
-  if (IT.BASE[id]) return IT.makeBase(id);
+  const [bid, gs] = String(id).split("@");
+  if (IT.BASE[bid]) return IT.makeBase(bid, Number(gs) || 1);
   const sv = sd().items?.[id];
   if (!sv) return null;
   return { ...JSON.parse(JSON.stringify(sv)), uid: `sv_${id.replace(/[^\w]/g, "_")}` };
 }
-const kindOf = (id) => IT.BASE[id]?.kind ?? sd().items?.[id]?.kind ?? null;
+const kindOf = (id) => (id ? IT.BASE[String(id).split("@")[0]]?.kind ?? sd().items?.[id]?.kind ?? null : null);
 function noteFound(fr, it) {
   if (!it || it.kind === "rune") return;
   fr.foundList = fr.foundList ?? {};
@@ -3093,68 +3204,119 @@ export function snapFound(scene) {
   scene.run.frFound = Object.entries(fr.foundList ?? {}).map(([key, it]) => ({ key, item: snapItem(it) }));
 }
 const UNLOCK_PRICE = (it) => (it.tier >= 3 ? 1200 : it.tier === 2 ? 700 : it.tier === 1 ? 420 : 220);
-// 결과 화면: 발견한 것 중 하나를 상점에 추가
-export function resultPick(scene, result, done) {
+
+// ── 상점 값·창고 ────────────────────────────────────
+const FREE_KEYS = new Set(Object.values(STARTER).flat().filter((x) => x[1] === 0).map((x) => x[0]));
+// 기본 아이템의 Ⅰ 등급 값
+function basePrice(id) {
+  for (const L of Object.values(STARTER)) for (const [k, p] of L) if (k === id) return p || 100;
+  const sh = (sd().shop ?? []).find((x) => x.key === id);
+  return sh ? sh.price : 220;
+}
+export const shopPrice = (id, g) => Math.round(basePrice(id) * IT.GRADE_PRICE[g]);
+// 등급 g를 사는 데 드는 재료 {mat, n}
+export const matCost = (g) => (g >= 2 ? { mat: IT.matOfGrade(g), n: IT.GRADE_MATN[g] } : null);
+// 거점 창고에서 팔 때 값 (산 값의 30%)
+export function hubSellPrice(key) {
+  if (FREE_KEYS.has(key)) return 0;
+  const it = mkItem(key);
+  if (!it) return 0;
+  const g = IT.gradeOf(it);
+  return it.tier === 0 ? Math.round(shopPrice(it.id, g) * 0.3) : Math.round(UNLOCK_PRICE(it) * IT.GRADE_PRICE[g] * 0.5);
+}
+function stash(d, it) {
+  const key = itemKey(it);
+  if (it.tier !== 0) (d.items = d.items ?? {}), (d.items[key] = snapItem(it));
+  FREE_KEYS.has(key) || d.owned.push(key);
+  return key;
+}
+
+// ── 탐험 끝: 살아서 돌아오면 전부 창고로, 쓰러지면 전부 잃는다 ─────
+export function settleLoot(sc, safe) {
+  const fr = sc.fr;
+  if (!fr || fr.settled || !sc.run) return;
+  fr.settled = 1;
   const d = sd();
-  const owned = new Set([...d.owned, ...(d.shop ?? []).map((x) => x.key), ...Object.values(STARTER).flat().map((x) => x[0])]);
-  const list = (result?.frFound ?? []).filter((x) => x.item.tier === 0 && !owned.has(x.key)).slice(0, 16);
-  if (!list.length) return !1;
+  const items = [...SLOT_KEYS.map((k) => [k, fr.equip[k]]), ...fr.bag.map((it) => [null, it])].filter(([, it]) => it);
+  const out = { safe: !!safe, items: [], mats: { ...(fr.mats ?? {}) }, runeGold: 0, newShop: [] };
+  if (safe) {
+    for (const k of SLOT_KEYS) d.equip[k] = null;
+    for (const [slot, it] of items) {
+      // 각인은 거점에서 쓸 곳이 없으니 팔아서 골드로
+      if (it.kind === "rune") {
+        out.runeGold += 40 * IT.gradeOf(it) * (1 + it.tier);
+        out.items.push({ key: itemKey(it), item: snapItem(it), sold: 1 });
+        continue;
+      }
+      const key = stash(d, it);
+      slot && (d.equip[slot] = key);
+      FREE_KEYS.has(key) || out.items.push({ key, item: snapItem(it) });
+      // 처음 가져온 기본 아이템은 상점에도 들어온다
+      if (it.tier === 0 && !it.relic && !FREE_KEYS.has(it.id) && !Object.values(STARTER).flat().some((x) => x[0] === it.id) && !(d.shop ?? []).some((x) => x.key === it.id)) {
+        (d.shop = d.shop ?? []).push({ key: it.id, price: UNLOCK_PRICE(it) });
+        out.newShop.push(it.id);
+      }
+    }
+    d.equip.weapon = d.equip.weapon ?? "W01";
+    d.equip.armor = d.equip.armor ?? "A01";
+    d.mats = d.mats ?? {};
+    for (const [m, n] of Object.entries(out.mats)) d.mats[m] = (d.mats[m] ?? 0) + n;
+    sc.run.gold += out.runeGold;
+  } else {
+    for (const [, it] of items) FREE_KEYS.has(itemKey(it)) || out.items.push({ key: itemKey(it), item: snapItem(it) });
+    for (const k of SLOT_KEYS) d.equip[k] && !FREE_KEYS.has(d.equip[k]) && !d.owned.includes(d.equip[k]) && (d.equip[k] = null);
+    d.equip.weapon = d.equip.weapon ?? "W01";
+    d.equip.armor = d.equip.armor ?? "A01";
+  }
+  sc.run.frLoot = out;
+  R.it.write();
+}
+
+// 결과 화면: 가져온 것 / 잃은 것
+export function resultPick(scene, result, done) {
+  const L = result?.frLoot;
+  if (!L) return !1;
+  const matN = Object.values(L.mats).reduce((s, n) => s + n, 0);
+  if (!L.items.length && !matN && L.safe) return !1;
   scene.frPicking = !0;
   const { ct, Ce, Be, q, ot, xt } = R;
   const objs = [];
   const add = (o) => (objs.push(o), o);
-  let sel = 0;
-  const W = 560, H = 300, X = (ot - W) / 2, Y = (xt - H) / 2;
-  const finish = (pick) => {
-    if (pick) {
-      d.items = d.items ?? {};
-      d.shop = d.shop ?? [];
-      d.items[pick.key] = pick.item;
-      pick.item.tier === 0 && d.shop.push({ key: pick.key, price: UNLOCK_PRICE(pick.item) });
-      R.it.write();
-      R.j.play("levelup");
-    }
+  const W = 520, H = 270, X = (ot - W) / 2, Y = (xt - H) / 2;
+  const finish = () => {
     for (const o of objs) o.destroy();
     scene.frPicking = !1;
     done();
   };
-  const render = () => {
-    for (const o of objs) o.destroy();
-    objs.length = 0;
-    add(scene.add.rectangle(0, 0, ot, xt, 0x05040a, 0.8).setOrigin(0).setDepth(200).setInteractive());
-    add(Ce(scene, X, Y, W, H, "ui_panel_gold").setDepth(201));
-    add(ct(scene, X + 18, Y + 10, "상점에 들여놓기", "big", q.text).setDepth(202));
-    add(ct(scene, X + W - 18, Y + 14, "이번 탐험에서 발견한 것 중 하나", "tiny", q.textDim).setOrigin(1, 0).setDepth(202));
-    add(scene.add.rectangle(X + 14, Y + 32, W - 28, 1, 0x7a5434).setOrigin(0).setDepth(202));
-    // 왼쪽: 발견 목록
-    add(scene.add.nineslice(X + 14, Y + 40, "ui_parch_dark", void 0, 216, H - 54, 6, 6, 6, 6).setOrigin(0).setDepth(202));
-    list.forEach((x, i) => {
-      const bx = X + 24 + (i % 4) * 50, by = Y + 50 + Math.floor(i / 4) * 50;
-      const it = { ...x.item, uid: `sv_${x.key.replace(/[^\w]/g, "_")}` };
-      const b = add(scene.add.nineslice(bx, by, i === sel ? "ui_inner_sel" : "ui_inner", void 0, 46, 46, 4, 4, 4, 4).setOrigin(0).setDepth(203).setInteractive({ useHandCursor: !0 }));
-      b.on("pointerdown", () => sel !== i && ((sel = i), R.j.play("click"), render()));
-      add(scene.add.rectangle(bx + 23, by + 42, 30, 2, ICON.KIND_COL[it.kind] ?? 0xffffff).setDepth(204));
-      add(scene.add.image(bx + 23, by + 22, itemIcon(scene, it)).setDepth(204).setScale(1.6));
-      i === sel && add(scene.add.rectangle(bx + 23, by + 23, 44, 44).setStrokeStyle(1, 0xffffff, 0.6).setDepth(204));
-    });
-    // 오른쪽: 상세
-    const it = list[sel].item;
-    const DX = X + 240, DW = W - 254;
-    add(scene.add.nineslice(DX, Y + 40, "ui_inner", void 0, DW, H - 54, 4, 4, 4, 4).setOrigin(0).setDepth(202));
-    add(scene.add.image(DX + 40, Y + 80, "ui_medal_big").setDepth(203));
-    add(scene.add.image(DX + 40, Y + 80, itemIcon(scene, it)).setDepth(204).setScale(2.4));
-    add(ct(scene, DX + 80, Y + 58, it.name, "big", it.el ? SCR.ink(elCss(it.el)) : q.text).setDepth(203));
-    add(ct(scene, DX + 80, Y + 80, `${IT.KIND_KO[it.kind]}${it.el ? " · " + IT.elName(it.el) : ""}`, "tiny", q.textDim).setDepth(203));
-    add(scene.add.rectangle(DX + 10, Y + 118, DW - 20, 1, 0x9a7448).setOrigin(0).setDepth(203));
-    add(ct(scene, DX + 12, Y + 126, IT.describe(it), "small", q.text, { wordWrap: { width: DW - 24, useAdvancedWrap: !0 } }).setDepth(203));
-    add(scene.add.rectangle(DX + 4, Y + H - 52, DW - 8, 34, 0xc6a87a, 0.6).setOrigin(0).setDepth(203));
-    add(scene.add.image(DX + 18, Y + H - 35, "icon_gold").setDepth(204));
-    add(ct(scene, DX + 28, Y + H - 43, `상점 가격 ${UNLOCK_PRICE(it)}`, "small", q.gold).setDepth(204));
-    const b1 = Be(scene, DX + DW - 200, Y + H - 47, 104, 24, "상점에 추가", () => finish(list[sel]), { style: "green", depth: 205 });
-    const b2 = Be(scene, DX + DW - 90, Y + H - 47, 80, 24, "건너뛰기", () => finish(null), { depth: 205 });
-    objs.push(...b1.container, ...b2.container);
-  };
-  render();
+  add(scene.add.rectangle(0, 0, ot, xt, 0x05040a, 0.8).setOrigin(0).setDepth(200).setInteractive());
+  add(Ce(scene, X, Y, W, H, "ui_panel_gold").setDepth(201));
+  add(ct(scene, X + 18, Y + 10, L.safe ? "무사히 가져온 것" : "쓰러진 자리에 남은 것", "big", L.safe ? q.text : "#c83a2a").setDepth(202));
+  add(ct(scene, X + W - 18, Y + 14, L.safe ? "모두 창고에 넣었다" : "이번 탐험에 들고 간 것은 모두 잃었다", "tiny", q.textDim).setOrigin(1, 0).setDepth(202));
+  add(scene.add.rectangle(X + 14, Y + 32, W - 28, 1, 0x7a5434).setOrigin(0).setDepth(202));
+  add(scene.add.nineslice(X + 14, Y + 40, "ui_parch_dark", void 0, W - 28, 150, 6, 6, 6, 6).setOrigin(0).setDepth(202));
+  const list = L.items.slice(0, 27);
+  list.forEach((x, i) => {
+    const bx = X + 24 + (i % 9) * 54, by = Y + 48 + Math.floor(i / 9) * 46;
+    const it = { ...x.item, uid: `sv_${x.key.replace(/[^\w]/g, "_")}` };
+    add(scene.add.nineslice(bx, by, "ui_inner", void 0, 42, 42, 4, 4, 4, 4).setOrigin(0).setDepth(203));
+    const ic = add(scene.add.image(bx + 21, by + 20, itemIcon(scene, it)).setDepth(204).setScale(1.5));
+    L.safe || ic.setTint(0x806060);
+    const g = IT.gradeOf(it);
+    g > 1 && add(ct(scene, bx + 38, by + 28, IT.GRADE_ROMAN[g], "tiny", IT.GRADE_CSS[g], { stroke: "#140e18", strokeThickness: 2 }).setOrigin(1, 0).setDepth(205));
+    x.sold && add(ct(scene, bx + 21, by + 2, "판매", "tiny", "#ffe08a", { stroke: "#140e18", strokeThickness: 2 }).setOrigin(0.5, 0).setDepth(205));
+  });
+  list.length || add(ct(scene, X + W / 2, Y + 104, L.safe ? "장비 말고는 가져온 것이 없다" : "잃은 장비 없음 (기본 장비뿐)", "small", q.textDim).setOrigin(0.5, 0).setDepth(203));
+  let my = Y + 198;
+  const ms = IT.MAT_LIST.filter((m) => L.mats[m.id]).map((m) => `${m.name} ×${L.mats[m.id]}`).join("  ·  ");
+  add(ct(scene, X + 20, my, `재료: ${ms || "없음"}`, "small", L.safe ? q.text : q.textDim).setDepth(203));
+  my += 16;
+  const extra = [];
+  L.runeGold && extra.push(`각인 판매 +${L.runeGold}G`);
+  L.newShop.length && extra.push(`상점에 새 물건 ${L.newShop.length}종`);
+  L.safe || extra.push("벌어 둔 골드도 모두 잃었다");
+  extra.length && add(ct(scene, X + 20, my, extra.join("  ·  "), "tiny", L.safe ? q.gold : "#ff8a7a").setDepth(203));
+  const b1 = Be(scene, X + W - 112, Y + H - 36, 96, 24, "확인", finish, { style: "green", depth: 205 });
+  objs.push(...b1.container);
   return !0;
 }
 

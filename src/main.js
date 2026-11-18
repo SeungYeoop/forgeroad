@@ -7354,6 +7354,7 @@ class Rn {
     return (
       R && !this.data.titles.includes(R) && (this.data.titles.push(R), (this.data.activeTitle = R)),
       (S.milestoneGold += C),
+      (S.msDists = [...(S.msDists ?? []), T]),
       (this.data.activeRun = { ...S, bossIds: [...S.bossIds] }),
       this.write(),
       !0
@@ -7362,8 +7363,10 @@ class Rn {
   settle(S, T = !1) {
     if (this.data.lastSettledRun === S.id) return this.data.pendingResult;
     const C = this.data,
-      E = Math.floor(S.gold + S.milestoneGold),
+      // 포지로드: 살아서 귀환해야 골드를 가져온다. 쓰러지면 이번 탐험의 골드·거리 보상 모두 잃음
+      E = T ? Math.floor(S.gold + S.milestoneGold) : 0,
       R = S.distance > S.prevBest;
+    T || (C.claimed = C.claimed.filter((d) => !(S.msDists ?? []).includes(d)));
     ((C.gold += E),
       (C.totalGold += E),
       (C.best = Math.max(C.best, Math.floor(S.distance))),
@@ -7407,7 +7410,7 @@ class Rn {
   }
   recoverInterruptedRun() {
     const S = this.data.activeRun;
-    return S ? this.settle(S, !0) : null;
+    return S ? this.settle(S, !1) : null;
   }
   reset() {
     ((this.data = Ve()), this.write());
@@ -15384,6 +15387,14 @@ class xr {
     const T = this.s.world.lx(S.index * vt);
     for (const C of S.hazards) this.makeHazard(S, C, T);
     S.event && this.makeEvent(S, S.event, T);
+    for (const sg of S.signs ?? []) {
+      if (sg.dist % 200 !== 100) continue;
+      // 표지판 옆에서 실제로 밟을 수 있는 칸 (갱도 구멍 위는 피한다)
+      const col = this.s.collider, y = sg.row * gt;
+      const ok = (px) => col.solidAtPx(px, y + 4) && col.solidAtPx(px - 6, y + 4) && col.solidAtPx(px + 6, y + 4) && !col.solidAtPx(px, y - 8);
+      const px = [-22, 30, -40, 48, 8].map((d) => T + sg.x * gt + d).find(ok);
+      px != null && this.objs.push(FG.waystone(this, S.index, px, y));
+    }
     (S.chests ?? []).forEach((c, k) => {
       const o = this.chest(`${S.index}:c${k}`, T + c.x * gt + 8, c.row * gt, c.tier);
       ((o.chunk = S.index), this.objs.push(o));
@@ -18436,6 +18447,7 @@ class Er extends zt.Scene {
       (this.pauseReq = !1),
       (this._rmbHeld = !1),
       (this.abandoned = !1),
+      (this.cleaned = !1),
       (this.mouseLock = !1),
       (this.pad = new ri(this)),
       (this.mouseT = Xs(this)));
@@ -19450,6 +19462,7 @@ class Er extends zt.Scene {
   }
   update(T, C) {
     var a, v, o;
+    if (this.cleaned) return;
     if (this.pauseReq && ((this.pauseReq = !1), !this.dying)) {
       (a = this.hud()) == null || a.openPause();
       return;
@@ -19612,6 +19625,7 @@ class Er extends zt.Scene {
       j.stopMusic(),
       this.time.delayedCall(1400, () => {
         ((this.timeScale = 1), (this.run.distance = Math.floor(this.maxDist)), this.snapBuild());
+        FG.settleLoot(this, this.abandoned);
         const C = it.settle(this.run, this.abandoned);
         (this.cameras.main.fadeOut(500, 0, 0, 0),
           this.time.delayedCall(550, () => {
@@ -19622,8 +19636,13 @@ class Er extends zt.Scene {
   abandon() {
     this.dying || ((this.abandoned = !0), (this.player.hp = 0), this.player.die());
   }
+  // 살아서 거점으로 돌아간다: 들고 있는 것 전부 창고로
+  extract() {
+    this.dying || this.player.dead || ((this.abandoned = !0), (this.player.iframes = 99), this.beginDeath());
+  }
   cleanup() {
     var T, C;
+    this.cleaned = !0;
     (this.projectiles.clearAll(), this.gold.clear(), this.evm.clear());
     for (const E of this.enemies) E.remove();
     ((this.enemies = []),
@@ -20266,13 +20285,6 @@ class wr extends zt.Scene {
     const L = [
       { label: () => "▶  계속하기", fn: () => this.closeModal(!0), style: "green" },
       ...T.map((e) => ({ label: e.label, fn: (r) => (e.apply(), r.setLabel(e.label())) })),
-      {
-        label: () => "탐험 포기 (거점 귀환)",
-        fn: (e) => {
-          if (e.label.text !== "정말 귀환할까요? (정산됨)") return void e.setLabel("정말 귀환할까요? (정산됨)");
-          (this.closeModal(!0), this.run.abandon());
-        },
-      },
     ];
     const bh = Math.min(24, Math.floor((PH - 80) / L.length));
     (this.modal.push(ct(this, px + 22, py + 40, "메뉴", "tiny", q.textDim).setDepth(92)),

@@ -293,11 +293,49 @@ export const LEGENDS = FUSIONS.filter((f) => f.cat === "LG");
 // ── 아이템 인스턴스 ─────────────────────────────────
 let UID = 1;
 export const newUid = () => `i${Date.now().toString(36)}${(UID++).toString(36)}`;
-export function makeBase(id) {
+export function makeBase(id, grade = 1) {
   const b = BASE[id];
   if (!b) return null;
-  return { uid: newUid(), id, kind: b.kind, name: b.name, el: b.el, tier: 0, mats: [id], traits: [...(b.traits ?? [])], power: 1, runes: [], relic: id.startsWith("B") };
+  return withGrade({ uid: newUid(), id, kind: b.kind, name: b.name, el: b.el, tier: 0, mats: [id], traits: [...(b.traits ?? [])], power: 1, runes: [], relic: id.startsWith("B") }, grade);
 }
+
+// ── 등급 (Ⅰ~Ⅴ) ─────────────────────────────────────
+// 같은 장검이라도 등급이 높을수록 강하다. power(융합 배율)와 따로 곱한다.
+export const GRADE_MAX = 5;
+export const GRADE_ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ"];
+export const GRADE_MULT = [1, 1, 1.25, 1.55, 1.9, 2.3];
+export const GRADE_CSS = ["#e0e0e0", "#e0e0e0", "#8fe07a", "#7ab8ff", "#d090ff", "#ffb040"];
+export const gradeOf = (it) => Math.max(1, Math.min(GRADE_MAX, it?.grade ?? 1));
+export const gradeMult = (it) => GRADE_MULT[gradeOf(it)];
+const stripGrade = (name) => String(name ?? "").replace(/ [ⅠⅡⅢⅣⅤ]$/, "");
+export function withGrade(it, g) {
+  if (!it) return it;
+  it.grade = Math.max(1, Math.min(GRADE_MAX, g | 0 || 1));
+  it.name = stripGrade(it.name) + (it.grade > 1 ? " " + GRADE_ROMAN[it.grade] : "");
+  return it;
+}
+// 지역 번호(0~11) → 떨어지는 등급
+const REGION_GRADE = [1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5];
+export function dropGrade(region) {
+  const g = REGION_GRADE[Math.max(0, Math.min(11, region | 0))];
+  const r = Math.random();
+  return Math.max(1, Math.min(GRADE_MAX, r < 0.18 ? g - 1 : r > 0.88 ? g + 1 : g));
+}
+
+// ── 지역 재료 ───────────────────────────────────────
+// 상점에서 Ⅱ 등급 이상을 사려면 골드와 함께 그 등급의 재료가 필요하다.
+export const MATS = {
+  ember: { id: "ember", name: "잿불 숯", grade: 2, color: 0xff8a3a, css: "#ffa060", regions: [0, 1] },
+  ore: { id: "ore", name: "울림 철광석", grade: 3, color: 0x9ab0c8, css: "#b8cce0", regions: [2, 3] },
+  frost: { id: "frost", name: "서리불 결정", grade: 4, color: 0x70e0ff, css: "#90e8ff", regions: [4, 5, 6] },
+  storm: { id: "storm", name: "뇌정 수정", grade: 5, color: 0xd090ff, css: "#d8a8ff", regions: [7, 8, 9, 10, 11] },
+};
+export const MAT_LIST = Object.values(MATS);
+export const matOfRegion = (region) => MAT_LIST.find((m) => m.regions.includes(Math.max(0, Math.min(11, region | 0)))) ?? MATS.ember;
+export const matOfGrade = (g) => MAT_LIST.find((m) => m.grade === g) ?? null;
+// 등급별 상점 값: 골드 배율, 재료 개수
+export const GRADE_PRICE = [0, 1, 2.5, 6, 14, 30];
+export const GRADE_MATN = [0, 0, 4, 6, 8, 10];
 export const kindLetter = (k) => KC[k];
 const catOf = (a, b) => {
   const ka = KORD.indexOf(a.kind),
@@ -310,8 +348,16 @@ const isArmorLine = (it) => it.kind === "armor" || (it.mats ?? []).some((m) => B
 const isWeaponLine = (it) => it.kind === "weapon";
 
 // 1차 융합 결과 계산. 불가하면 {err}
-export function fuse1(a, b) {
-  if (!a || !b) return { err: "재료 두 개를 고르세요" };
+// 융합 결과의 등급 = 재료 중 낮은 등급
+export function fuse1(a0, b0) {
+  const r = fuse1raw(a0, b0);
+  r.item && withGrade(r.item, Math.min(gradeOf(a0), gradeOf(b0)));
+  return r;
+}
+function fuse1raw(a0, b0) {
+  if (!a0 || !b0) return { err: "재료 두 개를 고르세요" };
+  // 이름에 붙은 등급 표시는 융합 이름을 만들 때 뺀다
+  const a = { ...a0, name: stripGrade(a0.name) }, b = { ...b0, name: stripGrade(b0.name) };
   if (a.uid === b.uid) return { err: "같은 칸을 두 번 고를 수 없습니다" };
   if (a.tier !== 0 || b.tier !== 0) return { err: "1차 융합은 기본 아이템끼리만 됩니다" };
   if ((isWeaponLine(a) && isArmorLine(b)) || (isWeaponLine(b) && isArmorLine(a))) return { err: "무기와 방어구는 융합할 수 없습니다" };
@@ -373,6 +419,11 @@ function genName(cat, first, second, el) {
 
 // 2차 융합: 1차 결과물 + 속성 재료 → 속성만 변환
 export function fuse2(target, mat) {
+  const r = fuse2raw(target, mat);
+  r.item && withGrade(r.item, Math.min(gradeOf(target), gradeOf(mat)));
+  return r;
+}
+function fuse2raw(target, mat) {
   if (!target || !mat) return { err: "재료 두 개를 고르세요" };
   let t = target, m = mat;
   if (t.tier !== 1 && m.tier === 1) [t, m] = [m, t];
@@ -396,7 +447,7 @@ export function fuse2(target, mat) {
     uid: newUid(),
     el,
     tier: 2,
-    name: `${E.prefix} ${t.name.replace(/^\S+ (?=\S)/, (w) => (Object.values(ELEMS).some((e) => e.prefix + " " === w) ? "" : w))}`,
+    name: `${E.prefix} ${stripGrade(t.name).replace(/^\S+ (?=\S)/, (w) => (Object.values(ELEMS).some((e) => e.prefix + " " === w) ? "" : w))}`,
     power: t.power * (E.kind === "pure" ? 1.3 : 1.15),
     extraUsed: extra || t.extraUsed,
     mats: [...t.mats, m.id],
@@ -406,6 +457,11 @@ export function fuse2(target, mat) {
 
 // 전설: 재료 3개 (+ 융합석)
 export function fuseLegend(list) {
+  const r = fuseLegendRaw(list);
+  r.item && withGrade(r.item, Math.min(...list.map(gradeOf)));
+  return r;
+}
+function fuseLegendRaw(list) {
   if (list.length !== 3) return { err: "전설 융합은 재료 3개가 필요합니다" };
   if (list.some((x) => x.tier !== 0)) return { err: "전설 재료는 기본 아이템이어야 합니다" };
   const rec = recipeOf(list.map((x) => x.id));

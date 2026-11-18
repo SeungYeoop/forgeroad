@@ -39,7 +39,13 @@ export function panelFrame(P, S, title, R) {
 
 export function makeScreens(R, D) {
   const { Ne, it: SAVE, j, q, yt } = R;
-  const { mkItem, kindOf, itemIcon, IT, sd, STARTER, refresh, elCss } = D;
+  const { mkItem, kindOf, itemIcon, IT, sd, STARTER, refresh, elCss, shopPrice, matCost, hubSellPrice } = D;
+  const matsOf = () => (sd().mats = sd().mats ?? {});
+  const gkey = (id, g) => (g > 1 ? `${id}@${g}` : id);
+  const gradeTag = (P, x, y, it, d = 207) => {
+    const g = IT.gradeOf(it);
+    g > 1 && P.t(x, y, IT.GRADE_ROMAN[g], "tiny", IT.GRADE_CSS[g], { stroke: "#140e18", strokeThickness: 2 }).setOrigin(1, 0).setDepth(d);
+  };
   const KO = { weapon: "무기", armor: "방어구", skill: "스킬", magic: "마법" };
   const FREE = new Set(Object.values(STARTER).flat().filter((x) => x[1] === 0).map((x) => x[0]));
   const countOf = (id) => (FREE.has(id) ? Infinity : sd().owned.filter((x) => x === id).length);
@@ -87,11 +93,37 @@ export function makeScreens(R, D) {
       this.kind = kinds[0];
       this.cols = 5;
       this.page = 0;
+      this.grade = 1;
       this.say = KEEPER[this.kind][1];
+      this.k2 = (e) => {
+        if (this.closed) return;
+        (e.key === "q" || e.key === "Q") && this.pickGrade(Math.max(1, this.grade - 1));
+        (e.key === "e" || e.key === "E") && this.pickGrade(Math.min(IT.GRADE_MAX, this.grade + 1));
+      };
+      scene.input.keyboard.on("keydown", this.k2);
       this.render();
     }
+    close() {
+      this.scene.input.keyboard.off("keydown", this.k2);
+      super.close();
+    }
+    pickGrade(g) {
+      if (g === this.grade) return;
+      this.grade = g;
+      const c = matCost(g);
+      this.say = g === 1 ? KEEPER[this.kind][1] : `${IT.GRADE_ROMAN[g]} 등급은 ${c.mat.name}가 있어야 벼릴 수 있지.`;
+      j.play("click");
+      this.render();
+    }
+    // [저장 키, 골드, 기본 id]
     list() {
-      return [...STARTER[this.kind], ...(sd().shop ?? []).filter((x) => kindOf(x.key) === this.kind).map((x) => [x.key, x.price])];
+      const g = this.grade;
+      const ids = [...STARTER[this.kind].map((x) => x[0]), ...(sd().shop ?? []).filter((x) => kindOf(x.key) === this.kind).map((x) => x.key)];
+      return ids.map((id) => [gkey(id, g), g === 1 && FREE.has(id) ? 0 : shopPrice(id, g), id]);
+    }
+    canPay(price) {
+      const c = matCost(this.grade);
+      return SAVE.data.gold >= price && (!c || (matsOf()[c.mat.id] ?? 0) >= c.n);
     }
     count() {
       return this.list().length;
@@ -102,7 +134,10 @@ export function makeScreens(R, D) {
     buy() {
       const [id, price] = this.list()[this.sel];
       if (FREE.has(id)) return void ((this.say = "그건 처음부터 자네 것일세. 돈 받을 물건이 아니야."), this.render());
+      const c = matCost(this.grade);
+      if (c && (matsOf()[c.mat.id] ?? 0) < c.n) return void (j.play("error"), (this.say = `${c.mat.name}가 모자라. ${c.n}개는 있어야 하네.`), this.render());
       if (!SAVE.spend(price)) return void (j.play("error"), (this.say = "골드가 모자라는군. 탐험을 더 다녀오게."), this.render());
+      c && (matsOf()[c.mat.id] -= c.n);
       const d = sd();
       d.owned.push(id);
       if (this.kind === "skill") !d.equip.s1 ? (d.equip.s1 = id) : !d.equip.s2 && (d.equip.s2 = id);
@@ -110,7 +145,7 @@ export function makeScreens(R, D) {
       SAVE.write();
       j.play("buy");
       refresh(this.scene);
-      this.say = "고맙네! 한 번 쓰면 사라지니 아껴 쓰게.";
+      this.say = "고맙네! 들고 나갔다 쓰러지면 끝이니 조심하게.";
       this.render();
     }
     build() {
@@ -130,6 +165,13 @@ export function makeScreens(R, D) {
         woodBg(this, sx + 8, by, sw - 16, 7, { base: 0x9a6a3a, dark: 0x4a2c16, hi: 0xd09a5a, plank: 7 }, 204);
         A(this, sc.add.rectangle(sx + 8, by + 7, sw - 16, 3, 0x000000, 0.35).setOrigin(0), 204);
       }
+      // 등급 탭 (Q/E)
+      for (let g = 1; g <= IT.GRADE_MAX; g++) {
+        const on = g === this.grade;
+        const bx = sx + 12 + (g - 1) * 34;
+        this.btn(bx, sy + 6, 30, 16, IT.GRADE_ROMAN[g], () => this.pickGrade(g), { style: on ? "green" : void 0, small: !0 });
+      }
+      this.t(sx + 186, sy + 8, "Q/E 등급", "tiny", "#e8d0a0").setDepth(206);
       L.slice(this.page * PER, this.page * PER + PER).forEach(([id, price], k) => {
         const i = this.page * PER + k;
         const r = Math.floor(k / 5), c = k % 5;
@@ -140,6 +182,7 @@ export function makeScreens(R, D) {
         sel && A(this, sc.add.image(cx, by - 18, "vx_glow").setTint(0xffd070).setAlpha(0.55).setScale(1.6).setBlendMode(R.zt.BlendModes.ADD), 204);
         A(this, sc.add.ellipse(cx, by, 30, 6, 0x000000, 0.4), 204);
         const ic = A(this, sc.add.image(cx, by - 18, itemIcon(sc, it)).setScale(2.3), 205);
+        gradeTag(this, cx + 22, by - 14, it);
         sel && sc.tweens.add({ targets: ic, y: by - 23, duration: 420, yoyo: !0, repeat: -1, ease: "Sine.easeInOut" });
         // 가격표 (실에 매달린 종이)
         A(this, sc.add.rectangle(cx - 8, by + 7, 1, 6, 0xd8c8a8), 205);
@@ -147,7 +190,7 @@ export function makeScreens(R, D) {
         if (FREE.has(id)) this.t(cx, by + 13, "기본", "small", "#8fe07a", { stroke: "#0a0604", strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(206);
         else {
           A(this, sc.add.image(cx - 19, by + 20, "icon_gold").setScale(0.8), 206);
-          this.t(cx + 5, by + 13, yt(price), "small", SAVE.data.gold >= price ? "#ffe08a" : "#ff8a7a", { stroke: "#0a0604", strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(206);
+          this.t(cx + 5, by + 13, yt(price), "small", this.canPay(price) ? "#ffe08a" : "#ff8a7a", { stroke: "#0a0604", strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(206);
         }
         !FREE.has(id) && n > 0 && this.t(cx + 14, by - 38, `×${n}`, "tiny", "#ffe8a0", { stroke: "#2a1408", strokeThickness: 2 }).setDepth(207);
         const hit = A(this, sc.add.rectangle(cx, by - 22, 60, 64, 0, 0).setInteractive({ useHandCursor: !0 }), 208);
@@ -185,7 +228,7 @@ export function makeScreens(R, D) {
       this.img(cx0 + 30, ty + 34, "ui_medal").setScale(0.75).setDepth(206);
       this.img(cx0 + 30, ty + 34, itemIcon(sc, it)).setScale(1.7).setDepth(207);
       this.t(cx0 + 52, ty + 18, it.name, "body", nameCol(it)).setDepth(206);
-      this.t(cx0 + 52, ty + 34, `${KO[this.kind]}${it.el ? " · " + IT.elName(it.el) : ""} · ${FREE.has(id) ? "기본 지급" : "1회용"}`, "tiny", q.textDim).setDepth(206);
+      this.t(cx0 + 52, ty + 34, `${KO[this.kind]}${it.el ? " · " + IT.elName(it.el) : ""} · ${FREE.has(id) ? "기본 지급" : `${IT.GRADE_ROMAN[this.grade]} 등급 · 위력 ×${IT.GRADE_MULT[this.grade]}`}`, "tiny", FREE.has(id) ? q.textDim : ink(IT.GRADE_CSS[this.grade])).setDepth(206);
       A(this, sc.add.rectangle(cx0 + 16, ty + 52, cw - 32, 1, 0x9a7448), 206).setOrigin(0);
       describe(this, it, cx0 + 16, ty + 56, cw - 32);
       // 값과 구매
@@ -193,8 +236,14 @@ export function makeScreens(R, D) {
       this.img(cx0 + 18, by + 12, "icon_gold").setScale(1.3).setDepth(206);
       this.t(cx0 + 30, by + 2, FREE.has(id) ? "무료" : yt(price), "big", "#ffe08a", { stroke: "#2a1408", strokeThickness: 3 }).setDepth(206);
       const n = countOf(id);
+      const mc = matCost(this.grade);
+      const have = mc ? matsOf()[mc.mat.id] ?? 0 : 0;
       this.t(cx0 + 30, by + 20, FREE.has(id) ? "항상 보유" : `보유 ${n}개`, "tiny", "#f0d8b0", { stroke: "#2a1408", strokeThickness: 2 }).setDepth(206);
-      this.btn(X1 - 108, by + 2, 98, 26, FREE.has(id) ? "기본 장비" : "구매하기", () => this.buy(), { style: "green", enabled: !FREE.has(id) && SAVE.data.gold >= price, small: !1 });
+      if (mc) {
+        this.img(cx0 + 18, by - 10, `fr_mat_${mc.mat.id}`).setScale(1.3).setDepth(206);
+        this.t(cx0 + 30, by - 16, `${mc.mat.name} ×${mc.n} (보유 ${have})`, "tiny", have < mc.n ? "#ff9a8a" : "#f0d8b0", { stroke: "#2a1408", strokeThickness: 2 }).setDepth(206);
+      }
+      this.btn(X1 - 108, by + 2, 98, 26, FREE.has(id) ? "기본 장비" : "구매하기", () => this.buy(), { style: "green", enabled: !FREE.has(id) && this.canPay(price), small: !1 });
       this.hintText?.setText("");
     }
   }
@@ -203,7 +252,7 @@ export function makeScreens(R, D) {
   const SL = [["weapon", "무기", ["weapon"]], ["armor", "방어구", ["armor"]], ["s1", "Q", ["skill", "magic"]], ["s2", "E", ["skill", "magic"]], ["magic", "R", ["skill", "magic"]]];
   class FrLoadout extends Ne {
     constructor(scene, onClose) {
-      super(scene, "장비 관리소 · 출발 장비", onClose);
+      super(scene, "장비 관리소 · 창고와 출발 장비", onClose);
       this.R = R;
       this.slot = 0;
       this.cols = 6;
@@ -242,6 +291,19 @@ export function makeScreens(R, D) {
       const o = this.options();
       o.length && this.equip(o[this.sel]);
     }
+    sell(id) {
+      const d = sd();
+      const i = d.owned.indexOf(id);
+      const price = hubSellPrice(id);
+      if (i < 0 || price <= 0) return void j.play("error");
+      d.owned.splice(i, 1);
+      if (!d.owned.includes(id)) for (const k of Object.keys(d.equip)) d.equip[k] === id && (d.equip[k] = k === "weapon" ? "W01" : k === "armor" ? "A01" : null);
+      SAVE.data.gold += price;
+      SAVE.write();
+      j.play("coinBig");
+      refresh(this.scene);
+      this.render();
+    }
     equip(id) {
       const d = sd();
       const key = SL[this.slot][0];
@@ -275,6 +337,7 @@ export function makeScreens(R, D) {
         const b = A(this, sc.add.image(x, y, sel ? "ui_slot_sel" : "ui_slot").setScale(1.5).setInteractive({ useHandCursor: !0 }), 205);
         b.on("pointerdown", () => this.pickSlot(i));
         it && A(this, sc.add.image(x, y, itemIcon(sc, it)).setScale(1.5), 206);
+        it && gradeTag(this, x + 20, y - 18, it);
         if (it && !FREE.has(id)) this.t(x + 18, y + 8, `×${countOf(id)}`, "tiny", "#ffe8a0", { stroke: "#1a0e06", strokeThickness: 2 }).setDepth(207);
         i < 2 && A(this, sc.add.rectangle(i ? x - 34 : x + 34, y + 4, 24, 1, 0xc89a50, 0.6), 205);
       });
@@ -300,6 +363,7 @@ export function makeScreens(R, D) {
         if (id) {
           const it = mkItem(id);
           A(this, sc.add.image(x, y, itemIcon(sc, it)).setScale(1.3), 206);
+          gradeTag(this, x + 18, y - 19, it);
           !FREE.has(id) && this.t(x + 9, y + 6, `×${countOf(id)}`, "tiny", "#ffe8a0", { stroke: "#1a0e06", strokeThickness: 2 }).setDepth(207);
           d.equip[key] === id && A(this, sc.add.image(x + 12, y - 12, "icon_check"), 207);
         } else this.t(x, y - 5, "비움", "tiny", "#d8c0a0").setOrigin(0.5, 0).setDepth(206);
@@ -311,10 +375,20 @@ export function makeScreens(R, D) {
       if (cur) {
         const it = mkItem(cur);
         this.t(kx + 14, wy + 170, it.name, "body", nameCol(it)).setDepth(206);
-        this.t(kx + kw - 14, wy + 172, FREE.has(cur) ? "기본 지급 · 항상 사용" : `1회용 · 보유 ${countOf(cur)}개`, "tiny", FREE.has(cur) ? q.green : q.orange).setOrigin(1, 0).setDepth(206);
+        this.t(kx + kw - 14, wy + 172, FREE.has(cur) ? "기본 지급 · 잃지 않음" : `쓰러지면 잃음 · 보유 ${countOf(cur)}개`, "tiny", FREE.has(cur) ? q.green : q.orange).setOrigin(1, 0).setDepth(206);
         describe(this, it, kx + 14, wy + 188, kw - 28);
         d.equip[key] !== cur && this.btn(kx + kw - 86, Y1 - 28, 76, 20, "장착", () => this.equip(cur), { style: "green" });
+        const sp = hubSellPrice(cur);
+        sp > 0 && this.btn(kx + kw - 172, Y1 - 28, 80, 20, `판매 ${yt(sp)}G`, () => this.sell(cur));
       } else this.t(kx + 14, wy + 170, "이 칸을 비워 둔다.", "small", q.textDim).setDepth(206);
+      // 창고의 재료
+      const M = matsOf();
+      this.t(wx + 14, Y1 - 18, "재료", "tiny", "#d8c0a0").setDepth(206);
+      IT.MAT_LIST.forEach((m, i) => {
+        const mx = wx + 46 + i * 50;
+        this.img(mx, Y1 - 12, `fr_mat_${m.id}`).setDepth(206);
+        this.t(mx + 8, Y1 - 18, `${M[m.id] ?? 0}`, "tiny", M[m.id] ? m.css : "#8a7a6a", { stroke: "#1a0e06", strokeThickness: 2 }).setDepth(206);
+      });
       this.hintText?.setText("");
     }
   }
