@@ -20,8 +20,8 @@ const zt = Phaser,
   gt = 16,
   vt = 32,
   Vi = vt * gt,
-  TOPR = 20,
-  UGR = 40,
+  TOPR = 50,
+  UGR = 70,
   Ft = 56 + TOPR + UGR,
   Oe = Ft * gt,
   OREF = (56 + TOPR) * gt,
@@ -19663,7 +19663,7 @@ class Er extends zt.Scene {
     const m = this.arenaLock ? 4 : 7;
     ((this.camX = ie(this.camX, R, Math.min(1, T * m))), (this.camY = ie(this.camY, h, Math.min(1, T * 4))));
     const t = this.world.lx(0);
-    ((this.camX = Math.max(t, this.camX)), C.setScroll(Math.round(this.camX), Math.round(this.camY)));
+    ((this.camX = FG.zoneCam(this, Math.max(t, this.camX))), C.setScroll(Math.round(this.camX), Math.round(this.camY)));
   }
   updateParallax() {
     const T = this.cameras.main,

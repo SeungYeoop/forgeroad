@@ -4138,3 +4138,10 @@ function toggleMap(hud) {
 export const _ZN = ZN;
 export const _ZG = ZG;
 export const _exitPos = (world, z, at) => exitPos(world, z, at);
+// 카메라가 지금 구역 밖(옆 구역)을 비추지 않게: 구역 왼쪽 끝 ~ 오른쪽 끝 - 화면 폭
+export function zoneCam(sc, camX) {
+  const z = zoneOfPlayer(sc);
+  if (!z) return camX;
+  const l = sc.world.lx(z.c0 * 32), r = sc.world.lx(z.c1 * 32) - R.ot;
+  return r > l ? Math.min(r, Math.max(l, camX)) : camX;
+}

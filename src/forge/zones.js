@@ -116,8 +116,8 @@ export const roll = (...a) => hash(...a) / 4294967296;
     z.reg = d.reg = reg;
   }
   for (const z of ZONES) BY_ID[z.id] = z;
-  // 하늘 구역 양 끝: 보이지 않는 벽 (하늘에 돌기둥이 서지 않게)
-  for (const z of ZONES) if (z.y <= 0) for (const t of [z.c0 * VT, z.c0 * VT + 1, z.c1 * VT - 1, z.c1 * VT - 2]) SKY_EDGE.add(t);
+  // 구역 양 끝: 보이지 않는 벽 (보이는 바위 벽 없이 캐릭터가 넘어가지 못하게)
+  for (const z of ZONES) for (const t of [z.c0 * VT, z.c0 * VT + 1, z.c1 * VT - 1, z.c1 * VT - 2]) SKY_EDGE.add(t);
 })();
 
 // ── 찾기 ────────────────────────────────────────────

@@ -332,11 +332,11 @@ function updateUnderground(sc, dt) {
   if (D.drops && (D.dripT -= dt) <= 0) {
     D.dripT = rnd(0.25, 0.65);
     const world = sc.world, col = world.gtx(cam.scrollX + rnd(16, W - 16));
-    const first = Math.max(0, Math.floor(cam.scrollY / 16) - 1), last = Math.min(114, Math.ceil((cam.scrollY + H) / 16));
+    const first = Math.max(0, Math.floor(cam.scrollY / 16) - 1), last = Math.min(174, Math.ceil((cam.scrollY + H) / 16));
     for (let row = first; row < last; row++) {
       if (world.code(col, row) !== 1 || world.code(col, row + 1) !== 0) continue;
       let floor = row + 2;
-      while (floor < 116 && world.code(col, floor) === 0) floor++;
+      while (floor < 176 && world.code(col, floor) === 0) floor++;
       const fall = Math.max(0, (floor - row - 1) * 16 - 4);
       D.drops.setParticleLifespan(Math.min(2200, 1000 * (Math.sqrt(35 * 35 + 200 * fall) - 35) / 100));
       D.drops.emitParticleAt(world.lx(col) + 8, (row + 1) * 16 + 1);

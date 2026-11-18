@@ -882,7 +882,7 @@ function buildGround(P) {
   // 하늘: 땅에서 ▲ 문(꼭대기 섬)까지 이어지는 섬 사슬 + 흩어진 섬
   const groundAt = (x) => hAt(x);
   skyLayers(P, groundAt, S.islands.style);
-  zoneEnds(P);
+  // 구역 양 끝은 보이는 벽 없이 보이지 않는 벽(zones.js SKY_EDGE) + 카메라 제한으로 막는다
   P.ugTop = Math.max(UG_TOP, Math.ceil(Math.max(...Array.from(h)) / TS) + 3);
 }
 const botY = (path, x) => {
@@ -1414,7 +1414,7 @@ function buildCave(P) {
   if (P.deep) flatFloor(P, P.deep.x - 40, P.deep.x + 40, P.deep.y, 12, 30, 18);
   // 무너진 바위 더미
   if (cp.rubble) rubble(P);
-  zoneEnds(P);
+  // 구역 양 끝은 보이는 벽 없이 보이지 않는 벽(zones.js SKY_EDGE) + 카메라 제한으로 막는다
   P.ugTop = 0;
 }
 function rubble(P) {
