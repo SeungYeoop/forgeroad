@@ -154,7 +154,8 @@ export function update(sc) {
   // 2) 지하 어둠: 화면 가운데가 옛 지면보다 얼마나 아래인지
   D.cave.setAlpha(deep).setTilePosition(cam.scrollX * 0.3, cam.scrollY * 0.3);
   // 높은 하늘: 밝은 낮 하늘과 구름이 서서히 나타난다
-  const alt = Math.max(0, Math.min(1, (R.OREF - 520 - vy) / 260));
+  // 하늘 구역은 높이와 상관없이 밝은 하늘과 구름
+  const alt = sc._frSkyZone ? 1 : Math.max(0, Math.min(1, (R.OREF - 520 - vy) / 260));
   D.day.setAlpha(alt);
   D.cloud.setAlpha(alt).setTilePosition(cam.scrollX * 0.15, 0);
   const p = sc.player;

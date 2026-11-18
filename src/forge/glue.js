@@ -29,6 +29,7 @@ import { bossRun6 } from "./foes/boss6.js";
 import { interp } from "./interp.js";
 import * as SP from "./spells.js";
 import * as ZN from "./zones.js";
+import * as ZG from "./zonegen.js";
 import * as SK from "./skills.js";
 import * as LOOK from "./look.js";
 import * as ICON from "./icons.js";
@@ -1633,6 +1634,7 @@ function updateEnts(sc, dt) {
 
 // ── 매 프레임 ───────────────────────────────────────
 export function update(sc, dt) {
+  sc._frSkyZone = (zoneOfPlayer(sc)?.y ?? 0) < 0;
   const fr = sc.fr;
   if (!fr || !sc.player) return;
   const p = sc.player;
@@ -3322,6 +3324,7 @@ export function settleLoot(sc, safe) {
     d.equip.armor = d.equip.armor ?? "A01";
   }
   sc.run.frLoot = out;
+  sc.run.frZoneName = zoneOfPlayer(sc)?.name;
   R.it.write();
 }
 
@@ -3720,6 +3723,12 @@ export function fixTraps(r, { vt, Ft, fe, ze, plat }) {
 
 // ══ 격자 구역 지도 (알비온식 탐험) ══════════════════════
 export const zoned = !0;
+// 세계 시드: 저장 파일에 한 번 정하면 계속 같은 지형
+export function worldSeed() {
+  const d = sd();
+  d.worldSeed == null && ((d.worldSeed = (Math.random() * 4294967295) >>> 0), R.it.write());
+  return d.worldSeed >>> 0;
+}
 export const diffDist = (A) => ZN.diffDist(A);
 export const zoneEdge = (S) => {
   const z = ZN.zoneAtChunk(S);
@@ -3736,11 +3745,13 @@ export const zoneOfPlayer = (sc) => (sc?.world && sc.player ? ZN.zoneAtTile(sc.w
 // 구역 양 끝: 위아래 전체를 막는 절벽 벽 (2칸)
 export function zoneWalls(S, data) {
   const z = ZN.zoneAtChunk(S);
-  if (!z || !data?.grid) return;
+  if (!z || !data?.grid || z.y < 0) return;
   const cols = [];
   z.c0 === S && cols.push(0, 1);
   z.c1 - 1 === S && cols.push(30, 31);
-  for (const x of cols) for (let row = 0; row < R.Ft; row++) data.grid[row * 32 + x] = 1;
+  // 지상 구역은 땅 위 14줄까지만 절벽 (그 위는 보이지 않는 벽), 동굴은 위아래 전체
+  const from = z.y === 0 ? 70 - 14 : 0;
+  for (const x of cols) for (let row = from; row < R.Ft; row++) data.grid[row * 32 + x] = 1;
 }
 // 밟을 수 있는 평평한 칸 찾기 (없으면 그대로)
 function flatTile(world, t) {
@@ -3751,14 +3762,83 @@ function flatTile(world, t) {
   return t;
 }
 // ▲ 문 = 하늘 루트의 가장 높은 섬(지하 구역은 동굴 맨 위층), ▼ 문 = 지하 본길의 가장 깊은 바닥
-export const peakChunk = (S) => {
+// (예전 하늘 루트용 표시 — 이제 ▲ 문 길은 zonegen이 직접 만든다)
+export const peakChunk = () => !1;
+// 지상 구역: 땅 모양을 새로 (평평한 칸까지의 거리에 따라 언덕 높이를 줄인다)
+export function groundShape(i, S) {
   const z = ZN.zoneAtChunk(S);
-  return !!z && z.kind === "zone" && z.y <= 0 && S === ZN.upChunk(z);
-};
-export const ladderChunk = (S) => {
+  if (!z || z.y !== 0) return;
+  const flats = [z.c0, z.c1 - 1];
+  z.kind === "zone" && flats.push(ZN.upChunk(z));
+  z.kind === "zone" && z.boss && flats.push(z.c1 - 2);
+  const flatDist = (gx) => Math.min(...flats.map((c) => (gx < c * 32 ? c * 32 - gx : gx > c * 32 + 31 ? gx - (c * 32 + 31) : 0)));
+  ZG.groundShape(i, S, { vt: 32, Ft: R.Ft, seed: sd().worldSeed ?? 1, flatDist });
+}
+// 지상 구역 보정: 떠 있는 바위 덩어리가 아래 땅·발판과 3줄 안으로 붙어 있으면(사이에 설 수 없으면) 지운다
+// (지형 조각 그림끼리, 혹은 하늘 섬이 기둥 꼭대기를 덮어 길이 막히는 것을 막는다)
+export function groundRepair(S, r, vt, Ft) {
   const z = ZN.zoneAtChunk(S);
-  return !!z && z.kind === "zone" && z.y <= 0 && S === z.c0 + 1;
+  if (!z || z.y !== 0) return;
+  const N = vt * Ft, seen = new Uint8Array(N);
+  const solid = (v) => v === 1 || v === 4 || v === 5;
+  const st = [];
+  for (let x = 0; x < vt; x++) {
+    const q = (Ft - 1) * vt + x;
+    solid(r[q]) && !seen[q] && ((seen[q] = 1), st.push(q));
+  }
+  while (st.length) {
+    const q = st.pop(), x = q % vt, y = (q / vt) | 0;
+    for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+      if (nx < 0 || nx >= vt || ny < 0 || ny >= Ft) continue;
+      const n = ny * vt + nx;
+      !seen[n] && solid(r[n]) && ((seen[n] = 1), st.push(n));
+    }
+  }
+  for (let q0 = 0; q0 < N; q0++) {
+    if (seen[q0] || r[q0] !== 1) continue;
+    const comp = [], inC = new Set([q0]);
+    st.push(q0);
+    seen[q0] = 2;
+    while (st.length) {
+      const q = st.pop(), x = q % vt, y = (q / vt) | 0;
+      comp.push(q);
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || nx >= vt || ny < 0 || ny >= Ft) continue;
+        const n = ny * vt + nx;
+        !seen[n] && r[n] === 1 && ((seen[n] = 2), inC.add(n), st.push(n));
+      }
+    }
+    let bad = !1;
+    for (const q of comp) {
+      const x = q % vt, y = (q / vt) | 0;
+      if (inC.has(q + vt)) continue;
+      for (let k = 1; k <= 3 && !bad; k++) {
+        const n = (y + k) * vt + x;
+        if (y + k >= Ft) break;
+        if (r[n] !== 0 && !inC.has(n)) bad = !0;
+      }
+      if (bad) break;
+    }
+    if (bad) for (const q of comp) r[q] = 0;
+  }
+}
+// 지상 구역의 ▲ 문 조각: 평평한 빈터 + 하늘로 오르는 섬 계단 (원래 지형·동굴 구멍과 겹치지 않게)
+export const groundPeakChunk = (S) => {
+  const z = ZN.zoneAtChunk(S);
+  return !!z && z.kind === "zone" && z.y === 0 && S === ZN.upChunk(z);
 };
+export const ladderChunk = () => !1;
+// 하늘·동굴 구역은 조각 전체를 새로 채우고, 지상 구역의 ▲ 문 조각엔 꼭대기까지 징검다리를 놓는다
+const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "lush" : Math.abs(x) % 2 ? "geode" : "drip");
+export function zoneGen(S, r, l, s, o) {
+  const z = ZN.zoneAtChunk(S);
+  if (!z) return null;
+  const edge = z.c0 === S || z.c1 - 1 === S, isZone = z.kind === "zone";
+  if (z.y < 0) return ZG.generate("sky", S, r, l, s, { ...o, edge, peak: isZone && S === ZN.upChunk(z) });
+  if (z.y > 0) return ZG.generate("cave", S, r, l, s, { ...o, edge, up: isZone && S === ZN.upChunk(z), down: isZone && S === ZN.downChunk(z), biome: CAVE_BIO(z.x, z.y), forceShafts: S === z.c0 + 1 || S === z.c0 + 4 });
+  if (isZone && S === ZN.upChunk(z) && !o.arena) return { partial: 1, ...ZG.groundPeak(S, r, l, o) };
+  return null;
+}
 // 하늘 구역(던전 포함)에는 지하 동굴이 없다
 export const skyZone = (S) => (ZN.zoneAtChunk(S)?.y ?? 0) < 0;
 export const shaftChunk = (S) => {
@@ -3771,7 +3851,7 @@ function exitPos(world, z, at) {
   if (at === "L") return onGround(world, z.c0 * 32 + 3);
   if (at === "R") return onGround(world, z.c1 * 32 - 4);
   if (at === "U") {
-    const c = ZN.upChunk(z), pk = z.y <= 0 ? world.gen.get(c).peak : null;
+    const c = ZN.upChunk(z), pk = world.gen.get(c).peak;
     return pk ? { tile: c * 32 + pk.x, row: pk.row } : onGround(world, flatTile(world, c * 32 + 16));
   }
   if (at === "D") {
@@ -3809,37 +3889,26 @@ function arrive(sc, z) {
   d.seen = d.seen ?? {};
   const first = !d.seen[z.id];
   d.seen[z.id] = 1;
+  if (sc.fr && sc.run) {
+    sc.fr.visited ??= {};
+    sc.fr.visited[z.id] || ((sc.fr.visited[z.id] = 1), (sc.run.frZones = Object.keys(sc.fr.visited).length));
+  }
   R.it.write();
   const D = ZN.dangerOf(z);
   sc.hud?.()?.regionBanner(z.name, `${ZN.LAYER_NAME(z.y)} · ${D.name} ${D.label}${first ? " · 처음 밟는 땅" : ""}`);
   ZN.packChunk(z) >= 0 && !sc.fr?.packs?.[z.id] && sc.time.delayedCall(1600, () => sc.hud?.()?.toast("이 구역 어딘가에 정예 무리가 떠돈다", "#ff9a6a"));
   z.kind === "dungeon" && sc.time.delayedCall(1600, () => sc.hud?.()?.toast("숨은 던전 · 정예가 많고 끝에 보물이 있다", "#c090ff"));
 }
-// 탐험 시작: 거점의 네 문 (동·서 = 지상, 위 = 하늘, 아래 = 지하)
-const STARTS = [
-  { label: "동쪽 문", cell: [1, 0], back: "L" },
-  { label: "서쪽 문", cell: [-1, 0], back: "R" },
-  { label: "하늘 계단", cell: [0, -1], back: "D" },
-  { label: "지하 갱도", cell: [0, 1], back: "U" },
-];
+// 탐험 시작: 거점 오른쪽 문으로 나가면 동쪽 칸(재의 들판) 왼쪽 끝
 export function zoneBegin(sc) {
   ZN.setRunSeed(sc.fr?.runSeed ?? (Math.random() * 4294967295) >>> 0);
-  const d = sd();
-  const pick = STARTS[d.lastStart ?? 0] ?? STARTS[0];
-  const z0 = ZN.cell(...pick.cell);
-  const p0 = arrivePos(sc.world, z0, pick.back);
-  sc.travelTo(p0.tile, pick.back === "R" ? -1 : 1, p0.row > 0 ? p0.row : null);
-  const ask = (n = 0) => {
-    const h = sc.hud?.();
-    if (!h || h.modalOpen) return void (n < 40 && sc.time.delayedCall(150, () => ask(n + 1)));
-    const opts = STARTS.map((s, i) => {
-      const z = ZN.cell(...s.cell);
-      return { label: s.label, desc: `${z.name} · ${ZN.LAYER_NAME(z.y)}`, icon: "icon_check", cb: () => ((d.lastStart = i), R.it.write(), z !== z0 ? travel(sc, z.id, s.back) : arrive(sc, z)) };
-    });
-    h.choice("어느 문으로 나갈까?", "거점에서 멀어질수록 위험하다 · 들고 간 것은 쓰러지면 잃는다 · [M] 구역 지도", [...opts, { label: "그대로", cb: () => arrive(sc, z0) }]);
-  };
-  sc.time.delayedCall(500, () => ask());
+  const z0 = ZN.cell(1, 0);
+  const p0 = arrivePos(sc.world, z0, "L");
+  sc.travelTo(p0.tile, 1, p0.row > 0 ? p0.row : null);
+  const wait = (n = 0) => (sc.hud?.() ? arrive(sc, z0) : n < 40 && sc.time.delayedCall(150, () => wait(n + 1)));
+  sc.time.delayedCall(400, () => wait());
 }
+export const seenCount = () => Object.keys(sd().seen ?? {}).filter((k) => ZN.BY_ID[k]?.kind === "zone").length;
 // 출구 물체, 떠도는 정예 무리
 export function zoneObjs(evm, S, T, traits) {
   const sc = evm.s, W = sc.world;

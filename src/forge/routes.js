@@ -23,15 +23,40 @@ const vn2 = (x, y, sx, sy, seed) => {
 // ── 하늘 루트: 유적이 있는 큰 섬들과 그 사이를 잇는 작은 섬·구름·부서지는 발판 ──
 // 상자는 많고 적은 적다. 사이 간격이 넓어 떨어지기 쉽다.
 export function skyRoute(b, ctx) {
+  const out = skyRoute0(b, ctx);
+  // 지형 조각 그림(바위 기둥·발판)의 꼭대기 위 4줄 안에 걸치는 하늘 섬·발판은 걷어낸다 (꼭대기에 설 자리가 막히지 않게)
+  const top = new Array(32).fill(Infinity);
+  for (const k of b._artBlocks ?? []) top[k.x] = Math.min(top[k.x], k.row);
+  for (const k of b._artPlats ?? []) for (let i = 0; i < (k.w ?? 1); i++) k.x + i < 32 && (top[k.x + i] = Math.min(top[k.x + i], k.row));
+  const bad = (x, row, w, h) => {
+    for (let i = Math.max(0, x - 1); i <= Math.min(31, x + w); i++) if (row + h - 1 >= top[i] - 4) return !0;
+    return !1;
+  };
+  const gone = [];
+  b.blocks = b.blocks.filter((k) => (k._sky && bad(k.x, k.row, k.w, k.h ?? 1) ? (gone.push(k), !1) : !0));
+  b.plats = b.plats.filter((k) => (k._sky && bad(k.x, k.row, k.w ?? 1, 1) ? (gone.push(k), !1) : !0));
+  if (gone.length) {
+    const live = new Set();
+    for (const k of b.plats) if (k._sky) for (let i = 0; i < (k.w ?? 1); i++) live.add(`${k.x + i},${k.row}`);
+    out.clouds = out.clouds.filter((c) => live.has(c));
+    out.chests = out.chests.filter((c) => !gone.some((k) => c.x >= k.x && c.x < k.x + (k.w ?? 1) && c.row === k.row));
+    out.peak && gone.some((k) => out.peak.x >= k.x - 1 && out.peak.x <= k.x + (k.w ?? 1) && out.peak.row === k.row) && (out.peak = null);
+  }
+  return out;
+}
+function skyRoute0(b, ctx) {
   const { S, seed, rng, Ft } = ctx;
   const out = { chests: [], spawns: [], clouds: [] };
+  // 하늘 루트 이전에 놓인 지형 조각 그림
+  b._artBlocks = b.blocks.filter((k) => !k._sky);
+  b._artPlats = b.plats.filter((k) => !k._sky && k.fixed);
   const base = S * 32;
   const R = () => rng.next();
   const rowAt = (gx) => 6 + Math.round(9 * vnoise(gx, 22, seed + 3)); // 6..15줄
-  const island = (x, row, w, h = 2, taper = 0.6) => b.blocks.push({ x, row, w, h, taper });
-  const plat = (x, row, w, crumble) => b.plats.push({ x, row, w, fixed: 1, crumble: !!crumble });
+  const island = (x, row, w, h = 2, taper = 0.6) => b.blocks.push({ x, row, w, h, taper, _sky: 1 });
+  const plat = (x, row, w, crumble) => b.plats.push({ x, row, w, fixed: 1, crumble: !!crumble, _sky: 1 });
   const cloud = (x, row, w) => {
-    b.plats.push({ x, row, w, fixed: 1 });
+    b.plats.push({ x, row, w, fixed: 1, _sky: 1 });
     for (let k = 0; k < w; k++) out.clouds.push(`${x + k},${row}`);
   };
   const tops = [];
@@ -47,14 +72,14 @@ export function skyRoute(b, ctx) {
   if (ruin < 0.45) {
     // 아치: 기둥 둘 + 위 발판
     const p1 = mx + 1 + Math.floor(R() * 2), p2 = mx + mw - 2 - Math.floor(R() * 2), ph = 3 + Math.floor(R() * 2);
-    b.blocks.push({ x: p1, row: mr - ph, w: 1, h: ph });
-    b.blocks.push({ x: p2, row: mr - ph, w: 1, h: ph });
+    b.blocks.push({ x: p1, row: mr - ph, w: 1, h: ph, _sky: 1 });
+    b.blocks.push({ x: p2, row: mr - ph, w: 1, h: ph, _sky: 1 });
     plat(p1, mr - ph - 1, p2 - p1 + 1);
     tops.push([p1 + 1, mr - ph - 1, p2 - p1 - 1, "arch"]);
   } else if (ruin < 0.8) {
     for (let k = 0; k < 2; k++) {
       const px = mx + 2 + Math.floor(R() * (mw - 4)), ph = 2 + Math.floor(R() * 3);
-      b.blocks.push({ x: px, row: mr - ph, w: 1 + (R() < 0.4 ? 1 : 0), h: ph });
+      b.blocks.push({ x: px, row: mr - ph, w: 1 + (R() < 0.4 ? 1 : 0), h: ph, _sky: 1 });
     }
   }
   // 징검다리
@@ -196,7 +221,7 @@ export function carveUnderground(r, l, ctx) {
   const want = [];
   !hasL && want.push(3);
   !hasR && want.push(vt - 6);
-  !mid && (R() < 0.5 || ctx.forceShaft) && want.push(9 + Math.floor(R() * 12));
+  !mid && !ctx.noMidShaft && (R() < 0.5 || ctx.forceShaft) && want.push(9 + Math.floor(R() * 12));
   for (let sx of want) {
     for (let k = 0; k < 6 && [0, 1, 2].some((d) => slopeCols.has(sx + d) || l[sx + d] <= 0); k++) sx += sx < 16 ? 1 : -1;
     if ([0, 1, 2].some((d) => slopeCols.has(sx + d) || l[sx + d] <= 0)) continue;

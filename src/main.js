@@ -7,7 +7,7 @@ import { FRBG, FRDECOR } from "./forge/bg.js";
 import * as PAINT from "./forge/bgpaint.js";
 import * as BGN from "./forge/bgnew.js";
 import { FR_REGIONS, FR_MONSTERS, FR_ELITES, FR_BOSSES, FR_ENDLESS, ENDLESS_START, ENDLESS_LEN } from "./forge/world.js";
-import { FR_WORLD } from "./forge/zones.js";
+import { FR_WORLD, SKY_EDGE } from "./forge/zones.js";
 
 const __defProp = Object.defineProperty;
 const Z = (obj, key, value) =>
@@ -7057,7 +7057,7 @@ function bs(A) {
   return Ht.length - 1;
 }
 function je(A) {
-  return A < Ht.length ? Ht[Math.max(0, A)] : Ds(A - Ht.length);
+  return A < Ht.length ? Ht[Math.max(0, A)] : FG.zoned ? Ht[Ht.length - 1] : Ds(A - Ht.length);
 }
 const Bs = (A) => A.theme ?? A.id,
   us = (A) => Object.values(A).reduce((S, T) => S + T, 0),
@@ -7366,7 +7366,7 @@ class Rn {
     const C = this.data,
       // 포지로드: 살아서 귀환해야 골드를 가져온다. 쓰러지면 이번 탐험의 골드·거리 보상 모두 잃음
       E = T ? Math.floor(S.gold + S.milestoneGold) : 0,
-      R = S.distance > S.prevBest;
+      R = !FG.zoned && S.distance > S.prevBest;
     T || (C.claimed = C.claimed.filter((d) => !(S.msDists ?? []).includes(d)));
     ((C.gold += E),
       (C.totalGold += E),
@@ -8997,7 +8997,7 @@ class Xn {
       i = new Un(T, n, E);
     i.safePits = m.idx === 0;
     let e = null;
-    if (!o && (S === 0 || FG.zoneEdge(S))) {
+    if (!o && (S === 0 || FG.zoneEdge(S) || FG.groundPeakChunk(S))) {
       (i.setH(6 + UGR), i.flat(vt));
       for (let y = 0; y < vt; y++) i.noSpawn.add(y);
     } else if (o) {
@@ -9011,6 +9011,7 @@ class Xn {
     } else {
       this.tplState = this.tplState ?? new Map();
       FG.designChunk(i, { rng: i.rng, region: m, dist: R, S, Ft, state: this.tplState, hazard: (nm) => this.pattern(nm, i, m, R, a.tier) });
+      FG.groundShape(i, S);
       // 하늘 루트 (천장 있는 조각·보스 근처 제외)
       S > 2 && !n && this.tunnelAt(S) && (i.sky = FG.skyRoute(i, { S, seed: this.seed, rng: i.rng, Ft, peak: FG.peakChunk(S), ladder: FG.ladderChunk(S) }));
     }
@@ -9047,10 +9048,15 @@ class Xn {
     // 떠 있는 지형도 보이는 그대로 단단하게 (예전엔 몸이 통과해서 벽 속에 들어갈 수 있었다)
     for (let q = 0; q < r.length; q++) r[q] === 7 && (r[q] = fe);
     for (const y of i.slopes ?? []) y.x >= 0 && y.x < vt && y.row >= 0 && y.row < Ft && r[y.row * vt + y.x] === ze && (r[y.row * vt + y.x] = y.code);
+    !e && FG.groundRepair(S, r, vt, Ft);
+    // 하늘·동굴 구역: 조각 전체를 새로 채운다 (지상 구역 ▲ 문 조각은 징검다리만)
+    const zg = FG.zoneGen(S, r, l, s, { vt, Ft, fe, ze, plat: _e, seed: this.seed, arena: !!e });
+    zg && !zg.partial && ((i.hazards.length = 0), (i.slopes = []), (i.decorHints = []), (i.extraSpawns = []));
+    zg && !e && (i.sky = { clouds: zg.clouds, chests: zg.chests, spawns: [] });
     // 지하 동굴 (설계된 조각만)
     let caveOut = { shafts: [], spawns: [], caves: [], strong: [], mid: null };
-    if (!e && this.tunnelAt(S) && !FG.skyZone(S)) {
-      caveOut = { spawns: [], ...FG.carveUnderground(r, l, { S, seed: this.seed, rng: E, vt, Ft, codes: { fe, ze, plat: _e }, hasL: this.tunnelAt(S - 1), hasR: this.tunnelAt(S + 1), mid: this.midBossAt(S), regionIdx: m.idx ?? t, forceShaft: FG.shaftChunk(S), slopeCols: new Set((i.slopes ?? []).map((y) => y.x)) }) };
+    if (!e && !(zg && !zg.partial) && this.tunnelAt(S) && !FG.skyZone(S)) {
+      caveOut = { spawns: [], ...FG.carveUnderground(r, l, { S, seed: this.seed, rng: E, vt, Ft, codes: { fe, ze, plat: _e }, hasL: this.tunnelAt(S - 1), hasR: this.tunnelAt(S + 1), mid: this.midBossAt(S), regionIdx: m.idx ?? t, forceShaft: FG.shaftChunk(S), noMidShaft: FG.groundPeakChunk(S), slopeCols: new Set((i.slopes ?? []).map((y) => y.x)) }) };
       for (let y = i.hazards.length - 1; y >= 0; y--) {
         const x = i.hazards[y];
         caveOut.shafts.some(([sx, w]) => x.x + (x.w ?? 1) > sx - 1 && x.x < sx + w + 1) && i.hazards.splice(y, 1);
@@ -9137,6 +9143,14 @@ class Xn {
         }
       }
     }
+    // 하늘섬·동굴 층 위의 적
+    if (!e && zg?.spawns)
+      for (const sp of zg.spawns) {
+        const pool = m.enemies.filter((V) => !!se[V.id]?.flying === !!sp.fly);
+        if (!pool.length) continue;
+        const P = E.weighted(pool, (V) => V.w);
+        d.push({ id: `${S}:${d.length}`, enemy: P.id, x: sp.x, row: sp.row, traits: E.chance(m.eliteChance + a.eliteBonus) ? [E.pick(Ye)] : [] });
+      }
     // 지하 루트: 강한 적 (정예가 많다) + 중간 보스
     if (!e && caveOut.strong)
       for (const sp of caveOut.strong) {
@@ -9234,11 +9248,11 @@ class Xn {
       decor: p,
       event: f,
       chests,
-      ug: caveOut.ug,
+      ug: zg && !zg.partial ? zg.ug : caveOut.ug,
       pools: caveOut.pools,
       clouds: i.sky?.clouds,
-      peak: i.sky?.peak ?? null,
-      deep: caveOut.deep ?? null,
+      peak: zg?.peak ?? i.sky?.peak ?? null,
+      deep: zg?.deep ?? caveOut.deep ?? null,
       arena: e,
       endH: u,
       signs: g,
@@ -9923,7 +9937,7 @@ class zn {
   }
   code(S, T) {
     if (T < 0 || T >= Ft) return ze;
-    if (S < 0 || this.gates.has(S)) return fe;
+    if (S < 0 || this.gates.has(S) || SKY_EDGE.has(S)) return fe;
     const C = this.rawCode(S, T);
     if (C === Ti) {
       const E = this.crumbles.get(`${S},${T}`);
@@ -15249,7 +15263,7 @@ class pr extends zt.Scene {
           .setPosition(this.near.x, bt - 64)
           .setVisible(!0));
     } else (this.prompt.setVisible(!1), this.promptBg.setVisible(!1));
-    (this.goldText.setText(yt(it.data.gold)), this.bestText.setText(`최고 기록 ${yt(it.data.best)}m`));
+    (this.goldText.setText(yt(it.data.gold)), this.bestText.setText(FG.zoned ? `밟아 본 구역 ${FG.seenCount()} / 48` : `최고 기록 ${yt(it.data.best)}m`));
     const e = this.dummy.dps(this.time.now);
     this.dpsText.setText(e > 0 ? `초당 피해 ${e.toFixed(1)}` : "");
     FG.hubParallax(this, this.h2);
@@ -18481,7 +18495,8 @@ class Er extends zt.Scene {
           this.events.off("resume", C));
       }),
       (this.run = it.beginRun()),
-      (this.seed = (Math.random() * 4294967295) >>> 0),
+      // 지형은 저장 파일마다 고정 (탐험마다 바뀌지 않는다)
+      (this.seed = FG.worldSeed()),
       this.cameras.main.setBackgroundColor("#0b0a10"),
       (this.world = new zn(this, this.seed)),
       (this.collider = this.world),
@@ -18766,7 +18781,7 @@ class Er extends zt.Scene {
     )
       this.time.delayedCall(300, () => {
         var e;
-        return (e = this.hud()) == null ? void 0 : e.regionBanner(h.name, h.sub);
+        return FG.zoned || (e = this.hud()) == null ? void 0 : e.regionBanner(h.name, h.sub);
       });
     else {
       if ((this.tweens.add({ targets: [t, ...v], alpha: 1, duration: 1500 }), this.oldBg)) {
@@ -18780,7 +18795,7 @@ class Er extends zt.Scene {
           },
         });
       }
-      ((n = this.hud()) == null || n.regionBanner(h.name, h.sub), this.cameras.main.flash(400, 255, 255, 255, !1));
+      (FG.zoned || (n = this.hud()) == null || n.regionBanner(h.name, h.sub), FG.zoned || this.cameras.main.flash(400, 255, 255, 255, !1));
     }
     (this.boss || j.playMusic(`region_${h.id}`, h.music),
       (i = this.ambient) == null || i.destroy(),
@@ -20575,11 +20590,13 @@ class Pr extends zt.Scene {
     const LX = px + 14, LY = py + 40, LW = 220, LH = PH - 52;
     this.add.nineslice(LX, LY, "ui_parch_dark", void 0, LW, LH, 6, 6, 6, 6).setOrigin(0);
     const lc = LX + LW / 2;
-    (ct(this, lc, LY + 10, reg.name, "body", q.text).setOrigin(0.5, 0),
+    (ct(this, lc, LY + 10, T.frZoneName ?? reg.name, "body", q.text).setOrigin(0.5, 0),
       ct(this, lc, LY + 26, T.abandoned ? "에서 무사히 귀환했다" : "에서 쓰러졌다", "tiny", q.textDim).setOrigin(0.5, 0));
     const dist = ct(this, lc, LY + 44, "0m", "title", q.text).setOrigin(0.5, 0);
-    this.tweens.addCounter({ from: 0, to: T.distance, duration: 1200, ease: "Cubic.easeOut", onUpdate: (l) => dist.setText(`${yt(l.getValue())}m`) });
+    FG.zoned ? dist.setText(`구역 ${T.frZones ?? 1}곳`) : this.tweens.addCounter({ from: 0, to: T.distance, duration: 1200, ease: "Cubic.easeOut", onUpdate: (l) => dist.setText(`${yt(l.getValue())}m`) });
     // 지역 진행 막대
+    // 격자 지도에서는 거리 막대·거리 기록을 보이지 않는다
+    if (!FG.zoned) {
     const regs = Ht.map((r) => r.start).concat([1e4]),
       ri0 = Math.max(0, regs.filter((x) => x <= T.distance).length - 1),
       bx = LX + 16, by = LY + 92, bw = LW - 32;
@@ -20592,6 +20609,7 @@ class Pr extends zt.Scene {
       ct(this, bx + bw, by + 9, Ht[ri0 + 1] ? `${Ht[ri0 + 1].name} ${yt(nextStart)}m` : "끝없는 길", "tiny", q.textDim).setOrigin(1, 0));
     (ct(this, lc, LY + 122, `최고 기록  ${yt(Math.max(it.data.best, T.distance))}m`, "small", T.newRecord ? q.gold : q.text).setOrigin(0.5, 0),
       T.newRecord && ct(this, lc, LY + 136, `이전 ${yt(T.prevBest)}m`, "tiny", q.textDim).setOrigin(0.5, 0));
+    }
     if (T.newRecord) {
       const st = this.add.container(LX + LW - 34, LY + 70).setRotation(-0.25).setScale(3).setAlpha(0);
       (st.add(this.add.circle(0, 0, 22, 0xa8261a, 0.9)), st.add(this.add.circle(0, 0, 18).setStrokeStyle(1, 0xffd0a0)), st.add(ct(this, 0, 0, "신기록", "small", "#fff0d0").setOrigin(0.5)));
@@ -20624,7 +20642,7 @@ class Pr extends zt.Scene {
       row("엘리트 처치", `${T.elites}`, q.orange),
       row("보스 처치", T.bosses > 0 ? `${T.bosses}  (${T.bossIds.map((l) => (ji[l] ? ji[l].name : "")).join(", ")})` : "0", q.red),
       row("준 피해 / 최대 일격", `${yt(T.dmgDealt ?? 0)} / ${yt(T.maxHit ?? 0)}`, q.orange),
-      row("받은 피해 / 무피격 거리", `${yt(T.dmgTaken ?? 0)} / ${yt(Is(T))}m`),
+      FG.zoned ? row("받은 피해", `${yt(T.dmgTaken ?? 0)}`) : row("받은 피해 / 무피격 거리", `${yt(T.dmgTaken ?? 0)} / ${yt(Is(T))}m`),
       row("원소 반응 · 무기 진화", `${T.reactions ?? 0}회 · ${Mr((T.evolved ?? []).map((l) => (ke[l.slice(4)] ? ke[l.slice(4)].name : null)).filter((l) => !!l))}`, q.purple),
       (v += 4));
     sec("탐험");
@@ -20634,8 +20652,8 @@ class Pr extends zt.Scene {
     this.add.nineslice(RX, gy, "ui_inner", void 0, RW, 72, 4, 4, 4, 4).setOrigin(0);
     const g1 = ct(this, RX + 10, gy + 6, "획득 골드", "small", q.textDim),
       g1v = ct(this, RX + 170, gy + 6, yt(T.gold), "small", q.gold).setOrigin(1, 0),
-      g2 = ct(this, RX + 10, gy + 20, "기록 경신 보상", "small", q.textDim),
-      g2v = ct(this, RX + 170, gy + 20, `+${yt(T.milestoneGold)}`, "small", q.green).setOrigin(1, 0);
+      g2 = ct(this, RX + 10, gy + 20, FG.zoned ? "가져온 재료" : "기록 경신 보상", "small", q.textDim),
+      g2v = ct(this, RX + 170, gy + 20, FG.zoned ? `${T.frLoot?.safe ? Object.values(T.frLoot.mats ?? {}).reduce((a, b) => a + b, 0) : 0}개` : `+${yt(T.milestoneGold)}`, "small", q.green).setOrigin(1, 0);
     this.add.rectangle(RX + 10, gy + 36, 160, 1, 0x9a7448).setOrigin(0);
     const tl = ct(this, RX + 10, gy + 42, "총 정산", "body", q.text),
       tv = ct(this, RX + 170, gy + 38, "0", "big", q.gold).setOrigin(1, 0);

@@ -29,7 +29,7 @@ const LAYER = {
 };
 export const LAYER_NAME = (y) => (y === 0 ? "지상" : LAYER[y][2]);
 // 보스가 사는 칸 (그림 지역마다 한 곳)
-const BOSS_AT = { "1,0": ART.ash, "-1,0": ART.mist, "2,0": ART.glass, "-2,0": ART.marsh, "3,0": ART.fort, "-3,0": ART.frost, "3,-1": ART.sky, "-3,-2": ART.crystal, "0,-3": ART.spire, "-3,1": ART.mine, "3,2": ART.shadow, "0,3": ART.core };
+const BOSS_AT = { "2,-2": ART.ash, "-2,2": ART.mist, "2,0": ART.glass, "-2,0": ART.marsh, "3,0": ART.fort, "-3,0": ART.frost, "3,-1": ART.sky, "-3,-2": ART.crystal, "0,-3": ART.spire, "-3,1": ART.mine, "3,2": ART.shadow, "0,3": ART.core };
 
 export const DANGER = [
   null,
@@ -43,6 +43,7 @@ export const ZONES = []; // 줄 위 순서 (던전·구역 모두)
 export const BY_ID = {};
 export const CELLS = {}; // "x,y" → 구역
 export const FR_WORLD = []; // 엔진 지역 목록 (칸마다 하나: 던전 + 구역)
+export const SKY_EDGE = new Set(); // 충돌만 있는 벽 칸 (타일 x)
 
 const key = (x, y) => `${x},${y}`;
 const lerp = (a, b, t) => {
@@ -115,6 +116,8 @@ export const roll = (...a) => hash(...a) / 4294967296;
     z.reg = d.reg = reg;
   }
   for (const z of ZONES) BY_ID[z.id] = z;
+  // 하늘 구역 양 끝: 보이지 않는 벽 (하늘에 돌기둥이 서지 않게)
+  for (const z of ZONES) if (z.y <= 0) for (const t of [z.c0 * VT, z.c0 * VT + 1, z.c1 * VT - 1, z.c1 * VT - 2]) SKY_EDGE.add(t);
 })();
 
 // ── 찾기 ────────────────────────────────────────────
