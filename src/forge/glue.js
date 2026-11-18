@@ -3838,11 +3838,12 @@ export function fixTraps(r, { vt, Ft, fe, ze, plat }) {
 
 // ══ 격자 구역 지도 (알비온식 탐험) ══════════════════════
 export const zoned = !0;
-// 세계 시드: 저장 파일에 한 번 정하면 계속 같은 지형
+// 세계 시드: 모든 저장에서 1로 고정 (언제 해도 같은 지도). 예전 저장의 무작위 시드도 1로 바꾼다
+export const WORLD_SEED = 1;
 export function worldSeed() {
   const d = sd();
-  d.worldSeed == null && ((d.worldSeed = (Math.random() * 4294967295) >>> 0), R.it.write());
-  return d.worldSeed >>> 0;
+  d.worldSeed !== WORLD_SEED && ((d.worldSeed = WORLD_SEED), R.it.write());
+  return WORLD_SEED;
 }
 export const diffDist = (A) => ZN.diffDist(A);
 export const zoneEdge = (S) => {
