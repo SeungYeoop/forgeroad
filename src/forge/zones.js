@@ -148,14 +148,15 @@ export function diffDist(A) {
 // ── 문 ──────────────────────────────────────────────
 // 위·아래 문은 구역 3분의 1, 3분의 2 지점 조각에
 export const upChunk = (z) => z.c0 + 2;
-export const downChunk = (z) => z.c1 - 4;
+// 보스 방 근처(뒤 4조각)에는 지하가 없으므로 앞쪽에
+export const downChunk = (z) => z.c0 + 3;
 // 이번 탐험의 무작위 내용물
 let RUN_SEED = 0;
 export const setRunSeed = (s) => (RUN_SEED = s >>> 0);
 // 숨은 던전: 바깥 고리일수록 잘 나온다
 export const hasDungeon = (z) => z.kind === "zone" && roll(RUN_SEED, "dg", z.id) < 0.12 + z.ring * 0.06;
 // 숨은 던전 입구는 위·아래 문 사이 조각에
-export const dungeonChunk = (z) => z.c0 + 3;
+export const dungeonChunk = (z) => z.c0 + 5;
 export const packChunk = (z) => (z.kind === "zone" && roll(RUN_SEED, "pk", z.id) < 0.35 ? z.c0 + 1 + (hash(RUN_SEED, "pkc", z.id) % (ZLEN - 3)) : -1);
 export const waystoneOk = (z) => z?.kind === "zone" && z.ring >= 2 && roll(RUN_SEED, "ws", z.id) < 0.5;
 export function chestRoll(c, k, tier) {
@@ -183,6 +184,7 @@ export function exitList(z) {
 }
 
 // ── 지도 그리기 (Hud 위에 겹친다) ─────────────────────
+// 정사각형 칸 7×7. 칸에는 색·표시만, 이름은 오른쪽 정보창(마우스를 올린 칸 / 지금 칸)에.
 export function drawMap(hud, R, cur, seen, extra = {}) {
   const { ot: W, xt: H, ct } = R;
   const objs = [];
@@ -191,47 +193,70 @@ export function drawMap(hud, R, cur, seen, extra = {}) {
   add(hud.add.rectangle(10, 10, W - 20, H - 20).setOrigin(0).setStrokeStyle(1, 0x7a5434));
   add(ct(hud, 20, 14, "구역 지도", "big", "#f2e6c4"));
   add(ct(hud, W - 20, 18, "[M] 닫기", "tiny", "#a89070").setOrigin(1, 0));
-  const CW = 66, CH = 38, CX = W / 2 + 30, CY = H / 2 + 8;
-  const P = (x, y) => [CX + x * CW, CY + y * CH];
+  const SZ = 38, GAP = 2, PITCH = SZ + GAP;
+  const GX = 104, GY = 48; // 격자 왼쪽 위
+  const P = (x, y) => [GX + (x + N) * PITCH + SZ / 2, GY + (y + N) * PITCH + SZ / 2];
   const g = add(hud.add.graphics(), 1);
   const here = cur?.kind === "dungeon" ? zoneOfPocket(cur) : cur;
   // 층 이름 (왼쪽)
   for (let y = -N; y <= N; y++) {
     const [, py] = P(-N, y);
-    add(ct(hud, CX - N * CW - CW / 2 - 8, py - 5, LAYER_NAME(y), "tiny", y < 0 ? "#9cc8ff" : y > 0 ? "#d0a070" : "#c8e090").setOrigin(1, 0), 2);
+    add(ct(hud, GX - 6, py - 5, LAYER_NAME(y), "tiny", y < 0 ? "#9cc8ff" : y > 0 ? "#d0a070" : "#c8e090").setOrigin(1, 0), 2);
   }
+  // 오른쪽 정보창
+  const IX = GX + 7 * PITCH + 18, IW = W - 20 - IX;
+  add(hud.add.rectangle(IX - 8, GY, IW + 8, 7 * PITCH - GAP, 0x140e18, 0.8).setOrigin(0).setStrokeStyle(1, 0x5a4030), 1);
+  const iName = add(ct(hud, IX, GY + 8, "", "body", "#f2e6c4"), 2);
+  const iSub = add(ct(hud, IX, GY + 28, "", "tiny", "#c8b898"), 2);
+  const iMore = add(ct(hud, IX, GY + 44, "", "tiny", "#a89070", { wordWrap: { width: IW - 8, useAdvancedWrap: !0 } }), 2);
+  const info = (z) => {
+    if (!z) return void (iName.setText("거점").setColor("#ffe08a"), iSub.setText("안전 지대"), iMore.setText("동·서 문은 지상, 위 계단은 하늘, 아래 갱도는 지하로 이어진다."));
+    const D = dangerOf(z), s = seen[z.id] || here === z;
+    iName.setText(s ? z.name : "가 보지 않은 땅").setColor(s ? D.css : "#a89070");
+    iSub.setText(`${LAYER_NAME(z.y)} · ${D.name} ${D.label}`);
+    const m = [];
+    here === z && m.push("지금 여기 있다");
+    z.boss && m.push("보스가 산다");
+    extra.dungeons?.includes(z.id) && m.push("이번 탐험에서 숨은 던전 입구를 봤다");
+    iMore.setText(m.join(" · "));
+  };
   // 칸
   for (let y = -N; y <= N; y++)
     for (let x = -N; x <= N; x++) {
       const [px, py] = P(x, y);
-      const w = CW - 6, h = CH - 6;
+      const h2 = SZ / 2;
+      const hit = add(hud.add.rectangle(px, py, SZ, SZ, 0, 0).setInteractive({ useHandCursor: !0 }), 4);
       if (!x && !y) {
-        g.fillStyle(0x4a3418, 1).fillRect(px - w / 2, py - h / 2, w, h);
-        g.lineStyle(2, 0xffe08a, 1).strokeRect(px - w / 2, py - h / 2, w, h);
-        add(ct(hud, px, py - 6, "거점", "small", "#ffe08a").setOrigin(0.5, 0), 2);
+        g.fillStyle(0x4a3418, 1).fillRect(px - h2, py - h2, SZ, SZ);
+        g.lineStyle(2, 0xffe08a, 1).strokeRect(px - h2, py - h2, SZ, SZ);
+        add(ct(hud, px, py, "거점", "tiny", "#ffe08a").setOrigin(0.5), 2);
+        hit.on("pointerover", () => info(null));
         continue;
       }
       const z = CELLS[key(x, y)], D = dangerOf(z), s = seen[z.id];
-      g.fillStyle(D.color, s ? 0.55 : 0.18).fillRect(px - w / 2, py - h / 2, w, h);
-      g.lineStyle(1, D.color, s ? 1 : 0.5).strokeRect(px - w / 2, py - h / 2, w, h);
-      z.boss && (g.fillStyle(0x140e18, 1).fillRect(px + w / 2 - 9, py - h / 2 + 2, 7, 7), g.fillStyle(0xff6050, 1).fillRect(px + w / 2 - 8, py - h / 2 + 3, 5, 5));
-      extra.dungeons?.includes(z.id) && g.fillStyle(DANGER[4].color, 1).fillTriangle(px - w / 2 + 3, py - h / 2 + 10, px - w / 2 + 11, py - h / 2 + 10, px - w / 2 + 7, py - h / 2 + 3);
-      const nm = s || here === z ? z.short : "?";
-      const two = nm.length > 6 && nm.includes(" ");
-      add(ct(hud, px, py, two ? nm.replace(" ", "\n") : nm, "tiny", s ? "#f2e6c4" : "#8a7a6a", { align: "center", stroke: "#140e18", strokeThickness: 2 }).setOrigin(0.5, 0.5), 2);
+      g.fillStyle(D.color, s ? 0.6 : 0.16).fillRect(px - h2, py - h2, SZ, SZ);
+      g.lineStyle(1, D.color, s ? 1 : 0.45).strokeRect(px - h2, py - h2, SZ, SZ);
+      // 층 표시: 하늘 = 위쪽 띠, 지하 = 아래쪽 띠
+      y < 0 && g.fillStyle(0xcfe6ff, s ? 0.5 : 0.18).fillRect(px - h2 + 2, py - h2 + 2, SZ - 4, 3);
+      y > 0 && g.fillStyle(0x6a4a2a, s ? 0.8 : 0.3).fillRect(px - h2 + 2, py + h2 - 5, SZ - 4, 3);
+      z.boss && (g.fillStyle(0x140e18, 1).fillRect(px + h2 - 10, py - h2 + 3, 7, 7), g.fillStyle(0xff6050, 1).fillRect(px + h2 - 9, py - h2 + 4, 5, 5));
+      extra.dungeons?.includes(z.id) && g.fillStyle(DANGER[4].color, 1).fillTriangle(px - h2 + 3, py - h2 + 10, px - h2 + 11, py - h2 + 10, px - h2 + 7, py - h2 + 3);
+      s && g.fillStyle(0xffffff, 0.85).fillCircle(px, py + 3, 2);
       if (here === z) {
-        const ring = add(hud.add.rectangle(px, py, w + 4, h + 4).setStrokeStyle(2, 0xffffff), 3);
+        const ring = add(hud.add.rectangle(px, py, SZ + 2, SZ + 2).setStrokeStyle(2, 0xffffff), 3);
         hud.tweens.add({ targets: ring, alpha: 0.2, duration: 600, yoyo: !0, repeat: -1 });
       }
+      hit.on("pointerover", () => info(z));
+      hit.on("pointerout", () => info(here ?? null));
     }
+  info(here ?? null);
   // 범례
-  let lx = 20;
+  let ly = GY + 7 * PITCH - GAP - 66;
   for (const D of DANGER.slice(1)) {
-    g.fillStyle(D.color, 1).fillRect(lx, H - 27, 8, 8);
-    const t = add(ct(hud, lx + 12, H - 30, `${D.name} · ${D.label}`, "tiny", D.css), 2);
-    lx += t.width + 24;
+    add(hud.add.rectangle(IX, ly + 3, 7, 7, D.color).setOrigin(0), 2);
+    add(ct(hud, IX + 12, ly, `${D.name} · ${D.label}`, "tiny", D.css), 2);
+    ly += 12;
   }
-  add(ct(hud, W - 20, H - 30, "■ 보스  ▲ 숨은 던전", "tiny", "#a89070").setOrigin(1, 0), 2);
-  cur && add(ct(hud, 20, 36, `현재: ${cur.name} · ${LAYER_NAME(cur.y)} · ${dangerOf(cur).name} ${dangerOf(cur).label}`, "small", dangerOf(cur).css), 2);
+  add(ct(hud, IX, ly + 2, "■ 보스  ▲ 숨은 던전  · 가 본 곳", "tiny", "#a89070"), 2);
   return objs;
 }

@@ -77,12 +77,15 @@ export function skyRoute(b, ctx) {
   };
   bridge(3, r0, mx, mr);
   bridge(mx + mw, mr, 29, r1);
-  // 높은 보물 섬: 구름을 밟고 올라가야 한다
-  if (R() < 0.5) {
-    const hx = mx + Math.floor(mw / 2) - 1, hr = Math.max(2, mr - 8);
+  // 높은 보물 섬: 구름을 밟고 올라가야 한다. ▲ 문이 서는 조각(ctx.peak)에는 항상, 더 넓게
+  if (R() < 0.5 || ctx.peak) {
+    const hx = mx + Math.floor(mw / 2) - 1, hr = Math.max(ctx.peak ? 4 : 2, mr - 8);
     cloud(hx - 4, mr - 4, 3);
-    island(hx, hr, 3);
-    tops.push([hx + 1, hr, 1, "high"]);
+    if (ctx.peak) {
+      island(hx - 1, hr, 5);
+      tops.push([hx + 2, hr, 1, "high"]);
+      out.peak = { x: hx, row: hr };
+    } else (island(hx, hr, 3), tops.push([hx + 1, hr, 1, "high"]));
   }
   const tier = (bonus) => {
     const rr = R() - bonus;
@@ -95,12 +98,13 @@ export function skyRoute(b, ctx) {
     if (kind === "step" && R() < 0.12) out.chests.push({ x, row, tier: 0 });
   }
   R() < 0.3 && out.spawns.push({ x: mx + 2, row: mr - 4, fly: 1 });
-  // 땅에서 하늘로 오르는 사다리 (네 조각마다)
-  if (S % 4 === 2) {
-    let row = Ft - (b.cols[5]?.g || b.h) - 3, side = 0;
+  // 땅에서 하늘로 오르는 징검다리 (네 조각마다, 구역 첫 조각에는 항상): 구름과 작은 섬이 엇갈려 떠 있다
+  if (S % 4 === 2 || ctx.ladder) {
+    let row = Ft - (b.cols[5]?.g || b.h) - 3, side = 0, k = 0;
     const goal = r0 + 3;
     while (row > goal) {
-      plat(side ? 6 : 2, row, 3);
+      const x = side ? 6 + Math.floor(R() * 2) : 1 + Math.floor(R() * 2);
+      k++ % 3 === 2 ? island(x, row, 2, 1) : cloud(x, row, 3);
       side ^= 1;
       row -= 3;
     }
@@ -192,7 +196,7 @@ export function carveUnderground(r, l, ctx) {
   const want = [];
   !hasL && want.push(3);
   !hasR && want.push(vt - 6);
-  !mid && R() < 0.5 && want.push(9 + Math.floor(R() * 12));
+  !mid && (R() < 0.5 || ctx.forceShaft) && want.push(9 + Math.floor(R() * 12));
   for (let sx of want) {
     for (let k = 0; k < 6 && [0, 1, 2].some((d) => slopeCols.has(sx + d) || l[sx + d] <= 0); k++) sx += sx < 16 ? 1 : -1;
     if ([0, 1, 2].some((d) => slopeCols.has(sx + d) || l[sx + d] <= 0)) continue;
@@ -213,6 +217,15 @@ export function carveUnderground(r, l, ctx) {
     out.ug.entrances.push({ x: sx, w: 3, top: s });
   }
   out.slopes = out.slopes.filter((s) => !out.shafts.some(([sx]) => s.x >= sx && s.x < sx + 3) && !out.pools.some((p) => s.x >= p.x - 1 && s.x <= p.x + p.w));
+  // 가장 깊은 바닥 (▼ 문 자리): 바닥이 단단하고 위로 세 칸이 비어 있는 곳
+  let deep = null;
+  for (let x = xa + 2; x <= xb - 2; x++) {
+    const f = fl[x];
+    if ([x - 1, x, x + 1].some((k) => at(k, f) === ze || at(k, f - 1) !== ze) || at(x, f - 2) !== ze || at(x, f - 3) !== ze) continue;
+    if (out.slopes.some((s) => Math.abs(s.x - x) <= 1) || out.pools.some((p) => x >= p.x - 1 && x <= p.x + p.w) || out.shafts.some(([sx]) => x >= sx - 1 && x <= sx + 3)) continue;
+    (!deep || f > deep.row) && (deep = { x, row: f });
+  }
+  out.deep = deep;
   // 강한 적 (본길 바닥)
   const n = mid ? 2 : 3 + Math.floor(R() * 3);
   const busy = new Set(out.shafts.flatMap(([sx]) => [sx - 1, sx, sx + 1, sx + 2, sx + 3]));

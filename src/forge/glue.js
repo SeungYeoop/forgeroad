@@ -3750,18 +3750,39 @@ function flatTile(world, t) {
   }
   return t;
 }
-// 출구 자리(타일)
-function exitTile(world, z, at) {
-  if (at === "L") return z.c0 * 32 + 3;
-  if (at === "R") return z.c1 * 32 - 4;
-  if (at === "U") return flatTile(world, ZN.upChunk(z) * 32 + 16);
-  if (at === "D") return flatTile(world, ZN.downChunk(z) * 32 + 16);
-  return flatTile(world, ZN.dungeonChunk(z) * 32 + 16);
+// ▲ 문 = 하늘 루트의 가장 높은 섬(지하 구역은 동굴 맨 위층), ▼ 문 = 지하 본길의 가장 깊은 바닥
+export const peakChunk = (S) => {
+  const z = ZN.zoneAtChunk(S);
+  return !!z && z.kind === "zone" && z.y <= 0 && S === ZN.upChunk(z);
+};
+export const ladderChunk = (S) => {
+  const z = ZN.zoneAtChunk(S);
+  return !!z && z.kind === "zone" && z.y <= 0 && S === z.c0 + 1;
+};
+export const shaftChunk = (S) => {
+  const z = ZN.zoneAtChunk(S);
+  return !!z && z.kind === "zone" && S === z.c0 + 1;
+};
+const onGround = (world, t) => ({ tile: t, row: world.groundRowAt(t) });
+// 출구 자리 {tile, row}
+function exitPos(world, z, at) {
+  if (at === "L") return onGround(world, z.c0 * 32 + 3);
+  if (at === "R") return onGround(world, z.c1 * 32 - 4);
+  if (at === "U") {
+    const c = ZN.upChunk(z), pk = z.y <= 0 ? world.gen.get(c).peak : null;
+    return pk ? { tile: c * 32 + pk.x, row: pk.row } : onGround(world, flatTile(world, c * 32 + 16));
+  }
+  if (at === "D") {
+    const c = ZN.downChunk(z), dp = world.gen.get(c).deep;
+    return dp ? { tile: c * 32 + dp.x, row: dp.row } : onGround(world, flatTile(world, c * 32 + 16));
+  }
+  return onGround(world, flatTile(world, ZN.dungeonChunk(z) * 32 + 16));
 }
-function arriveTile(world, z, at) {
-  if (at === "L") return z.c0 * 32 + 5;
-  if (at === "R") return z.c1 * 32 - 6;
-  return exitTile(world, z, at) + 2;
+function arrivePos(world, z, at) {
+  if (at === "L") return onGround(world, z.c0 * 32 + 5);
+  if (at === "R") return onGround(world, z.c1 * 32 - 6);
+  const p = exitPos(world, z, at);
+  return { tile: p.tile + 1, row: p.row };
 }
 export function travel(sc, to, back) {
   if (to === ZN.HUB_ID) return void sc.extract?.();
@@ -3773,7 +3794,8 @@ export function travel(sc, to, back) {
   sc.cameras.main.fadeOut(160, 8, 6, 12);
   sc.time.delayedCall(170, () => {
     const at = back ?? "L";
-    sc.travelTo(arriveTile(sc.world, z, at), at === "R" ? -1 : 1);
+    const p = arrivePos(sc.world, z, at);
+    sc.travelTo(p.tile, at === "R" ? -1 : 1, p.row > 0 ? p.row : null);
     sc.cameras.main.fadeIn(260, 8, 6, 12);
     sc.zoneBusy = 0;
     arrive(sc, z);
@@ -3802,7 +3824,8 @@ export function zoneBegin(sc) {
   const d = sd();
   const pick = STARTS[d.lastStart ?? 0] ?? STARTS[0];
   const z0 = ZN.cell(...pick.cell);
-  sc.travelTo(arriveTile(sc.world, z0, pick.back), pick.back === "R" ? -1 : 1);
+  const p0 = arrivePos(sc.world, z0, pick.back);
+  sc.travelTo(p0.tile, pick.back === "R" ? -1 : 1, p0.row > 0 ? p0.row : null);
   const ask = (n = 0) => {
     const h = sc.hud?.();
     if (!h || h.modalOpen) return void (n < 40 && sc.time.delayedCall(150, () => ask(n + 1)));
@@ -3820,11 +3843,9 @@ export function zoneObjs(evm, S, T, traits) {
   const z = ZN.zoneAtChunk(S.index);
   if (!z) return;
   for (const e of ZN.exitList(z)) {
-    const tile = exitTile(W, z, e.at);
-    if (Math.floor(tile / 32) !== S.index) continue;
-    const g = W.groundRowAt(tile);
-    if (g <= 0) continue;
-    evm.objs.push(exitObj(sc, S.index, T + (tile - S.index * 32) * 16 + 8, g * 16, z, e));
+    const { tile, row } = exitPos(W, z, e.at);
+    if (Math.floor(tile / 32) !== S.index || row <= 0) continue;
+    evm.objs.push(exitObj(sc, S.index, T + (tile - S.index * 32) * 16 + 8, row * 16, z, e));
   }
   const pc = ZN.packChunk(z);
   const fr = sc.fr;
@@ -3861,8 +3882,7 @@ function exitObj(sc, chunk, x, y, z, e) {
   const dst = e.to === ZN.HUB_ID ? null : ZN.BY_ID[e.to];
   const D = dst ? ZN.dangerOf(dst) : { color: 0xffe08a, css: "#ffe08a", name: "거점" };
   const L = EXIT_LOOK[e.at];
-  // 하늘에서 내려가는 문은 동굴 입구 대신 돌 아치
-  const tex = (e.at === "D" || e.at === "DG") && z.y < 0 ? "fr_gate" : L.tex;
+  const tex = L.tex;
   const arch = sc.add.image(x, y + 1, tex).setOrigin(0.5, 1).setDepth(5);
   const glow = sc.add.image(x, y - 18, "fr_gate_glow").setTint(D.color).setBlendMode(ADD).setDepth(4).setAlpha(0.7);
   const what = !dst ? "거점으로 귀환 (안전)" : e.at === "DG" ? "숨은 던전" : z.kind === "dungeon" ? "던전 밖으로" : dst.name;

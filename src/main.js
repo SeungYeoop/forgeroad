@@ -8993,7 +8993,7 @@ class Xn {
       a = ni(Math.max(0, R)),
       v = ts(m.end),
       o = !!m.boss && (S === v || S === v + 1),
-      n = !o && S > 2 && E.chance(m.ceiling),
+      n = !o && S > 2 && !FG.peakChunk(S) && E.chance(m.ceiling),
       i = new Un(T, n, E);
     i.safePits = m.idx === 0;
     let e = null;
@@ -9012,7 +9012,7 @@ class Xn {
       this.tplState = this.tplState ?? new Map();
       FG.designChunk(i, { rng: i.rng, region: m, dist: R, S, Ft, state: this.tplState, hazard: (nm) => this.pattern(nm, i, m, R, a.tier) });
       // 하늘 루트 (천장 있는 조각·보스 근처 제외)
-      S > 2 && !n && this.tunnelAt(S) && (i.sky = FG.skyRoute(i, { S, seed: this.seed, rng: i.rng, Ft }));
+      S > 2 && !n && this.tunnelAt(S) && (i.sky = FG.skyRoute(i, { S, seed: this.seed, rng: i.rng, Ft, peak: FG.peakChunk(S), ladder: FG.ladderChunk(S) }));
     }
     this.validate(i);
     const r = new Uint8Array(vt * Ft),
@@ -9050,7 +9050,7 @@ class Xn {
     // 지하 동굴 (설계된 조각만)
     let caveOut = { shafts: [], spawns: [], caves: [], strong: [], mid: null };
     if (!e && this.tunnelAt(S)) {
-      caveOut = { spawns: [], ...FG.carveUnderground(r, l, { S, seed: this.seed, rng: E, vt, Ft, codes: { fe, ze, plat: _e }, hasL: this.tunnelAt(S - 1), hasR: this.tunnelAt(S + 1), mid: this.midBossAt(S), regionIdx: t, slopeCols: new Set((i.slopes ?? []).map((y) => y.x)) }) };
+      caveOut = { spawns: [], ...FG.carveUnderground(r, l, { S, seed: this.seed, rng: E, vt, Ft, codes: { fe, ze, plat: _e }, hasL: this.tunnelAt(S - 1), hasR: this.tunnelAt(S + 1), mid: this.midBossAt(S), regionIdx: m.idx ?? t, forceShaft: FG.shaftChunk(S), slopeCols: new Set((i.slopes ?? []).map((y) => y.x)) }) };
       for (let y = i.hazards.length - 1; y >= 0; y--) {
         const x = i.hazards[y];
         caveOut.shafts.some(([sx, w]) => x.x + (x.w ?? 1) > sx - 1 && x.x < sx + w + 1) && i.hazards.splice(y, 1);
@@ -9237,6 +9237,8 @@ class Xn {
       ug: caveOut.ug,
       pools: caveOut.pools,
       clouds: i.sky?.clouds,
+      peak: i.sky?.peak ?? null,
+      deep: caveOut.deep ?? null,
       arena: e,
       endH: u,
       signs: g,
@@ -19670,7 +19672,7 @@ class Er extends zt.Scene {
       (window.__run = null));
   }
   // 구역 이동: 타일 x로 순간이동 (그 구역 안의 조각만 새로 만든다)
-  travelTo(tx, face = 1) {
+  travelTo(tx, face = 1, row = null) {
     const C = this.player,
       R = Math.floor(tx / vt);
     for (const e of this.enemies) e.remove();
@@ -19681,7 +19683,7 @@ class Er extends zt.Scene {
     this.world.originChunk = h;
     for (const [a, v] of this.world.loaded) v.rt.x = this.world.lx(a * vt);
     this.rebase(m);
-    const t = this.world.groundRowAt(tx);
+    const t = row ?? this.world.groundRowAt(tx);
     ((C.body.x = this.world.lx(tx) + 8),
       (C.body.y = (t > 0 ? t : Ft - 6 - UGR) * gt - 1),
       (C.body.vy = 0),
