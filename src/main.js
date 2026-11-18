@@ -9049,7 +9049,7 @@ class Xn {
     for (const y of i.slopes ?? []) y.x >= 0 && y.x < vt && y.row >= 0 && y.row < Ft && r[y.row * vt + y.x] === ze && (r[y.row * vt + y.x] = y.code);
     // 지하 동굴 (설계된 조각만)
     let caveOut = { shafts: [], spawns: [], caves: [], strong: [], mid: null };
-    if (!e && this.tunnelAt(S)) {
+    if (!e && this.tunnelAt(S) && !FG.skyZone(S)) {
       caveOut = { spawns: [], ...FG.carveUnderground(r, l, { S, seed: this.seed, rng: E, vt, Ft, codes: { fe, ze, plat: _e }, hasL: this.tunnelAt(S - 1), hasR: this.tunnelAt(S + 1), mid: this.midBossAt(S), regionIdx: m.idx ?? t, forceShaft: FG.shaftChunk(S), slopeCols: new Set((i.slopes ?? []).map((y) => y.x)) }) };
       for (let y = i.hazards.length - 1; y >= 0; y--) {
         const x = i.hazards[y];

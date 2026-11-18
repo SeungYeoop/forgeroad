@@ -3759,6 +3759,8 @@ export const ladderChunk = (S) => {
   const z = ZN.zoneAtChunk(S);
   return !!z && z.kind === "zone" && z.y <= 0 && S === z.c0 + 1;
 };
+// 하늘 구역(던전 포함)에는 지하 동굴이 없다
+export const skyZone = (S) => (ZN.zoneAtChunk(S)?.y ?? 0) < 0;
 export const shaftChunk = (S) => {
   const z = ZN.zoneAtChunk(S);
   return !!z && z.kind === "zone" && S === z.c0 + 1;
@@ -3773,7 +3775,8 @@ function exitPos(world, z, at) {
     return pk ? { tile: c * 32 + pk.x, row: pk.row } : onGround(world, flatTile(world, c * 32 + 16));
   }
   if (at === "D") {
-    const c = ZN.downChunk(z), dp = world.gen.get(c).deep;
+    // 하늘 구역의 ▼ 문은 맨 아래 지면 (동굴이 없다)
+    const c = ZN.downChunk(z), dp = z.y < 0 ? null : world.gen.get(c).deep;
     return dp ? { tile: c * 32 + dp.x, row: dp.row } : onGround(world, flatTile(world, c * 32 + 16));
   }
   return onGround(world, flatTile(world, ZN.dungeonChunk(z) * 32 + 16));
