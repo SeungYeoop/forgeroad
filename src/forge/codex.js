@@ -134,10 +134,9 @@ export function drawCodex(P, K) {
   });
   // 제목
   const reached = (T.best ?? 0) >= REG.start;
-  tx(LX + 10, PY + 24, `제${ri + 1}장`, "tiny", q.textDim);
+  tx(LX + 10, PY + 24, `지역 ${ri + 1}`, "tiny", q.textDim);
   const ttl = tx(LX + 38, PY + 21, REG.name, "big", q.text);
   tx(LX + PW - 10, PY + 24, `${REG.start}m ~ ${REG.end}m`, "tiny", q.textDim).setOrigin(1, 0);
-  tx(LX + 10, PY + 40, `“${DOC.quote}”`, "tiny", q.textDim, wrapW(PW - 20));
   reached || stamp(LX + 38 + ttl.width + 18, PY + 29, "미답");
   // 분류 쪽지
   CATS.forEach((c, i) => {
@@ -405,8 +404,6 @@ export function drawCodex(P, K) {
     const bd = DOC.boss;
     tx(RXc, PY + 8, "토벌 기록", "big", q.text);
     let r = PY + 30;
-    tx(RXc, r, `“${bd.quote}”`, "tiny", q.textDim, wrapW(W));
-    r += 24;
     tx(RXc, r, "체력", "tiny", q.textDim), tx(RXc + 30, r, `${bd.hp}`, "tiny", q.text);
     tx(RXc + 80, r, "약점", "tiny", q.textDim), tx(RXc + 104, r, bd.weak, "tiny", q.green);
     tx(RXc + 150, r, "내성", "tiny", q.textDim), tx(RXc + 174, r, bd.resist, "tiny", q.red);

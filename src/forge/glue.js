@@ -442,6 +442,31 @@ export function bootTextures(scene) {
         d < 1 && b.px(x, y, 0xffffff, Math.round(230 * (1 - d)));
       }
   });
+  // 위로 가는 문: 하늘빛 아치 + 위로 오르는 계단
+  g("fr_gate_up", 30, 46, (b) => {
+    const S0 = 0x8a9ab8, S1 = 0xc8d8f0, S2 = 0x4a5878;
+    b.rect(1, 42, 28, 4, S2);
+    b.rect(2, 12, 5, 31, S0);
+    b.rect(23, 12, 5, 31, S0);
+    b.rect(3, 12, 2, 30, S1);
+    b.rect(24, 12, 2, 30, S1);
+    b.poly([[2, 14], [15, 0], [28, 14], [23, 14], [15, 6], [7, 14]], S0);
+    b.poly([[4, 13], [15, 2], [15, 5], [7, 13]], S1);
+    for (let k = 0; k < 4; k++) b.rect(9 + k * 2, 38 - k * 6, 12 - k * 4, 3, 0xe8f4ff);
+    b.poly([[15, 9], [19, 14], [11, 14]], 0xffffff);
+    b.outline();
+  });
+  // 아래로 가는 문: 바위 동굴 입구
+  g("fr_gate_down", 34, 40, (b) => {
+    const S0 = 0x5a4a3a, S1 = 0x7a6a52, S2 = 0x2a2018;
+    b.poly([[0, 40], [2, 22], [8, 8], [17, 2], [26, 8], [32, 22], [34, 40]], S0);
+    b.poly([[3, 38], [5, 22], [10, 10], [17, 5], [17, 9], [12, 14], [8, 24], [7, 38]], S1);
+    b.poly([[7, 40], [9, 24], [13, 15], [17, 12], [21, 15], [25, 24], [27, 40]], 0x0a0806);
+    b.poly([[17, 26], [21, 31], [13, 31]], 0xffd890);
+    b.poly([[17, 36], [21, 31], [13, 31]], 0xffd890);
+    b.rect(0, 38, 34, 2, S2);
+    b.outline();
+  });
   // 귀환 표석
   g("fr_waystone", 18, 36, (b) => {
     b.rect(2, 30, 14, 6, 0x3a3440);
@@ -2608,7 +2633,7 @@ function dropOn(h, src, tgt) {
     R.j.play("coin");
   }
 }
-const sellPrice = (sc, it) => Math.round((10 + sc.dist / 150) * (1 + it.tier) * IT.GRADE_PRICE[IT.gradeOf(it)] ** 0.6);
+const sellPrice = (sc, it) => Math.round((10 + ZN.diffDist(sc.dist) / 150) * (1 + it.tier) * IT.GRADE_PRICE[IT.gradeOf(it)] ** 0.6);
 const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 // 우클릭: 바로 장착·해제 / Shift+클릭: 융합대
 function quickAction(h, e, toForge) {
@@ -3630,7 +3655,7 @@ export const foeBoss = (b, name) => (BOSS_RUN[b.def.id] ? BOSS_RUN[b.def.id](b, 
 export const foeHurt = (e) => FOES.hurtFrame(e);
 export const foeFrame = (id, nm, k) => FOES.frameOf(id, nm, k);
 export const foeEnsure = (scene, id) => FOES.ensure(scene, id);
-export const foePreload = (scene, ri) => FOES.preloadRegion(scene, ri);
+export const foePreload = (scene, ri) => FOES.preloadRegion(scene, R.Ht[ri]?.srcIdx ?? ri);
 
 // ── 벽 끼임 풀기: 몸이 막힌 칸과 겹치면 가장 가까운 빈 자리로 옮긴다 (스킬 순간이동·밀려남 등) ──
 const _blocked = (W, x, y, w, h) => {
@@ -3693,24 +3718,24 @@ export function fixTraps(r, { vt, Ft, fe, ze, plat }) {
     }
 }
 
-// ══ 구역 지도 (알비온식 탐험) ═══════════════════════════
+// ══ 격자 구역 지도 (알비온식 탐험) ══════════════════════
 export const zoned = !0;
-const zr = () => (ZN.buildZones(R.Ht), ZN);
+export const diffDist = (A) => ZN.diffDist(A);
 export const zoneEdge = (S) => {
-  const z = zr().zoneAtChunk(S);
+  const z = ZN.zoneAtChunk(S);
   return !!z && (z.c0 === S || z.c1 - 1 === S);
 };
-export const zoneFirst = (S) => zr().isFirst(S);
-export const pocketChunk = (S) => zr().isPocket(S);
-export const pocketLast = (S) => zr().isPocket(S) && ZN.isLast(S);
-export const sameZone = (a, b) => zr().zoneAtTile(a) === ZN.zoneAtTile(b);
-export const chunkSameZone = (a, b) => zr().zoneAtChunk(a) === ZN.zoneAtChunk(b);
-export const waystoneOk = (S) => zr().waystoneOk(ZN.zoneAtChunk(S));
-export const chestRoll = (S, k, tier) => zr().chestRoll(S, k, tier);
-export const zoneOfPlayer = (sc) => (sc?.world && sc.player ? zr().zoneAtTile(sc.world.gtx(sc.player.x)) : null);
+export const zoneFirst = (S) => ZN.isFirst(S);
+export const pocketChunk = (S) => ZN.isPocket(S);
+export const pocketLast = (S) => ZN.isPocket(S) && ZN.isLast(S);
+export const sameZone = (a, b) => ZN.zoneAtTile(a) === ZN.zoneAtTile(b);
+export const chunkSameZone = (a, b) => ZN.zoneAtChunk(a) === ZN.zoneAtChunk(b);
+export const waystoneOk = (S) => ZN.waystoneOk(ZN.zoneAtChunk(S));
+export const chestRoll = (S, k, tier) => ZN.chestRoll(S, k, tier);
+export const zoneOfPlayer = (sc) => (sc?.world && sc.player ? ZN.zoneAtTile(sc.world.gtx(sc.player.x)) : null);
 // 구역 양 끝: 위아래 전체를 막는 절벽 벽 (2칸)
 export function zoneWalls(S, data) {
-  const z = zr().zoneAtChunk(S);
+  const z = ZN.zoneAtChunk(S);
   if (!z || !data?.grid) return;
   const cols = [];
   z.c0 === S && cols.push(0, 1);
@@ -3725,38 +3750,20 @@ function flatTile(world, t) {
   }
   return t;
 }
-// 이 구역의 출구들: [{tile, to, side, kind}]
-function exitsOf(world, z) {
-  const out = [];
-  const host = z.kind === "dungeon" ? ZN.dungeonHost(z.r) : null;
-  if (z.kind === "dungeon") {
-    host && out.push({ tile: z.c0 * 32 + 3, to: host.id, side: "D", kind: "L", label: "던전 밖으로" });
-    host && out.push({ tile: z.c1 * 32 - 4, to: host.id, side: "D", kind: "R", label: "던전 밖으로" });
-    return out;
-  }
-  z.L && out.push({ tile: z.c0 * 32 + 3, to: z.L.to, kind: "L" });
-  z.R && out.push({ tile: z.c1 * 32 - 4, to: z.R.to, kind: "R" });
-  z.gates.forEach((g, k) => out.push({ tile: flatTile(world, ZN.gateChunk(z, k, z.gates.length) * 32 + 16), to: g.to, kind: "G" }));
-  ZN.hasDungeon(z) && out.push({ tile: flatTile(world, ZN.dungeonChunk(z) * 32 + 22), to: `d${z.r}`, side: "L", kind: "D" });
-  return out;
+// 출구 자리(타일)
+function exitTile(world, z, at) {
+  if (at === "L") return z.c0 * 32 + 3;
+  if (at === "R") return z.c1 * 32 - 4;
+  if (at === "U") return flatTile(world, ZN.upChunk(z) * 32 + 16);
+  if (at === "D") return flatTile(world, ZN.downChunk(z) * 32 + 16);
+  return flatTile(world, ZN.dungeonChunk(z) * 32 + 16);
 }
-// 도착할 자리: 상대 구역에서 나에게 이어진 쪽
-function backSide(dst, src) {
-  if (dst.kind === "dungeon") return "L";
-  if (dst.L?.to === src) return "L";
-  if (dst.R?.to === src) return "R";
-  const g = dst.gates.findIndex((x) => x.to === src);
-  if (g >= 0) return g;
-  if (ZN.dungeonHost(dst.r) === dst && src === `d${dst.r}`) return "D";
-  return "L";
+function arriveTile(world, z, at) {
+  if (at === "L") return z.c0 * 32 + 5;
+  if (at === "R") return z.c1 * 32 - 6;
+  return exitTile(world, z, at) + 2;
 }
-function arriveAt(world, z, side) {
-  if (side === "L" || side === "R") return ZN.arriveTile(z, side);
-  if (side === "D") return flatTile(world, ZN.dungeonChunk(z) * 32 + 22) + 2;
-  return flatTile(world, ZN.gateChunk(z, side, z.gates.length) * 32 + 16) + 2;
-}
-export function travel(sc, to, side, from) {
-  zr();
+export function travel(sc, to, back) {
   if (to === ZN.HUB_ID) return void sc.extract?.();
   if (sc.zoneBusy || sc.dying) return;
   const z = ZN.BY_ID[to];
@@ -3765,9 +3772,8 @@ export function travel(sc, to, side, from) {
   R.j.play("portal");
   sc.cameras.main.fadeOut(160, 8, 6, 12);
   sc.time.delayedCall(170, () => {
-    const s = side ?? (from ? backSide(z, from) : "L");
-    const tile = arriveAt(sc.world, z, s);
-    sc.travelTo(tile, s === "R" ? -1 : 1);
+    const at = back ?? "L";
+    sc.travelTo(arriveTile(sc.world, z, at), at === "R" ? -1 : 1);
     sc.cameras.main.fadeIn(260, 8, 6, 12);
     sc.zoneBusy = 0;
     arrive(sc, z);
@@ -3780,44 +3786,46 @@ function arrive(sc, z) {
   d.seen[z.id] = 1;
   R.it.write();
   const D = ZN.dangerOf(z);
-  const h = sc.hud?.();
-  h?.regionBanner(z.name, `${D.name} · ${D.label}${first ? " · 처음 밟는 땅" : ""}`);
+  sc.hud?.()?.regionBanner(z.name, `${ZN.LAYER_NAME(z.y)} · ${D.name} ${D.label}${first ? " · 처음 밟는 땅" : ""}`);
   ZN.packChunk(z) >= 0 && !sc.fr?.packs?.[z.id] && sc.time.delayedCall(1600, () => sc.hud?.()?.toast("이 구역 어딘가에 정예 무리가 떠돈다", "#ff9a6a"));
   z.kind === "dungeon" && sc.time.delayedCall(1600, () => sc.hud?.()?.toast("숨은 던전 · 정예가 많고 끝에 보물이 있다", "#c090ff"));
 }
-// 탐험 시작: 지난번 갈래로 바로 나가고, 어느 문으로 나갈지 묻는다
+// 탐험 시작: 거점의 네 문 (동·서 = 지상, 위 = 하늘, 아래 = 지하)
+const STARTS = [
+  { label: "동쪽 문", cell: [1, 0], back: "L" },
+  { label: "서쪽 문", cell: [-1, 0], back: "R" },
+  { label: "하늘 계단", cell: [0, -1], back: "D" },
+  { label: "지하 갱도", cell: [0, 1], back: "U" },
+];
 export function zoneBegin(sc) {
-  zr();
   ZN.setRunSeed(sc.fr?.runSeed ?? (Math.random() * 4294967295) >>> 0);
   const d = sd();
-  const arm = d.lastArm ?? 0;
-  const z = ZN.startZone(arm);
-  sc.travelTo(ZN.arriveTile(z, "L"), 1);
+  const pick = STARTS[d.lastStart ?? 0] ?? STARTS[0];
+  const z0 = ZN.cell(...pick.cell);
+  sc.travelTo(arriveTile(sc.world, z0, pick.back), pick.back === "R" ? -1 : 1);
   const ask = (n = 0) => {
     const h = sc.hud?.();
     if (!h || h.modalOpen) return void (n < 40 && sc.time.delayedCall(150, () => ask(n + 1)));
-    const opts = ZN.ARMS.map((A, i) => {
-      const s = ZN.startZone(i);
-      const D = ZN.dangerOf(s);
-      return { label: `${A.name} 문`, desc: `${s.region.name} · ${D.name}`, icon: "icon_check", cb: () => ((d.lastArm = i), R.it.write(), i !== arm ? travel(sc, s.id, "L") : arrive(sc, s)) };
+    const opts = STARTS.map((s, i) => {
+      const z = ZN.cell(...s.cell);
+      return { label: s.label, desc: `${z.name} · ${ZN.LAYER_NAME(z.y)}`, icon: "icon_check", cb: () => ((d.lastStart = i), R.it.write(), z !== z0 ? travel(sc, z.id, s.back) : arrive(sc, z)) };
     });
-    h.choice("어느 문으로 나갈까?", "바깥으로 갈수록 위험하다 · 들고 간 것은 쓰러지면 잃는다 · [M] 구역 지도", [...opts, { label: "그대로", cb: () => arrive(sc, z) }]);
+    h.choice("어느 문으로 나갈까?", "거점에서 멀어질수록 위험하다 · 들고 간 것은 쓰러지면 잃는다 · [M] 구역 지도", [...opts, { label: "그대로", cb: () => arrive(sc, z0) }]);
   };
   sc.time.delayedCall(500, () => ask());
 }
-// 출구·관문·던전 입구 물체, 떠도는 정예 무리
+// 출구 물체, 떠도는 정예 무리
 export function zoneObjs(evm, S, T, traits) {
-  zr();
   const sc = evm.s, W = sc.world;
   const z = ZN.zoneAtChunk(S.index);
   if (!z) return;
-  for (const e of exitsOf(W, z)) {
-    if (Math.floor(e.tile / 32) !== S.index) continue;
-    const g = W.groundRowAt(e.tile);
+  for (const e of ZN.exitList(z)) {
+    const tile = exitTile(W, z, e.at);
+    if (Math.floor(tile / 32) !== S.index) continue;
+    const g = W.groundRowAt(tile);
     if (g <= 0) continue;
-    evm.objs.push(exitObj(sc, S.index, T + (e.tile - S.index * 32) * 16 + 8, g * 16, z, e));
+    evm.objs.push(exitObj(sc, S.index, T + (tile - S.index * 32) * 16 + 8, g * 16, z, e));
   }
-  // 떠도는 정예 무리
   const pc = ZN.packChunk(z);
   const fr = sc.fr;
   if (pc === S.index && fr && !(fr.packs ??= {})[z.id]) {
@@ -3841,27 +3849,42 @@ export function zoneObjs(evm, S, T, traits) {
     }
   }
 }
+const EXIT_LOOK = {
+  L: { arrow: "◀", tex: "fr_gate" },
+  R: { arrow: "▶", tex: "fr_gate" },
+  U: { arrow: "▲", tex: "fr_gate_up" },
+  D: { arrow: "▼", tex: "fr_gate_down" },
+  DG: { arrow: "▼", tex: "fr_gate_down" },
+};
 function exitObj(sc, chunk, x, y, z, e) {
   const ADD = R.zt.BlendModes.ADD;
   const dst = e.to === ZN.HUB_ID ? null : ZN.BY_ID[e.to];
   const D = dst ? ZN.dangerOf(dst) : { color: 0xffe08a, css: "#ffe08a", name: "거점" };
-  const arch = sc.add.image(x, y + 1, "fr_gate").setOrigin(0.5, 1).setDepth(5);
+  const L = EXIT_LOOK[e.at];
+  // 하늘에서 내려가는 문은 동굴 입구 대신 돌 아치
+  const tex = (e.at === "D" || e.at === "DG") && z.y < 0 ? "fr_gate" : L.tex;
+  const arch = sc.add.image(x, y + 1, tex).setOrigin(0.5, 1).setDepth(5);
   const glow = sc.add.image(x, y - 18, "fr_gate_glow").setTint(D.color).setBlendMode(ADD).setDepth(4).setAlpha(0.7);
-  const arrow = e.kind === "L" ? "◀ " : e.kind === "R" ? "▶ " : e.kind === "D" ? "▼ " : "◆ ";
-  const prompt = dst ? `${arrow}${e.label ?? dst.name} · ${D.name}` : `${arrow}거점으로 귀환 (안전)`;
-  const tag = R.ct(sc, x, y - 52, dst ? (e.kind === "D" ? "숨은 던전" : dst.short) : "거점", "tiny", D.css ?? "#ffe08a", { stroke: "#140e18", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(6);
-  e.kind === "D" && sc.fr && ((sc.fr.dgSeen ??= []).includes(z.id) || sc.fr.dgSeen.push(z.id));
+  const what = !dst ? "거점으로 귀환 (안전)" : e.at === "DG" ? "숨은 던전" : z.kind === "dungeon" ? "던전 밖으로" : dst.name;
+  const prompt = `${L.arrow} ${what}${dst && z.kind !== "dungeon" ? ` · ${D.name}` : ""}`;
+  const tagTxt = !dst ? "거점" : e.at === "DG" ? "숨은 던전" : e.at === "U" ? `▲ ${dst.short}` : e.at === "D" ? `▼ ${dst.short}` : dst.short;
+  const tag = R.ct(sc, x, y - 52, tagTxt, "tiny", D.css, { stroke: "#140e18", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(6);
+  e.at === "DG" && sc.fr && ((sc.fr.dgSeen ??= []).includes(z.id) || sc.fr.dgSeen.push(z.id));
   const o = { chunk, x, y, sprites: [arch, glow, tag], alive: !0, prompt };
   let t = Math.random() * 6, fxT = 0;
+  const up = e.at === "U" ? -1 : e.at === "D" || e.at === "DG" ? 1 : 0;
   o.update = (dt) => {
     t += dt;
     glow.setAlpha(0.55 + Math.sin(t * 2.4) * 0.2).setScale(1 + Math.sin(t * 1.7) * 0.05);
     fxT -= dt;
-    fxT <= 0 && ((fxT = 0.25), sc.fx.burst("glow", x + rnd(-9, 9), y - rnd(6, 36), 1, D.color));
+    if (fxT <= 0) {
+      fxT = 0.2;
+      up < 0 ? sc.fx.burst("rise", x + rnd(-8, 8), y - 6, 1, D.color) : sc.fx.burst("glow", x + rnd(-9, 9), y - rnd(6, 36), 1, D.color);
+    }
   };
   o.interact = () => {
     if (sc.boss && !sc.boss.dead) return void sc.hud?.()?.toast("보스가 길을 막고 있다", "#ff8a7a");
-    travel(sc, e.to, e.side, z.id);
+    travel(sc, e.to, e.back);
   };
   return o;
 }
@@ -3871,7 +3894,7 @@ export function zoneHudText(hud, run) {
   if (!z) return !1;
   const D = ZN.dangerOf(z);
   hud.distText.text !== z.name && hud.distText.setText(z.name);
-  const b = `${D.name} · ${D.label}   ·   [M] 구역 지도`;
+  const b = `${ZN.LAYER_NAME(z.y)} · ${D.name} ${D.label}   ·   [M] 구역 지도`;
   hud.bestText.text !== b && hud.bestText.setText(b);
   return !0;
 }
@@ -3884,8 +3907,8 @@ export function zoneProgress(hud) {
   hud.progFill.width = (hud.progBg.width - 2) * Math.max(0, Math.min(1, t / len));
   const dead = z.boss && run.bossDefeated.has(z.c1 - 2);
   hud.progSkull.setAlpha(z.boss && !dead ? 1 : 0.2);
-  const n = exitsOf(run.world, z).length;
-  const s = z.boss ? (dead ? `보스 처치 · 출구 ${n}곳` : "구역 끝에 보스가 있다") : `출구 ${n}곳`;
+  const ex = ZN.exitList(z).map((e) => EXIT_LOOK[e.at].arrow).join("");
+  const s = z.boss && !dead ? `구역 끝에 보스 · 출구 ${ex}` : `출구 ${ex}`;
   hud.progText.text !== s && hud.progText.setText(s);
   return !0;
 }
@@ -3897,8 +3920,8 @@ function toggleMap(hud) {
   }
   const run = hud.run;
   if (!run?.fr) return;
-  zr();
   hud.frMap = ZN.drawMap(hud, R, zoneOfPlayer(run), sd().seen ?? {}, { dungeons: run.fr.dgSeen ?? [] });
   R.j.play("open");
 }
+
 export const _ZN = ZN;

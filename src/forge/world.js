@@ -245,12 +245,12 @@ REGIONS.forEach((r, ri) => {
   const bid = `frb${ri}`;
   FR_BOSSES.push({
     id: bid, base: b[0], tint: b[1], amt: b[2], patterns: b[3], element: b[4],
-    name: r.boss.name, title: b[5], quote: r.boss.quote, hp: Math.round(r.boss.hp / mult * 0.45),
+    name: r.boss.name, title: b[5], quote: "", hp: Math.round(r.boss.hp / mult * 0.45),
     weak: el(r.boss.weak), resist: el(r.boss.resist), relic: r.boss.relic, region: ri,
   });
   const L = LOOK[ri];
   FR_REGIONS.push({
-    id: L.id, theme: L.theme, name: r.name, sub: r.quote, start: r.start, end: r.end, boss: bid,
+    id: L.id, theme: L.theme, name: r.name, sub: "", start: r.start, end: r.end, boss: bid,
     enemies, elites, hazards: L.hazards, density: 2.3 + ri * 0.07, eliteChance: 0.06 + ri * 0.008,
     ceiling: L.ceiling, particle: L.particle, bg: L.theme, patterns: L.patterns, events: L.events,
     music: L.music, pal: PAL[ri], element: el(r.element), gimmick: r.gimmick, idx: ri,
@@ -268,5 +268,6 @@ export const FR_ENDLESS = FR_REGIONS.map((r, i) => ({
   tint: [0xff8040, 0x8040ff, 0x40ffc0, 0xff40a0, 0xffe040, 0x40a0ff][i % 6],
 }));
 
-export const ENDLESS_START = 10000;
+// 격자 지도에서는 끝없는 회랑을 쓰지 않는다
+export const ENDLESS_START = 1e9;
 export const ENDLESS_LEN = 1000;

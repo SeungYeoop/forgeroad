@@ -526,11 +526,12 @@ export function makeScreens(R, D) {
       // 지역
       note(this, bx, ny + 128, 190, 126, 9, -0.015);
       pin(this, bx + 20, ny + 133, 0xc83a2a);
-      this.t(bx + 12, ny + 138, "지나온 땅", "small", q.textDim).setDepth(206);
-      [...R.Ht.map((r) => ({ name: r.name, start: r.start })), { name: "재련의 회랑", start: 1e4 }].forEach((r, i) => {
-        const ok = T.best >= r.start;
-        this.t(bx + 12 + (i % 2) * 90, ny + 156 + Math.floor(i / 2) * 12, `${ok ? r.name : "???"}`, "tiny", ok ? q.text : q.textDim).setDepth(206);
-      });
+      this.t(bx + 12, ny + 138, "밟아 본 땅", "small", q.textDim).setDepth(206);
+      const seen = sd().seen ?? {};
+      const regs = R.Ht.filter((r) => r.zone);
+      const nSeen = regs.filter((r) => seen[r.zone.id]).length;
+      this.t(bx + 12, ny + 156, `구역 ${nSeen} / ${regs.length}`, "body", q.text).setDepth(206);
+      regs.filter((r) => seen[r.zone.id]).slice(-8).forEach((r, i) => this.t(bx + 12 + (i % 2) * 90, ny + 176 + Math.floor(i / 2) * 12, r.name, "tiny", q.text).setDepth(206));
       // 거리 보상
       const rx = bx + 204, rw = X1 - 18 - rx;
       note(this, rx, ny, rw, 254, 10, 0.01);

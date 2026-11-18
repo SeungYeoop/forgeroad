@@ -7,6 +7,7 @@ import { FRBG, FRDECOR } from "./forge/bg.js";
 import * as PAINT from "./forge/bgpaint.js";
 import * as BGN from "./forge/bgnew.js";
 import { FR_REGIONS, FR_MONSTERS, FR_ELITES, FR_BOSSES, FR_ENDLESS, ENDLESS_START, ENDLESS_LEN } from "./forge/world.js";
+import { FR_WORLD } from "./forge/zones.js";
 
 const __defProp = Object.defineProperty;
 const Z = (obj, key, value) =>
@@ -6980,7 +6981,7 @@ class Ze {
   }
 }
 const Mn = [0, 2, 3, 5, 7, 8, 10],
-  Ht = FR_REGIONS,
+  Ht = FR_WORLD,
   Ii = FR_ENDLESS,
   si = ENDLESS_START,
   Pi = ENDLESS_LEN,
@@ -7060,7 +7061,7 @@ function je(A) {
 }
 const Bs = (A) => A.theme ?? A.id,
   us = (A) => Object.values(A).reduce((S, T) => S + T, 0),
-  Pn = () => Ht.map((A) => A.boss),
+  Pn = () => [...new Set(Ht.map((A) => A.boss).filter(Boolean))],
   We = [
     { id: "first_run", name: "첫 탐험", desc: "탐험을 1회 마친다", gold: 50, check: (A) => A.runs >= 1 },
     { id: "runs_10", name: "단골 방랑자", desc: "탐험을 10회 마친다", gold: 400, check: (A) => A.runs >= 10 },
@@ -8830,6 +8831,7 @@ const ue = {
     pitDamage: 0.15,
   };
 function ni(A) {
+  A = FG.diffDist(A);
   const S = Math.max(0, A) / 1e3,
     T = Math.max(0, A - 1e4) / 1e3,
     C = A >= 1e4 ? Math.floor(T) + 1 : 0;
@@ -8964,7 +8966,9 @@ class Xn {
   }
   isArena(S) {
     if (S < 0) return !1;
-    const v = ts(qi(Math.max(0, Nn(S) + vt / 2)).end);
+    const rg = qi(Math.max(0, Nn(S) + vt / 2));
+    if (!rg.boss) return !1;
+    const v = ts(rg.end);
     return S === v || S === v + 1;
   }
   // 지하·하늘 루트가 있는 조각: 처음 몇 조각과 보스 방 근처는 비운다
@@ -8988,7 +8992,7 @@ class Xn {
       t = bs(h),
       a = ni(Math.max(0, R)),
       v = ts(m.end),
-      o = S === v || S === v + 1,
+      o = !!m.boss && (S === v || S === v + 1),
       n = !o && S > 2 && E.chance(m.ceiling),
       i = new Un(T, n, E);
     i.safePits = m.idx === 0;
@@ -15049,9 +15053,9 @@ class pr extends zt.Scene {
   }
   tutorial() {
     const T = [
-        "화로가 떨어진 땅에 온 것을 환영한다, 방랑자여.",
-        "오른쪽 출구에서 탐험을 시작해 최대한 멀리 나아가라.",
-        "쓰러지면 이곳으로 돌아오며, 모은 골드로 강해질 수 있다.",
+        "상점에서 장비를 맞추고 오른쪽 출구로 탐험을 떠나라.",
+        "살아 돌아오면 전리품은 내 것, 쓰러지면 들고 간 것은 모두 잃는다.",
+        "탐험 중 [M]으로 구역 지도를 볼 수 있다.",
       ],
       C = Ce(this, ot / 2 - 170, 52, 340, 54)
         .setScrollFactor(0)
@@ -15701,7 +15705,7 @@ class xr {
       v = new Ze(T.seed),
       o = E.player,
       n = (e) => (this.objs.push(e), e),
-      i = E.world.distAt(t);
+      i = FG.diffDist(E.world.distAt(t));
     switch (T.type) {
       case "treasure": {
         const e = v.next(),
@@ -17160,7 +17164,7 @@ class yr {
     ((this.host = S), (this.groundY = E), (this.arenaL = R), (this.arenaR = h), (this.def = ji[T]));
     const t = ni(m);
     this.tier = t.tier;
-    const a = m / 1e3;
+    const a = FG.diffDist(m) / 1e3;
     ((this.maxHp = Math.round(this.def.hp * (1 + 0.22 * a) * (1 + t.tier * 0.3))),
       (this.hp = this.maxHp),
       (this.atk = this.def.atk * t.atkMult * 0.9),

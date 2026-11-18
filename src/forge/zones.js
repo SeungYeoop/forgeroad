@@ -1,30 +1,60 @@
-// 구역 지도 — 끝없는 거리 줄을 "구역" 칸으로 잘라 쓴다.
-// 지역(0~11)마다 맡은 거리 구간 = [숨은 던전 5조각] + [구역 2~3개]. 구역 끝은 절벽 벽으로 막히고,
-// 출구(왼쪽·오른쪽 끝)와 관문(구역 중간)으로 지도상 이웃 구역에 순간이동한다.
-// 거점을 가운데 두고 동·북·남·서 네 갈래로 뻗으며, 바깥 고리일수록 위험하다.
-const VT = 32, ME = 6, POCKET = 5;
-export const ARMS = [
-  { name: "동쪽", dx: 1, dy: 0, px: 0, py: -1 },
-  { name: "북쪽", dx: 0, dy: -1, px: -1, py: 0 },
-  { name: "남쪽", dx: 0, dy: 1, px: 1, py: 0 },
-  { name: "서쪽", dx: -1, dy: 0, px: 0, py: 1 },
-];
-// 고리 순서 (지도에서 이웃한 갈래): 동 → 북 → 서 → 남 → 동
-const CYCLE = [0, 1, 3, 2];
+// 격자 지도 — 7×7 칸, 가운데가 거점. 칸 하나 = 구역 하나.
+// 세로는 높이: 위 3줄은 하늘(높을수록 높은 하늘), 아래 3줄은 지하(낮을수록 깊은 땅속), 가운데 줄은 지상.
+// 가로는 바이옴: 지상 줄은 칸마다 다른 땅이고, 하늘·지하 줄도 그 아래(위) 지상 땅의 색과 몬스터가 섞인다.
+// 구역 안에서: 왼쪽 끝 출구 = 서쪽 칸, 오른쪽 끝 = 동쪽 칸, ▲ 문 = 위 칸(하늘 쪽), ▼ 문 = 아래 칸(지하 쪽).
+// 엔진은 "거리 줄" 하나로 돌아가므로, 칸마다 줄 위에 [숨은 던전 5조각][구역 8조각] 자리를 따로 잡아 둔다.
+// 난이도는 줄 위치가 아니라 거점에서 떨어진 칸 수(고리)로 정한다 (diffDist).
+import { FR_REGIONS } from "./world.js";
+
+const VT = 32, ME = 6, POCKET = 5, ZLEN = 8, N = 3;
+// 원래 지역(그림 재료) 번호
+const ART = { ash: 0, mist: 1, mine: 2, marsh: 3, fort: 4, frost: 5, glass: 6, spire: 7, crystal: 8, sky: 9, shadow: 10, core: 11 };
+// 지상 줄: x → [그림, 이름, 형용사]
+const GROUND = {
+  "-3": [ART.frost, "서리 절벽", "서리"],
+  "-2": [ART.marsh, "검은 늪지", "늪지"],
+  "-1": [ART.mist, "이끼 숲", "이끼"],
+  1: [ART.ash, "재의 들판", "잿빛"],
+  2: [ART.glass, "유리 모래톱", "유리"],
+  3: [ART.fort, "용암 요새", "불꽃"],
+};
+// 하늘·지하 줄: y → [그림, 이름, 층 이름]
+const LAYER = {
+  "-3": [ART.spire, "뇌운 첨탑", "높은 하늘"],
+  "-2": [ART.crystal, "빛의 정원", "구름 위"],
+  "-1": [ART.sky, "구름 섬", "낮은 하늘"],
+  1: [ART.mine, "광맥 동굴", "얕은 지하"],
+  2: [ART.shadow, "그림자 심연", "깊은 지하"],
+  3: [ART.core, "용암 핵", "땅의 핵"],
+};
+export const LAYER_NAME = (y) => (y === 0 ? "지상" : LAYER[y][2]);
+// 보스가 사는 칸 (그림 지역마다 한 곳)
+const BOSS_AT = { "1,0": ART.ash, "-1,0": ART.mist, "2,0": ART.glass, "-2,0": ART.marsh, "3,0": ART.fort, "-3,0": ART.frost, "3,-1": ART.sky, "-3,-2": ART.crystal, "0,-3": ART.spire, "-3,1": ART.mine, "3,2": ART.shadow, "0,3": ART.core };
+
 export const DANGER = [
+  null,
   { name: "파랑", label: "위험 낮음", color: 0x4a90ff, css: "#6aa8ff" },
   { name: "노랑", label: "위험", color: 0xffc83a, css: "#ffd060" },
   { name: "빨강", label: "매우 위험", color: 0xff4a3a, css: "#ff7060" },
   { name: "검정", label: "숨은 던전", color: 0x9a5ad8, css: "#c090ff" },
 ];
-const ROMAN = ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ"];
-
-export const ZONES = []; // 거리 순서
-export const BY_ID = {};
-const START = []; // 갈래별 첫 구역 id
-const regionZones = []; // 지역별 일반 구역 id 목록
 export const HUB_ID = "hub";
+export const ZONES = []; // 줄 위 순서 (던전·구역 모두)
+export const BY_ID = {};
+export const CELLS = {}; // "x,y" → 구역
+export const FR_WORLD = []; // 엔진 지역 목록 (칸마다 하나: 던전 + 구역)
 
+const key = (x, y) => `${x},${y}`;
+const lerp = (a, b, t) => {
+  const c = (s) => [(s >> 16) & 255, (s >> 8) & 255, s & 255];
+  const [r1, g1, b1] = c(a), [r2, g2, b2] = c(b);
+  return (Math.round(r1 + (r2 - r1) * t) << 16) | (Math.round(g1 + (g2 - g1) * t) << 8) | Math.round(b1 + (b2 - b1) * t);
+};
+function mixPal(a, b, t) {
+  const o = {};
+  for (const k of Object.keys(a)) o[k] = Array.isArray(a[k]) ? a[k].map((v, i) => lerp(v, b[k]?.[i] ?? v, t)) : typeof a[k] === "number" ? lerp(a[k], b[k] ?? a[k], t) : a[k];
+  return o;
+}
 const hash = (...a) => {
   let h = 2166136261 >>> 0;
   for (const v of a) for (const ch of String(v)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
@@ -34,78 +64,60 @@ const hash = (...a) => {
 };
 export const roll = (...a) => hash(...a) / 4294967296;
 
-export function buildZones(regions) {
-  if (ZONES.length) return;
-  regions.slice(0, 12).forEach((reg, r) => {
-    const c0 = Math.floor((ME + reg.start) / VT), c1 = Math.floor((ME + reg.end) / VT);
-    const ring = Math.floor(r / 4), arm = r % 4;
-    const dz = { id: `d${r}`, r, ring, arm, kind: "dungeon", c0, c1: c0 + POCKET, name: `${reg.name} 숨은 던전`, short: "숨은 던전", region: reg, L: null, R: null, gates: [] };
-    ZONES.push(dz);
-    const len = c1 - (c0 + POCKET), n = Math.max(1, Math.round(len / 8));
-    const ids = [];
-    let a = c0 + POCKET;
-    for (let i = 0; i < n; i++) {
-      const b = i === n - 1 ? c1 : a + Math.floor(len / n);
-      const boss = i === n - 1;
-      const branch = n === 3 && i === 1;
-      const z = { id: `z${r}_${i}`, r, ring, arm, i, kind: "zone", c0: a, c1: b, boss, branch, region: reg, L: null, R: null, gates: [] };
-      z.name = `${reg.name} ${ROMAN[i]}${boss ? " · 보스" : branch ? " · 외곽" : ""}`;
-      z.short = `${reg.name} ${ROMAN[i]}`;
-      ZONES.push(z);
-      ids.push(z.id);
-      a = b;
-    }
-    regionZones[r] = ids;
-  });
-  for (const z of ZONES) BY_ID[z.id] = z;
-  // 연결
-  const link = (a, sa, b, sb) => {
-    const put = (z, side, other) => {
-      if (side === "L" || side === "R") z[side] = { to: other };
-      else z.gates.push({ to: other });
+// ── 만들기 ──────────────────────────────────────────
+(function build() {
+  const cells = [];
+  for (let y = -N; y <= N; y++) for (let x = -N; x <= N; x++) (x || y) && cells.push([x, y]);
+  // 줄 위 순서: 안쪽 고리부터
+  const ring = ([x, y]) => Math.max(Math.abs(x), Math.abs(y));
+  cells.sort((a, b) => ring(a) - ring(b) || Math.atan2(a[1], a[0]) - Math.atan2(b[1], b[0]));
+  let c = 2; // 0~1 조각은 비워 둔다 (탐험 시작 직후 잠깐 서 있는 자리)
+  for (const [x, y] of cells) {
+    const r = ring([x, y]);
+    // 고리 안 세부 난이도 0~11 (드롭 등급·재료·적 세기 기준)
+    const lvl = Math.min(11, (r - 1) * 4 + Math.min(3, Math.abs(x) + Math.abs(y) - r));
+    const g = GROUND[x], L = LAYER[y];
+    const artI = y === 0 ? g[0] : L[0];
+    const art = FR_REGIONS[artI];
+    const colArt = g ? FR_REGIONS[g[0]] : null;
+    const name = y === 0 ? g[1] : x === 0 ? L[1] : `${g[2]} ${L[1]}`;
+    const bossArt = BOSS_AT[key(x, y)];
+    const id = `g${x}_${y}`.replace(/-/g, "m");
+    const d = { id: `d_${id}`, kind: "dungeon", x, y, ring: r, lvl, c0: c, c1: c + POCKET, name: `${name} 숨은 던전`, short: "숨은 던전" };
+    const z = { id, kind: "zone", x, y, ring: r, lvl, c0: c + POCKET, c1: c + POCKET + ZLEN, name, short: name, boss: bossArt != null, art: artI };
+    c += POCKET + ZLEN;
+    ZONES.push(d, z);
+    CELLS[key(x, y)] = z;
+    // 엔진용 지역
+    const enemies = [...art.enemies];
+    colArt && colArt !== art && enemies.push(...colArt.enemies.slice(0, 4).map((e) => ({ id: e.id, w: Math.max(1, e.w - 1) })));
+    const reg = {
+      ...art,
+      id: `w_${id}`,
+      bgId: art.id,
+      src: art.id,
+      srcIdx: artI,
+      name,
+      sub: "",
+      start: d.c0 * VT - ME,
+      end: z.c1 * VT - ME,
+      boss: bossArt != null ? FR_REGIONS[bossArt].boss : null,
+      enemies,
+      pal: colArt && y !== 0 ? mixPal(art.pal, colArt.pal, 0.35) : art.pal,
+      idx: lvl,
+      ceiling: y > 0 ? Math.max(0.75, art.ceiling ?? 0) : y < 0 ? 0 : art.ceiling,
+      patterns: y < 0 ? { ...art.patterns, floating: (art.patterns.floating ?? 0) + 4, platforms: (art.patterns.platforms ?? 0) + 2 } : art.patterns,
+      density: 2.3 + lvl * 0.07,
+      eliteChance: 0.06 + lvl * 0.008,
+      zone: z,
     };
-    put(a, sa, b.id ?? b), b.id && put(b, sb, a.id);
-  };
-  const freeSide = (z) => (!z.R ? "R" : "G");
-  for (let d = 0; d < 4; d++) {
-    let prevBoss = null;
-    for (let ring = 0; ring < 3; ring++) {
-      const r = ring * 4 + d;
-      const zs = regionZones[r].map((id) => BY_ID[id]);
-      const z0 = zs[0], last = zs[zs.length - 1];
-      if (ring === 0) ((z0.L = { to: HUB_ID }), (START[d] = z0.id));
-      else link(prevBoss, "R", z0, "L");
-      if (zs.length === 3) (link(z0, "R", last, "L"), link(z0, "G", zs[1], "L"));
-      else if (zs.length === 2) link(z0, "R", last, "L");
-      prevBoss = last;
-    }
+    FR_WORLD.push(reg);
+    z.reg = d.reg = reg;
   }
-  // 고리 연결: 갈래의 외곽(없으면 첫 구역) → 다음 갈래의 첫 구역
-  for (let ring = 0; ring < 3; ring++)
-    for (let k = 0; k < 4; k++) {
-      const d = CYCLE[k], e = CYCLE[(k + 1) % 4];
-      const zs = regionZones[ring * 4 + d].map((id) => BY_ID[id]);
-      const from = zs.length === 3 ? zs[1] : zs[0];
-      const to = BY_ID[regionZones[ring * 4 + e][0]];
-      link(from, freeSide(from), to, "G");
-    }
-  // 지도 위치
-  for (let d = 0; d < 4; d++) {
-    const A = ARMS[d];
-    let s = 1;
-    for (let ring = 0; ring < 3; ring++) {
-      const zs = regionZones[ring * 4 + d].map((id) => BY_ID[id]);
-      zs[0].pos = [A.dx * s, A.dy * s];
-      if (zs.length === 3) ((zs[1].pos = [A.dx * s + A.px, A.dy * s + A.py]), (zs[2].pos = [A.dx * (s + 1), A.dy * (s + 1)]), (s += 2));
-      else if (zs.length === 2) ((zs[1].pos = [A.dx * (s + 1), A.dy * (s + 1)]), (s += 2));
-      else s += 1;
-    }
-  }
-}
-export const startZone = (arm) => BY_ID[START[arm]];
-export const dangerOf = (z) => DANGER[z.kind === "dungeon" ? 3 : z.ring];
+  for (const z of ZONES) BY_ID[z.id] = z;
+})();
 
-// 조각 번호 → 구역
+// ── 찾기 ────────────────────────────────────────────
 export function zoneAtChunk(c) {
   let lo = 0, hi = ZONES.length - 1;
   while (lo <= hi) {
@@ -120,107 +132,106 @@ export const zoneAtTile = (t) => zoneAtChunk(Math.floor(t / VT));
 export const isFirst = (c) => zoneAtChunk(c)?.c0 === c;
 export const isLast = (c) => zoneAtChunk(c)?.c1 - 1 === c;
 export const isPocket = (c) => zoneAtChunk(c)?.kind === "dungeon";
+export const dangerOf = (z) => DANGER[z.kind === "dungeon" ? 4 : z.ring];
+export const cell = (x, y) => (x === 0 && y === 0 ? HUB_ID : CELLS[key(x, y)] ?? null);
+export const pocketOf = (z) => BY_ID[`d_${z.id}`];
+export const zoneOfPocket = (d) => BY_ID[d.id.slice(2)];
+// 난이도용 거리: 고리 안 세부 난이도(lvl) → 원래 지역 구간의 거리
+export function diffDist(A) {
+  const z = zoneAtTile(Math.floor(A) + ME);
+  if (!z) return A;
+  const R = FR_REGIONS[z.lvl], reg = z.reg;
+  const f = Math.max(0, Math.min(1, (A - reg.start) / Math.max(1, reg.end - reg.start)));
+  return R.start + f * (R.end - R.start) + (z.kind === "dungeon" ? 150 : 0);
+}
 
-// 관문 자리: 구역 중간 조각들에 고르게. k = 관문 번호, 마지막 칸은 숨은 던전 입구용
-export function gateChunk(z, k, total) {
-  const n = z.c1 - z.c0;
-  return z.c0 + 1 + Math.floor(((n - 3) * (k + 1)) / (total + 1));
-}
-// 도착 위치 (타일 x). side: "L" | "R" | gate 번호
-export function arriveTile(z, side) {
-  if (side === "L") return z.c0 * VT + 5;
-  if (side === "R") return z.c1 * VT - 6;
-  if (side === "D") return dungeonChunk(z) * VT + 22;
-  return gateChunk(z, side, gateCount(z)) * VT + 16;
-}
-// 이번 탐험의 숨은 던전 입구: 지역마다 45% 확률로 한 구역에
+// ── 문 ──────────────────────────────────────────────
+// 위·아래 문은 구역 3분의 1, 3분의 2 지점 조각에
+export const upChunk = (z) => z.c0 + 2;
+export const downChunk = (z) => z.c1 - 4;
+// 이번 탐험의 무작위 내용물
 let RUN_SEED = 0;
 export const setRunSeed = (s) => (RUN_SEED = s >>> 0);
-export const runSeed = () => RUN_SEED;
-export function dungeonHost(r) {
-  if (roll(RUN_SEED, "dg", r) > 0.45) return null;
-  const ids = regionZones[r];
-  return BY_ID[ids[hash(RUN_SEED, "dgz", r) % ids.length]];
-}
-export const hasDungeon = (z) => z.kind === "zone" && dungeonHost(z.r) === z;
-export const dungeonChunk = (z) => z.c0 + 1 + (hash(RUN_SEED, "dgc", z.id) % Math.max(1, z.c1 - z.c0 - 3));
-export const gateCount = (z) => z.gates.length;
-// 떠도는 정예 무리 (구역마다 35%)
-export const packChunk = (z) => (z.kind === "zone" && roll(RUN_SEED, "pk", z.id) < 0.35 ? z.c0 + 1 + (hash(RUN_SEED, "pkc", z.id) % Math.max(1, z.c1 - z.c0 - 2)) : -1);
-// 귀환 표석: 바깥 고리(노랑·빨강) 구역에서 절반 확률
-export const waystoneOk = (z) => z?.kind === "zone" && z.ring >= 1 && roll(RUN_SEED, "ws", z.id) < 0.5;
-// 상자: 이번 탐험마다 있을지·등급이 바뀐다
+// 숨은 던전: 바깥 고리일수록 잘 나온다
+export const hasDungeon = (z) => z.kind === "zone" && roll(RUN_SEED, "dg", z.id) < 0.12 + z.ring * 0.06;
+// 숨은 던전 입구는 위·아래 문 사이 조각에
+export const dungeonChunk = (z) => z.c0 + 3;
+export const packChunk = (z) => (z.kind === "zone" && roll(RUN_SEED, "pk", z.id) < 0.35 ? z.c0 + 1 + (hash(RUN_SEED, "pkc", z.id) % (ZLEN - 3)) : -1);
+export const waystoneOk = (z) => z?.kind === "zone" && z.ring >= 2 && roll(RUN_SEED, "ws", z.id) < 0.5;
 export function chestRoll(c, k, tier) {
   const z = zoneAtChunk(c);
   if (!z) return tier;
-  const p = roll(RUN_SEED, "ch", c, k);
   if (z.kind === "dungeon") return Math.max(1, tier);
-  if (p < 0.3) return null;
-  const q = roll(RUN_SEED, "ct", c, k) + z.ring * 0.06;
+  if (roll(RUN_SEED, "ch", c, k) < 0.3) return null;
+  const q = roll(RUN_SEED, "ct", c, k) + (z.ring - 1) * 0.06;
   return q > 0.95 ? 2 : q > 0.68 ? 1 : 0;
+}
+// 구역의 출구 목록: [{at: "L"|"R"|"U"|"D"|"DG", to: 구역 id | HUB_ID, back: 도착할 자리}]
+export function exitList(z) {
+  if (z.kind === "dungeon") {
+    const host = zoneOfPocket(z);
+    return [{ at: "L", to: host.id, back: "DG" }, { at: "R", to: host.id, back: "DG" }];
+  }
+  const out = [];
+  const W = cell(z.x - 1, z.y), E = cell(z.x + 1, z.y), U = cell(z.x, z.y - 1), D = cell(z.x, z.y + 1);
+  W && out.push({ at: "L", to: W.id ?? W, back: "R" });
+  E && out.push({ at: "R", to: E.id ?? E, back: "L" });
+  U && out.push({ at: "U", to: U.id ?? U, back: "D" });
+  D && out.push({ at: "D", to: D.id ?? D, back: "U" });
+  hasDungeon(z) && out.push({ at: "DG", to: pocketOf(z).id, back: "L" });
+  return out;
 }
 
 // ── 지도 그리기 (Hud 위에 겹친다) ─────────────────────
 export function drawMap(hud, R, cur, seen, extra = {}) {
   const { ot: W, xt: H, ct } = R;
   const objs = [];
-  const add = (o, d = 160) => (objs.push(o), o.setScrollFactor?.(0), o.setDepth(d + 300), o);
+  const add = (o, d = 0) => (objs.push(o), o.setScrollFactor?.(0), o.setDepth(460 + d), o);
   add(hud.add.rectangle(0, 0, W, H, 0x06050a, 0.95).setOrigin(0).setInteractive());
   add(hud.add.rectangle(10, 10, W - 20, H - 20).setOrigin(0).setStrokeStyle(1, 0x7a5434));
   add(ct(hud, 20, 14, "구역 지도", "big", "#f2e6c4"));
   add(ct(hud, W - 20, 18, "[M] 닫기", "tiny", "#a89070").setOrigin(1, 0));
-  const SX = 36, SY = 23, CX = W / 2, CY = H / 2 + 4;
-  const P = (z) => [CX + z.pos[0] * SX, CY + z.pos[1] * SY];
-  const g = add(hud.add.graphics(), 161);
-  // 선
-  const drawn = new Set();
-  for (const z of ZONES) {
-    if (z.kind !== "zone") continue;
-    const outs = [z.L, z.R, ...z.gates].filter(Boolean);
-    for (const l of outs) {
-      const key = [z.id, l.to].sort().join("-");
-      if (drawn.has(key)) continue;
-      drawn.add(key);
-      const [x1, y1] = P(z);
-      const [x2, y2] = l.to === HUB_ID ? [CX, CY] : P(BY_ID[l.to]);
-      const known = seen[z.id] || seen[l.to];
-      g.lineStyle(1, known ? 0xc8a878 : 0x4a3e34, known ? 0.8 : 0.5).lineBetween(x1, y1, x2, y2);
-    }
+  const CW = 66, CH = 38, CX = W / 2 + 30, CY = H / 2 + 8;
+  const P = (x, y) => [CX + x * CW, CY + y * CH];
+  const g = add(hud.add.graphics(), 1);
+  const here = cur?.kind === "dungeon" ? zoneOfPocket(cur) : cur;
+  // 층 이름 (왼쪽)
+  for (let y = -N; y <= N; y++) {
+    const [, py] = P(-N, y);
+    add(ct(hud, CX - N * CW - CW / 2 - 8, py - 5, LAYER_NAME(y), "tiny", y < 0 ? "#9cc8ff" : y > 0 ? "#d0a070" : "#c8e090").setOrigin(1, 0), 2);
   }
-  // 거점
-  g.fillStyle(0xffe08a, 1).fillCircle(CX, CY, 7);
-  g.lineStyle(2, 0x2a1408, 1).strokeCircle(CX, CY, 7);
-  add(ct(hud, CX - 10, CY - 10, "거점", "tiny", "#ffe08a", { stroke: "#140e18", strokeThickness: 3 }).setOrigin(1, 1), 163);
-  for (const z of ZONES) {
-    if (z.kind !== "zone") continue;
-    const [x, y] = P(z);
-    const D = dangerOf(z);
-    const s = seen[z.id], here = cur && cur.id === z.id;
-    const r = z.boss ? 6 : 5;
-    g.fillStyle(D.color, s ? 1 : 0.35);
-    z.boss ? g.fillRect(x - r, y - r, r * 2, r * 2) : g.fillCircle(x, y, r);
-    g.lineStyle(1, 0x140e18, 1);
-    z.boss ? g.strokeRect(x - r, y - r, r * 2, r * 2) : g.strokeCircle(x, y, r);
-    if (here) {
-      const ring = add(hud.add.circle(x, y, 10).setStrokeStyle(2, 0xffffff), 164);
-      hud.tweens.add({ targets: ring, scale: 1.5, alpha: 0.2, duration: 700, repeat: -1 });
+  // 칸
+  for (let y = -N; y <= N; y++)
+    for (let x = -N; x <= N; x++) {
+      const [px, py] = P(x, y);
+      const w = CW - 6, h = CH - 6;
+      if (!x && !y) {
+        g.fillStyle(0x4a3418, 1).fillRect(px - w / 2, py - h / 2, w, h);
+        g.lineStyle(2, 0xffe08a, 1).strokeRect(px - w / 2, py - h / 2, w, h);
+        add(ct(hud, px, py - 6, "거점", "small", "#ffe08a").setOrigin(0.5, 0), 2);
+        continue;
+      }
+      const z = CELLS[key(x, y)], D = dangerOf(z), s = seen[z.id];
+      g.fillStyle(D.color, s ? 0.55 : 0.18).fillRect(px - w / 2, py - h / 2, w, h);
+      g.lineStyle(1, D.color, s ? 1 : 0.5).strokeRect(px - w / 2, py - h / 2, w, h);
+      z.boss && (g.fillStyle(0x140e18, 1).fillRect(px + w / 2 - 9, py - h / 2 + 2, 7, 7), g.fillStyle(0xff6050, 1).fillRect(px + w / 2 - 8, py - h / 2 + 3, 5, 5));
+      extra.dungeons?.includes(z.id) && g.fillStyle(DANGER[4].color, 1).fillTriangle(px - w / 2 + 3, py - h / 2 + 10, px - w / 2 + 11, py - h / 2 + 10, px - w / 2 + 7, py - h / 2 + 3);
+      const nm = s || here === z ? z.short : "?";
+      const two = nm.length > 6 && nm.includes(" ");
+      add(ct(hud, px, py, two ? nm.replace(" ", "\n") : nm, "tiny", s ? "#f2e6c4" : "#8a7a6a", { align: "center", stroke: "#140e18", strokeThickness: 2 }).setOrigin(0.5, 0.5), 2);
+      if (here === z) {
+        const ring = add(hud.add.rectangle(px, py, w + 4, h + 4).setStrokeStyle(2, 0xffffff), 3);
+        hud.tweens.add({ targets: ring, alpha: 0.2, duration: 600, yoyo: !0, repeat: -1 });
+      }
     }
-    // 이번 탐험에서 알게 된 숨은 던전
-    if (extra.dungeons?.includes(z.id)) {
-      g.fillStyle(DANGER[3].color, 1).fillTriangle(x + 6, y - 9, x + 11, y - 2, x + 1, y - 2);
-    }
-    const side = z.pos[0] === 0;
-    const up = !side && Math.abs(z.pos[0]) % 2 === 0;
-    if (s || here) add(ct(hud, side ? x + 9 : x, side ? y - 5 : up ? y - 7 : y + 7, z.short, "tiny", here ? "#ffffff" : "#d8c8a8", { stroke: "#140e18", strokeThickness: 2 }).setOrigin(side ? 0 : 0.5, up ? 1 : 0), 163);
-  }
   // 범례
   let lx = 20;
-  for (const D of DANGER) {
-    g.fillStyle(D.color, 1).fillCircle(lx + 5, H - 24, 4);
-    const t = add(ct(hud, lx + 12, H - 30, `${D.name} · ${D.label}`, "tiny", D.css), 163);
-    lx += t.width + 26;
+  for (const D of DANGER.slice(1)) {
+    g.fillStyle(D.color, 1).fillRect(lx, H - 27, 8, 8);
+    const t = add(ct(hud, lx + 12, H - 30, `${D.name} · ${D.label}`, "tiny", D.css), 2);
+    lx += t.width + 24;
   }
-  add(ct(hud, W - 20, H - 30, "■ 보스 구역  · ▲ 숨은 던전", "tiny", "#a89070").setOrigin(1, 0), 163);
-  cur && add(ct(hud, 20, 36, `현재: ${cur.name} · ${dangerOf(cur).name} ${dangerOf(cur).label}`, "small", dangerOf(cur).css), 163);
+  add(ct(hud, W - 20, H - 30, "■ 보스  ▲ 숨은 던전", "tiny", "#a89070").setOrigin(1, 0), 2);
+  cur && add(ct(hud, 20, 36, `현재: ${cur.name} · ${LAYER_NAME(cur.y)} · ${dangerOf(cur).name} ${dangerOf(cur).label}`, "small", dangerOf(cur).css), 2);
   return objs;
 }
