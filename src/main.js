@@ -9011,7 +9011,6 @@ class Xn {
     } else {
       this.tplState = this.tplState ?? new Map();
       FG.designChunk(i, { rng: i.rng, region: m, dist: R, S, Ft, state: this.tplState, hazard: (nm) => this.pattern(nm, i, m, R, a.tier) });
-      FG.groundShape(i, S);
       // 하늘 루트 (천장 있는 조각·보스 근처 제외)
       S > 2 && !n && this.tunnelAt(S) && (i.sky = FG.skyRoute(i, { S, seed: this.seed, rng: i.rng, Ft, peak: FG.peakChunk(S), ladder: FG.ladderChunk(S) }));
     }
@@ -9051,7 +9050,7 @@ class Xn {
     !e && FG.groundRepair(S, r, vt, Ft);
     // 하늘·동굴 구역: 조각 전체를 새로 채운다 (지상 구역 ▲ 문 조각은 징검다리만)
     const zg = FG.zoneGen(S, r, l, s, { vt, Ft, fe, ze, plat: _e, seed: this.seed, arena: !!e });
-    zg && !zg.partial && ((i.hazards.length = 0), (i.slopes = []), (i.decorHints = []), (i.extraSpawns = []));
+    zg && !zg.partial && (zg.keepHazards || (i.hazards.length = 0), (i.slopes = []), (i.decorHints = []), (i.extraSpawns = []));
     zg && !e && (i.sky = { clouds: zg.clouds, chests: zg.chests, spawns: [] });
     // 지하 동굴 (설계된 조각만)
     let caveOut = { shafts: [], spawns: [], caves: [], strong: [], mid: null };
@@ -9065,7 +9064,7 @@ class Xn {
       for (const y of caveOut.slopes ?? []) r[y.row * vt + y.x] === ze && (r[y.row * vt + y.x] = y.code);
     }
     // 빠지면 못 나오는 구덩이에 발판을 놓는다
-    FG.fixTraps(r, { vt, Ft, fe, ze, plat: _e });
+    zg || FG.fixTraps(r, { vt, Ft, fe, ze, plat: _e });
     let u = l[vt - 1];
     u <= 0 && (u = i.h);
     for (let y = i.hazards.length - 1; y >= 0; y--) {

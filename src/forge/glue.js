@@ -3757,7 +3757,7 @@ export function zoneWalls(S, data) {
 function flatTile(world, t) {
   for (const d of [0, 3, -3, 6, -6, 9, -9, 12, -12]) {
     const x = t + d, g = world.groundRowAt(x);
-    if (g > 0 && world.groundRowAt(x - 1) === g && world.groundRowAt(x + 1) === g) return x;
+    if (g > 0 && world.groundRowAt(x - 1) === g && world.groundRowAt(x + 1) === g && [-1, 0, 1].every((k) => world.code(x + k, g) !== 0)) return x;
   }
   return t;
 }
@@ -3823,21 +3823,19 @@ export function groundRepair(S, r, vt, Ft) {
   }
 }
 // 지상 구역의 ▲ 문 조각: 평평한 빈터 + 하늘로 오르는 섬 계단 (원래 지형·동굴 구멍과 겹치지 않게)
-export const groundPeakChunk = (S) => {
-  const z = ZN.zoneAtChunk(S);
-  return !!z && z.kind === "zone" && z.y === 0 && S === ZN.upChunk(z);
-};
+export const groundPeakChunk = () => !1;
 export const ladderChunk = () => !1;
 // 하늘·동굴 구역은 조각 전체를 새로 채우고, 지상 구역의 ▲ 문 조각엔 꼭대기까지 징검다리를 놓는다
 const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "lush" : Math.abs(x) % 2 ? "geode" : "drip");
+const GROUND_BIO = { "-3": "drip", "-2": "deep", "-1": "lush", 1: "drip", 2: "geode", 3: "magma" };
 export function zoneGen(S, r, l, s, o) {
   const z = ZN.zoneAtChunk(S);
   if (!z) return null;
-  const edge = z.c0 === S || z.c1 - 1 === S, isZone = z.kind === "zone";
-  if (z.y < 0) return ZG.generate("sky", S, r, l, s, { ...o, edge, peak: isZone && S === ZN.upChunk(z) });
-  if (z.y > 0) return ZG.generate("cave", S, r, l, s, { ...o, edge, up: isZone && S === ZN.upChunk(z), down: isZone && S === ZN.downChunk(z), biome: CAVE_BIO(z.x, z.y), forceShafts: S === z.c0 + 1 || S === z.c0 + 4 });
-  if (isZone && S === ZN.upChunk(z) && !o.arena) return { partial: 1, ...ZG.groundPeak(S, r, l, o) };
-  return null;
+  const isZone = z.kind === "zone";
+  const biome = z.y > 0 ? CAVE_BIO(z.x, z.y) : GROUND_BIO[z.x] ?? "drip";
+  const out = ZG.chunk(z, S, r, l, s, { ...o, Ft: R.Ft, up: isZone ? ZN.upChunk(z) : -1, down: isZone ? ZN.downChunk(z) : -1, biome });
+  out.keepHazards = z.y === 0;
+  return out;
 }
 // 하늘 구역(던전 포함)에는 지하 동굴이 없다
 export const skyZone = (S) => (ZN.zoneAtChunk(S)?.y ?? 0) < 0;
@@ -4017,3 +4015,5 @@ function toggleMap(hud) {
 }
 
 export const _ZN = ZN;
+export const _ZG = ZG;
+export const _exitPos = (world, z, at) => exitPos(world, z, at);

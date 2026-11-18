@@ -150,7 +150,8 @@ export function diffDist(A) {
 
 // ── 문 ──────────────────────────────────────────────
 // 위·아래 문은 구역 3분의 1, 3분의 2 지점 조각에
-export const upChunk = (z) => z.c0 + 2;
+// 하늘로 오르는 섬들이 넓게 퍼지도록 구역 가운데에
+export const upChunk = (z) => z.c0 + 4;
 // 보스 방 근처(뒤 4조각)에는 지하가 없으므로 앞쪽에
 export const downChunk = (z) => z.c0 + 3;
 // 이번 탐험의 무작위 내용물
