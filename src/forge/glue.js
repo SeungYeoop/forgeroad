@@ -29,7 +29,8 @@ import { bossRun6 } from "./foes/boss6.js";
 import { interp } from "./interp.js";
 import * as SP from "./spells.js";
 import * as ZN from "./zones.js";
-import * as ZG from "./zonegen.js";
+import * as ZG from "./natgen.js";
+import { biomeOf } from "./terrprof.js";
 import * as SK from "./skills.js";
 import * as LOOK from "./look.js";
 import * as ICON from "./icons.js";
@@ -730,7 +731,10 @@ function groundY(sc, x, y) {
   let yy = y;
   for (let i = 0; i < 30 && !c.solidAtPx(x, yy + 1); i++) yy += 8;
   for (let i = 0; i < 8 && c.solidAtPx(x, yy - 1); i++) yy -= 8;
-  return Math.floor((yy + 1) / 16) * 16;
+  // 1px까지 정확히 (자연 지형의 땅은 칸 경계에 맞춰져 있지 않다)
+  for (let i = 0; i < 10 && !c.solidAtPx(x, yy + 1); i++) yy++;
+  for (let i = 0; i < 12 && c.solidAtPx(x, yy); i++) yy--;
+  return yy + 1;
 }
 
 // 그래픽 효과
@@ -2131,8 +2135,13 @@ function updatePickups(sc, dt) {
       k.vy = Math.min(500, k.vy + 900 * dt);
       k.x += k.vx * dt;
       const ny = k.y + k.vy * dt;
-      if (k.vy > 0 && sc.collider.solidAtPx(k.x, ny + 6)) ((k.ground = !0), (k.y = Math.floor((ny + 6) / 16) * 16 - 8));
-      else k.y = ny;
+      if (k.vy > 0 && sc.collider.solidAtPx(k.x, ny + 6)) {
+        // 실제 지면(1px 단위)에 내려앉는다
+        let gy = Math.floor(ny + 6);
+        while (gy > ny - 10 && sc.collider.solidAtPx(k.x, gy - 1)) gy--;
+        k.ground = !0;
+        k.y = gy - 8;
+      } else k.y = ny;
       k.y > 900 && (k.y = p.body.y - 20, k.x = p.cx);
     }
     const bob = k.ground ? Math.sin(k.t * 3) * 2 : 0;
@@ -3753,12 +3762,18 @@ export function zoneWalls(S, data) {
   const from = z.y === 0 ? 70 - 14 : 0;
   for (const x of cols) for (let row = from; row < R.Ft; row++) data.grid[row * 32 + x] = 1;
 }
-// 밟을 수 있는 평평한 칸 찾기 (없으면 그대로)
+// 밟을 수 있는 평평한 칸 찾기 (없으면 그대로). 자연 지형은 칸 전체가 1px 안으로 평평한 칸(flat)을 먼저 찾는다
+const flatAt = (world, x) => {
+  const C = Math.floor(x / 32), d = world.gen.get(C);
+  return d.flat ? d.flat[x - C * 32] === 1 : !0;
+};
 function flatTile(world, t) {
-  for (const d of [0, 3, -3, 6, -6, 9, -9, 12, -12]) {
-    const x = t + d, g = world.groundRowAt(x);
-    if (g > 0 && world.groundRowAt(x - 1) === g && world.groundRowAt(x + 1) === g && [-1, 0, 1].every((k) => world.code(x + k, g) !== 0)) return x;
-  }
+  for (const strict of [!0, !1])
+    for (const d of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8, 9, -9, 10, -10, 11, -11, 12, -12]) {
+      const x = t + d, g = world.groundRowAt(x);
+      if (!(g > 0 && world.groundRowAt(x - 1) === g && world.groundRowAt(x + 1) === g)) continue;
+      if (strict ? [-1, 0, 1].every((k) => flatAt(world, x + k)) : [-1, 0, 1].every((k) => world.code(x + k, g) !== 0)) return x;
+    }
   return t;
 }
 // ▲ 문 = 하늘 루트의 가장 높은 섬(지하 구역은 동굴 맨 위층), ▼ 문 = 지하 본길의 가장 깊은 바닥
@@ -3826,14 +3841,12 @@ export function groundRepair(S, r, vt, Ft) {
 export const groundPeakChunk = () => !1;
 export const ladderChunk = () => !1;
 // 하늘·동굴 구역은 조각 전체를 새로 채우고, 지상 구역의 ▲ 문 조각엔 꼭대기까지 징검다리를 놓는다
-const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "lush" : Math.abs(x) % 2 ? "geode" : "drip");
-const GROUND_BIO = { "-3": "drip", "-2": "deep", "-1": "lush", 1: "drip", 2: "geode", 3: "magma" };
 export function zoneGen(S, r, l, s, o) {
   const z = ZN.zoneAtChunk(S);
   if (!z) return null;
   const isZone = z.kind === "zone";
-  const biome = z.y > 0 ? CAVE_BIO(z.x, z.y) : GROUND_BIO[z.x] ?? "drip";
-  const out = ZG.chunk(z, S, r, l, s, { ...o, Ft: R.Ft, up: isZone ? ZN.upChunk(z) : -1, down: isZone ? ZN.downChunk(z) : -1, biome });
+  const biome = biomeOf(z);
+  const out = ZG.chunk(z, S, r, l, s, { ...o, Ft: R.Ft, up: isZone ? ZN.upChunk(z) : -1, down: isZone ? ZN.downChunk(z) : -1, biome, patterns: z.y === 0 ? z.reg?.patterns : null });
   out.keepHazards = z.y === 0;
   return out;
 }
@@ -3843,19 +3856,19 @@ export const shaftChunk = (S) => {
   const z = ZN.zoneAtChunk(S);
   return !!z && z.kind === "zone" && S === z.c0 + 1;
 };
-const onGround = (world, t) => ({ tile: t, row: world.groundRowAt(t) });
-// 출구 자리 {tile, row}
+// 출구 자리 {tile, row, py}: py는 실제 지면 높이(px) — 자연 지형은 칸 경계에 맞지 않을 수 있다
+const onGround = (world, t) => ({ tile: t, row: world.groundRowAt(t), py: world.groundYAt?.(t) ?? -1 });
 function exitPos(world, z, at) {
   if (at === "L") return onGround(world, z.c0 * 32 + 3);
   if (at === "R") return onGround(world, z.c1 * 32 - 4);
   if (at === "U") {
     const c = ZN.upChunk(z), pk = world.gen.get(c).peak;
-    return pk ? { tile: c * 32 + pk.x, row: pk.row } : onGround(world, flatTile(world, c * 32 + 16));
+    return pk ? { tile: c * 32 + pk.x, row: pk.row, py: pk.py ?? pk.row * 16 } : onGround(world, flatTile(world, c * 32 + 16));
   }
   if (at === "D") {
     // 하늘 구역의 ▼ 문은 맨 아래 지면 (동굴이 없다)
     const c = ZN.downChunk(z), dp = z.y < 0 ? null : world.gen.get(c).deep;
-    return dp ? { tile: c * 32 + dp.x, row: dp.row } : onGround(world, flatTile(world, c * 32 + 16));
+    return dp ? { tile: c * 32 + dp.x, row: dp.row, py: dp.py ?? dp.row * 16 } : onGround(world, flatTile(world, c * 32 + 16));
   }
   return onGround(world, flatTile(world, ZN.dungeonChunk(z) * 32 + 16));
 }
@@ -3863,7 +3876,9 @@ function arrivePos(world, z, at) {
   if (at === "L") return onGround(world, z.c0 * 32 + 5);
   if (at === "R") return onGround(world, z.c1 * 32 - 6);
   const p = exitPos(world, z, at);
-  return { tile: p.tile + 1, row: p.row };
+  const q = onGround(world, p.tile + 1);
+  // 문 옆 칸이 같은 바닥이면 그 높이, 아니면 문 높이
+  return { tile: p.tile + 1, row: p.row, py: q.row === p.row && q.py > 0 ? q.py : p.py };
 }
 export function travel(sc, to, back) {
   if (to === ZN.HUB_ID) return void sc.extract?.();
@@ -3876,7 +3891,7 @@ export function travel(sc, to, back) {
   sc.time.delayedCall(170, () => {
     const at = back ?? "L";
     const p = arrivePos(sc.world, z, at);
-    sc.travelTo(p.tile, at === "R" ? -1 : 1, p.row > 0 ? p.row : null);
+    sc.travelTo(p.tile, at === "R" ? -1 : 1, p.row > 0 ? p.row : null, p.py > 0 ? p.py : null);
     sc.cameras.main.fadeIn(260, 8, 6, 12);
     sc.zoneBusy = 0;
     arrive(sc, z);
@@ -3902,7 +3917,7 @@ export function zoneBegin(sc) {
   ZN.setRunSeed(sc.fr?.runSeed ?? (Math.random() * 4294967295) >>> 0);
   const z0 = ZN.cell(1, 0);
   const p0 = arrivePos(sc.world, z0, "L");
-  sc.travelTo(p0.tile, 1, p0.row > 0 ? p0.row : null);
+  sc.travelTo(p0.tile, 1, p0.row > 0 ? p0.row : null, p0.py > 0 ? p0.py : null);
   const wait = (n = 0) => (sc.hud?.() ? arrive(sc, z0) : n < 40 && sc.time.delayedCall(150, () => wait(n + 1)));
   sc.time.delayedCall(400, () => wait());
 }
@@ -3913,9 +3928,9 @@ export function zoneObjs(evm, S, T, traits) {
   const z = ZN.zoneAtChunk(S.index);
   if (!z) return;
   for (const e of ZN.exitList(z)) {
-    const { tile, row } = exitPos(W, z, e.at);
+    const { tile, row, py } = exitPos(W, z, e.at);
     if (Math.floor(tile / 32) !== S.index || row <= 0) continue;
-    evm.objs.push(exitObj(sc, S.index, T + (tile - S.index * 32) * 16 + 8, row * 16, z, e));
+    evm.objs.push(exitObj(sc, S.index, T + (tile - S.index * 32) * 16 + 8, py > 0 ? py : row * 16, z, e));
   }
   const pc = ZN.packChunk(z);
   const fr = sc.fr;

@@ -14,4 +14,14 @@
 - 재진입 검사: `node tools/check-terrain.mjs tools/foetest/terrain-reentry.js`. 8회 재진입하며 이전 지형 이미지와 작업이 정리되는지, 새 맵의 실제 픽셀이 원본 지형과 같은지 확인한다. `DISABLE_WORKERS=1` 환경 변수로 작업 스레드 없이도 검사할 수 있다.
 - 지하 연출 검사: `node tools/check-terrain.mjs tools/foetest/underground.js [스크린샷.png]`. 지하 5종의 입체 레이어, 비·눈 차단과 지상 복귀, 충돌 데이터 유지를 검사한다.
 - 탐험 장면 시작: `window.__game.scene.start("Run")`, 장면 객체: `window.__run`, 글루: `window.__FG`.
+
+## 자연 지형 (natgen.js · finephys.js · terrfine.js)
+노드에서 바로 (JSON import를 위해 `--import ./tools/json-hook.mjs`):
+- 종합 검사: `node --import ./tools/json-hook.mjs tools/natterrain-test.mjs` — 같은 시드 같은 지형, 그림 = 충돌(1px), 모든 출구 도달·갇힘 0, 길찾기 이동을 실제 충돌로 재현, 경사 분포, 지역 차이, 시간. `SEEDS=1,2,3`, `FAST=1`
+- 일괄 검사·구조 그림: `SEEDS=1,2 ZONES=g1_0,gm3_0 IMG=폴더 node --import ./tools/json-hook.mjs tools/natlab.mjs` (`QUIET=1`이면 문제 있는 구역만)
+- 실제 게임 그림 PNG: `node --import ./tools/json-hook.mjs tools/natpaint.mjs gm3_0 1 out.png [x y w h]`
+- 길찾기 ↔ 충돌 재현: `node --import ./tools/json-hook.mjs tools/natphys.mjs`
+- 실게임(헤드리스 크롬, Vite는 `localhost`로 열린다 — 127.0.0.1이 아니다): `TEST_URL=http://localhost:5198/ node tools/natcheck.mjs <스크린샷 폴더> [구역id,…]`
+- 여러 시드 비교 디버그 페이지: `npm run dev` → http://localhost:5173/terrain-lab.html?zone=gm3_0&seeds=1,2,3,4 (배포판에도 포함: …/terrain-lab.html)
+- 주의: 이 노트북은 계속 100% 부하가 걸리면 몇 초 뒤 CPU가 크게 느려진다. 긴 일괄 검사의 시간 수치는 앞쪽 몇 개만 믿을 것
 - 주의: 헤드리스는 느려서 게임 시간이 실제보다 천천히 간다(속도 판단 금지). 페이지 새로고침 직후 7~10초 기다릴 것(부팅 렌더링).

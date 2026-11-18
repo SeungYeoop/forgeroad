@@ -8,6 +8,7 @@ import * as PAINT from "./forge/bgpaint.js";
 import * as BGN from "./forge/bgnew.js";
 import { FR_REGIONS, FR_MONSTERS, FR_ELITES, FR_BOSSES, FR_ENDLESS, ENDLESS_START, ENDLESS_LEN } from "./forge/world.js";
 import { FR_WORLD, SKY_EDGE } from "./forge/zones.js";
+import { installFinePhysics } from "./forge/finephys.js";
 
 const __defProp = Object.defineProperty;
 const Z = (obj, key, value) =>
@@ -9051,6 +9052,12 @@ class Xn {
     // 하늘·동굴 구역: 조각 전체를 새로 채운다 (지상 구역 ▲ 문 조각은 징검다리만)
     const zg = FG.zoneGen(S, r, l, s, { vt, Ft, fe, ze, plat: _e, seed: this.seed, arena: !!e });
     zg && !zg.partial && (zg.keepHazards || (i.hazards.length = 0), (i.slopes = []), (i.decorHints = []), (i.extraSpawns = []));
+    // 자연 지형: 함정은 생성기가 평평한 자리(칸 경계 높이)에 직접 놓는다
+    zg?.natural && (i.hazards = e ? [] : zg.hazards);
+    const fine = zg?.fine ?? null, gy = zg?.gy ?? null, flat = zg?.flat ?? null;
+    // 그 칸에 물건을 놓아도 되는가 (자연 지형은 칸 전체가 평평해야)
+    const flatOK = (P) => !flat || (P >= 0 && P < vt && flat[P] === 1);
+    const pyAt = (P) => (gy && gy[P] >= 0 ? gy[P] : (Ft - l[P]) * gt);
     zg && !e && (i.sky = { clouds: zg.clouds, chests: zg.chests, spawns: [] });
     // 지하 동굴 (설계된 조각만)
     let caveOut = { shafts: [], spawns: [], caves: [], strong: [], mid: null };
@@ -9073,6 +9080,7 @@ class Xn {
         i.hazards.splice(y, 1);
         continue;
       }
+      if (x.natural) continue;
       if (x.type === "stalactite") {
         s[x.x] <= 0 ? i.hazards.splice(y, 1) : (x.row = s[x.x]);
         continue;
@@ -9190,10 +9198,11 @@ class Xn {
               l[P] > 0 &&
               l[P] === l[P + 1] &&
               l[P] === l[P - 1] &&
+              flatOK(P - 1) && flatOK(P) && flatOK(P + 1) &&
               !caveOut.shafts.some(([sx, w]) => P >= sx - 2 && P <= sx + w + 1) &&
               !i.hazards.some((L) => P >= L.x - 2 && P <= L.x + L.w + 1)
             ) {
-              f = { type: w, x: P, row: Ft - l[P], seed: wn(this.seed, S, 77) };
+              f = { type: w, x: P, row: Ft - l[P], py: pyAt(P), seed: wn(this.seed, S, 77) };
               for (let L = d.length - 1; L >= 0; L--) Math.abs(d[L].x - P) < 4 && d.splice(L, 1);
               break;
             }
@@ -9212,13 +9221,14 @@ class Xn {
             l[P] > 0 &&
             l[P] === l[P + 1] &&
             l[P] === l[P - 1] &&
+            flatOK(P - 1) && flatOK(P) && flatOK(P + 1) &&
             !(f && Math.abs(f.x - P) < 6) &&
             !caveOut.shafts.some(([sx, w]) => P >= sx - 1 && P <= sx + w) &&
             !chests.some((q) => Math.abs(q.x - P) < 6) &&
             !i.hazards.some((L) => P >= L.x - 2 && P <= L.x + L.w + 1)
           ) {
             const rr = E.next();
-            chests.push({ x: P, row: Ft - l[P], tier: rr < 0.06 ? 2 : rr < 0.32 ? 1 : 0 });
+            chests.push({ x: P, row: Ft - l[P], py: pyAt(P), tier: rr < 0.06 ? 2 : rr < 0.32 ? 1 : 0 });
             break;
           }
         }
@@ -9226,14 +9236,24 @@ class Xn {
     !e && i.sky && chests.push(...i.sky.chests);
     if (FG.pocketChunk(S)) {
       for (const sp of d) E.chance(0.3) && sp.traits.push(E.pick(Ye));
-      FG.pocketLast(S) && l[24] > 0 && chests.push({ x: 24, row: Ft - l[24], tier: 2 }, { x: 20, row: Ft - l[20], tier: 1 });
+      // 던전 끝 보물: 평평한 칸을 찾아 (자연 지형은 칸 높이가 제각각)
+      const near = (P0) => { for (const d2 of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6]) if (l[P0 + d2] > 0 && flatOK(P0 + d2)) return P0 + d2; return l[P0] > 0 ? P0 : -1; };
+      const c1 = near(24), c2 = near(Math.min(c1 < 0 ? 20 : c1 - 4, 20));
+      FG.pocketLast(S) && c1 >= 0 && chests.push({ x: c1, row: Ft - l[c1], py: pyAt(c1), tier: 2 });
+      FG.pocketLast(S) && c2 >= 0 && c2 !== c1 && chests.push({ x: c2, row: Ft - l[c2], py: pyAt(c2), tier: 1 });
     }
     const p = [...i.decorHints];
     this.decorate(p, l, s, i, m, E);
+    // 자연 지형: 장식은 완만한 곳에만, 실제 지면 높이(px)에 세운다
+    if (gy)
+      for (let k = p.length - 1; k >= 0; k--) {
+        const t = p[k], a = gy[t.x - 1] ?? -1, b = gy[t.x + 1] ?? -1, c0 = gy[t.x];
+        c0 < 0 || a < 0 || b < 0 || Math.abs(a - b) > 8 ? p.splice(k, 1) : (t.py = c0);
+      }
     const g = [];
     for (let y = 0; y < vt; y++) {
       const x = S * vt + y - me;
-      x > 0 && x % 100 === 0 && l[y] > 0 && !e && g.push({ x: y, row: Ft - l[y], dist: x });
+      x > 0 && x % 100 === 0 && l[y] > 0 && !e && g.push({ x: y, row: Ft - l[y], py: pyAt(y), dist: x });
     }
     return {
       index: S,
@@ -9255,6 +9275,9 @@ class Xn {
       arena: e,
       endH: u,
       signs: g,
+      fine,
+      gy,
+      flat,
     };
   }
   fillPatterns(S, T, C, E) {
@@ -10132,7 +10155,8 @@ class zn {
   loadChunk(S) {
     const T = this.gen.get(S),
       C = es(this.scene, T.region);
-    this.gen.get(S + 1);
+    // 옆 구역은 벽 너머라 미리 만들 필요가 없다 (구역 하나를 통째로 설계하므로 비싸다)
+    FG.chunkSameZone(S, S + 1) && this.gen.get(S + 1);
     let E = this.rtPool.pop();
     (E || (E = this.scene.add.renderTexture(0, 0, Vi, Oe).setOrigin(0, 0)),
       E.setVisible(!0).setActive(!0),
@@ -10144,9 +10168,9 @@ class zn {
       const a = this.scene.textures.get(t.key);
       if (!a || a.key === "__MISSING") continue;
       const v = a.getSourceImage();
-      E.batchDraw(t.key, t.x * gt + 8 - v.width / 2, t.row * gt - v.height + 1);
+      E.batchDraw(t.key, t.x * gt + 8 - v.width / 2, (t.py ?? t.row * gt) - v.height + 1);
     }
-    for (const t of T.signs) E.batchDraw("milestone_post", t.x * gt + 2, t.row * gt - 28);
+    for (const t of T.signs) E.batchDraw("milestone_post", t.x * gt + 2, (t.py ?? t.row * gt) - 28);
     const h = S * vt;
     for (let t = 0; t < vt; t++) {
       const a = h + t;
@@ -10193,7 +10217,7 @@ class zn {
     FG.paintChunk && FG.paintChunk(this.scene, E, T, h, (a, v) => this.rawCode(a, v), T.region);
     for (const t of T.signs) {
       const a = this.scene.add.text(0, 0, `${t.dist}`, { fontFamily: Di, fontSize: "8px", color: "#3a2a1a" });
-      (E.draw(a, t.x * gt + 2 + 6 - a.width / 2, t.row * gt - 27), a.destroy());
+      (E.draw(a, t.x * gt + 2 + 6 - a.width / 2, (t.py ?? t.row * gt) - 27), a.destroy());
     }
     const m = { data: T, rt: E, crumbleSprites: R };
     (this.loaded.set(S, m), this.onLoad(T));
@@ -10226,6 +10250,8 @@ class zn {
     this.rtPool = [];
   }
 }
+// 자연 지형: 픽셀 단위 충돌로 move·moveX·moveY·solidAtPx·ledgeAhead·wallAhead를 바꾼다 (예전 칸 지형도 그대로 처리)
+installFinePhysics(zn.prototype, { gt, vt, Oe, fe, ze, plat: _e, SKY_EDGE, Ft });
 class ai {
   constructor() {
     Z(this, "map", new Map());
@@ -15416,7 +15442,7 @@ class xr {
     for (const sg of S.signs ?? []) {
       if (sg.dist % 200 !== 100 || !FG.waystoneOk(S.index)) continue;
       // 표지판 옆에서 실제로 밟을 수 있는 칸 (갱도 구멍 위는 피한다)
-      const col = this.s.collider, y = sg.row * gt;
+      const col = this.s.collider, y = sg.py ?? sg.row * gt;
       const ok = (px) => col.solidAtPx(px, y + 4) && col.solidAtPx(px - 6, y + 4) && col.solidAtPx(px + 6, y + 4) && !col.solidAtPx(px, y - 8);
       const px = [-22, 30, -40, 48, 8].map((d) => T + sg.x * gt + d).find(ok);
       px != null && this.objs.push(FG.waystone(this, S.index, px, y));
@@ -15425,7 +15451,7 @@ class xr {
     (S.chests ?? []).forEach((c, k) => {
       const tr = FG.chestRoll(S.index, k, c.tier);
       if (tr == null) return;
-      const o = this.chest(`${S.index}:c${k}`, T + c.x * gt + 8, c.row * gt, tr);
+      const o = this.chest(`${S.index}:c${k}`, T + c.x * gt + 8, c.py ?? c.row * gt, tr);
       ((o.chunk = S.index), this.objs.push(o));
     });
   }
@@ -15442,7 +15468,7 @@ class xr {
     const E = this.s,
       R = E.add,
       h = C + T.x * gt,
-      m = T.row * gt,
+      m = T.py ?? T.row * gt,
       t = T.w * gt,
       a = { chunk: S.index, x: h, y: m, sprites: [], alive: !0, kind: T.type },
       v = E.player,
@@ -15717,7 +15743,7 @@ class xr {
       h = S.index,
       m = this.st(h),
       t = C + T.x * gt + 8,
-      a = T.row * gt,
+      a = T.py ?? T.row * gt,
       v = new Ze(T.seed),
       o = E.player,
       n = (e) => (this.objs.push(e), e),
@@ -18621,7 +18647,8 @@ class Er extends zt.Scene {
       E = T.index * vt - me;
     for (const R of T.spawns) {
       if (this.killed.has(R.id)) continue;
-      if (!se[R.enemy]?.flying) {
+      // 자연 지형은 생성기가 서 있을 자리를 검사해 두었다 (칸 격자는 근사라 쓰지 않는다)
+      if (!se[R.enemy]?.flying && !T.fine) {
         const gx0 = T.index * vt + R.x;
         let room = !0;
         for (let k = 1; k <= 3; k++) this.world.solid(gx0, R.row - k) && (room = !1);
@@ -18629,7 +18656,7 @@ class Er extends zt.Scene {
       }
       const h = se[R.enemy],
         m = C + R.x * gt + 8,
-        t = R.row * gt,
+        t = R.py != null ? R.py - 1 : R.row * gt,
         a = new Cs(this, R.enemy, m, (h.flying, t), Math.max(0, E + R.x), {
           spawnId: R.id,
           traits: R.traits,
@@ -19383,8 +19410,7 @@ class Er extends zt.Scene {
     ((this.run.gold += E), (R = this.hud()) == null || R.goldPulse());
   }
   surfaceYAt(T) {
-    const C = this.world.groundRowAt(this.world.gtx(T));
-    return C < 0 ? -1 : C * gt;
+    return this.world.groundYAt(this.world.gtx(T));
   }
   computeNextMilestone() {
     const T = new Set(it.data.claimed);
@@ -19599,7 +19625,9 @@ class Er extends zt.Scene {
       const m = this.world.groundRowAt(E - h),
         t = [1, 2, 3, 4].every((a) => this.world.groundRowAt(E - h - a) === m);
       if (m > 0 && t && !this.world.gates.has(E - h) && FG.sameZone(E, E - h)) {
-        ((E = E - h - 2), (T.body.y = m * gt - 1));
+        E = E - h - 2;
+        const gy0 = this.world.groundYAt(E);
+        T.body.y = (gy0 >= 0 ? gy0 : m * gt) - 1;
         break;
       }
     }
@@ -19687,7 +19715,7 @@ class Er extends zt.Scene {
       (window.__run = null));
   }
   // 구역 이동: 타일 x로 순간이동 (그 구역 안의 조각만 새로 만든다)
-  travelTo(tx, face = 1, row = null) {
+  travelTo(tx, face = 1, row = null, py = null) {
     const C = this.player,
       R = Math.floor(tx / vt);
     for (const e of this.enemies) e.remove();
@@ -19698,9 +19726,10 @@ class Er extends zt.Scene {
     this.world.originChunk = h;
     for (const [a, v] of this.world.loaded) v.rt.x = this.world.lx(a * vt);
     this.rebase(m);
-    const t = row ?? this.world.groundRowAt(tx);
+    const t = row ?? this.world.groundRowAt(tx),
+      gy0 = py ?? (row == null ? this.world.groundYAt(tx) : -1);
     ((C.body.x = this.world.lx(tx) + 8),
-      (C.body.y = (t > 0 ? t : Ft - 6 - UGR) * gt - 1),
+      (C.body.y = (gy0 > 0 ? gy0 : (t > 0 ? t : Ft - 6 - UGR) * gt) - 1),
       (C.body.vy = 0),
       (C.body.vx = 0),
       (C.facing = face),
@@ -19719,9 +19748,10 @@ class Er extends zt.Scene {
     this.world.originChunk = h;
     for (const [a, v] of this.world.loaded) v.rt.x = this.world.lx(a * vt);
     this.rebase(m);
-    const t = this.world.groundRowAt(E);
+    const t = this.world.groundRowAt(E),
+      gy0 = this.world.groundYAt(E);
     ((C.body.x = this.world.lx(E) + 8),
-      (C.body.y = (t > 0 ? t : Ft - 6) * gt - 1),
+      (C.body.y = (gy0 > 0 ? gy0 : (t > 0 ? t : Ft - 6) * gt) - 1),
       (C.body.vy = 0),
       (this.camX = C.x - ot / 2),
       this.world.update(C.x),
