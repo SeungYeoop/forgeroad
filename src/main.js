@@ -12495,7 +12495,8 @@ class Ws {
           j.play("jump", 1.25),
           this.host.fx.anim("ring", C.x, C.y - 2, { scale: 0.7, scaleY: 0.3, tint: 13691135 }),
           this.host.fx.burst("glow", C.x, C.y, 5, 13691135)),
-        !T.jumpHeld && C.vy < 0 && !this.jumpCutDone && ((C.vy *= Vt.jumpCut), (this.jumpCutDone = !0)),
+        // 점프는 누르는 길이와 상관없이 항상 최대 높이 (키를 일찍 떼도 끊지 않는다)
+
         (C.vy = Math.min(Vt.maxFall, C.vy + Vt.gravity * S * (C.vy > 0 ? 1.15 : 1))));
     }
     if (!E && this.hurtT <= 0) {
