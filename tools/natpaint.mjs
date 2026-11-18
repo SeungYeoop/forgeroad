@@ -8,7 +8,7 @@ import { savePNG } from "./png.mjs";
 const [id = "g1_0", seedS = "1", out = "paint.png", ...crop] = process.argv.slice(2);
 const z = ZONES.find((q) => q.id === id);
 const seed = Number(seedS);
-const o = { seed, Ft: 116, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, fe: 1, ze: 0, biome: null };
+const o = { seed, Ft: 176, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, fe: 1, ze: 0, biome: null, noRepair: !!process.env.NOREP };
 const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "lush" : Math.abs(x) % 2 ? "geode" : "drip");
 const GROUND_BIO = { "-3": "drip", "-2": "deep", "-1": "lush", 1: "drip", 2: "geode", 3: "magma" };
 o.biome = z.y > 0 ? CAVE_BIO(z.x, z.y) : GROUND_BIO[z.x] ?? "drip";
@@ -31,7 +31,7 @@ let painted = 0;
 for (let S = z.c0; S < z.c1; S++) {
   const sx = (S - z.c0) * 512;
   if (sx + 512 <= cx || sx >= cx + W) continue;
-  const r = new Uint8Array(32 * 116), l = new Array(32), s = new Array(32);
+  const r = new Uint8Array(32 * 176), l = new Array(32), s = new Array(32);
   const ch = drawChunk(P, z, S, r, l, s, { ...o, arena: false });
   const g = pixFine({ ug: ch.ug }, S * 32, region, fineSlice(ch));
   let st;
@@ -53,6 +53,40 @@ for (let S = z.c0; S < z.c1; S++) {
       img[k + 2] = src[q + 2];
     }
   }
+}
+// MARK=1: 캐릭터(몸 10×22px)와 게임 화면(640×360) 크기 표시
+if (process.env.MARK) {
+  const put = (x, y, c) => {
+    x -= cx;
+    y -= cy;
+    if (x < 0 || y < 0 || x >= W || y >= Hh) return;
+    const k = (y * W + x) * 4;
+    img[k] = c[0];
+    img[k + 1] = c[1];
+    img[k + 2] = c[2];
+  };
+  const fig = (fx, fy) => {
+    fx = Math.round(fx);
+    fy = Math.round(fy);
+    for (let y = fy - 23; y <= fy; y++)
+      for (let x = fx - 6; x <= fx + 6; x++) {
+        const edge = y === fy - 23 || y === fy || x === fx - 6 || x === fx + 6;
+        const head = y < fy - 15 && x > fx - 4 && x < fx + 4;
+        put(x, y, edge ? [20, 10, 10] : head ? [255, 220, 170] : [230, 30, 40]);
+      }
+  };
+  const rect = (x0, y0, w, h, c, th = 3) => {
+    for (let t = 0; t < th; t++) {
+      for (let x = x0; x < x0 + w; x++) (put(x, y0 + t, c), put(x, y0 + h - 1 - t, c));
+      for (let y = y0; y < y0 + h; y++) (put(x0 + t, y, c), put(x0 + w - 1 - t, y, c));
+    }
+  };
+  const base = 100 * 16;
+  fig(60, base);
+  rect(0, base - 230, 640, 360, [255, 255, 255]);
+  P.peak && fig(P.peak.x + 20, P.peak.y);
+  for (const I of P.islands) if (I.w > 500) fig(I.cx - I.w * 0.2, Math.round(I.top / 8) * 8);
+  for (const s of P.spots.filter((_, k) => k % 60 === 0)) fig(s.x, s.y);
 }
 console.log(`${id} seed ${seed}: ${painted} chunks painted in ${Math.round(performance.now() - t0)}ms (${Math.round((performance.now() - t0) / painted)}ms/chunk)`);
 savePNG(out, W, Hh, img);

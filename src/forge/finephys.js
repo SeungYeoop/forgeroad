@@ -3,10 +3,10 @@
 // 몸 모양: 위는 넓고 발은 좁다.
 //   위 상자 [x-hw, x+hw] × [y-h, y-corner)   발 [x-fw, x+fw] × [y-corner, y)
 // - 경사면에서는 발 가운데가 땅에 닿아 서 있다 (모서리 하나로 떠 있지 않다)
-// - 1px 옆으로 갈 때 2px까지 오른다 (약 63°까지 걸어서 오른다), 짧은 턱(6px 이하)은 저절로 올라선다
+// - 1px 옆으로 갈 때 2px까지 오른다 (약 63°까지 걸어서 오른다), 한 블록(8px) 턱은 저절로 올라선다
 // - 더 가파르면 벽이다 (뛰어서 오른다). 턱 모서리에 어깨가 걸리면 옆으로 미끄러져 떨어진다
 // - 내리막에서는 땅에 붙어 내려간다 (발이 떠서 통통 튀지 않게)
-export const CLIMB = 2, LIP = 6;
+export const CLIMB = 2, LIP = 8; // 8px 블록 한 칸 턱은 저절로 올라선다
 
 export function installFinePhysics(proto, K) {
   const { gt, vt, Oe, fe, ze, plat, SKY_EDGE } = K;

@@ -17,7 +17,7 @@ const seeds = (process.env.SEEDS || "1,2,3").split(",").map(Number);
 const FAST = !!process.env.FAST;
 const fails = [];
 const check = (name, ok, info = "") => (ok ? console.log(`  ✓ ${name} ${info}`) : (console.log(`  ✗ ${name} ${info}`), fails.push(name)));
-const opt = (z, seed) => ({ seed, Ft: 116, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, biome: biomeOf(z), patterns: z.y === 0 ? z.reg?.patterns : null });
+const opt = (z, seed) => ({ seed, Ft: 176, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, biome: biomeOf(z), patterns: z.y === 0 ? z.reg?.patterns : null });
 const hash = (arr) => {
   let h = 2166136261;
   const u = new Uint32Array(arr.buffer, arr.byteOffset, arr.byteLength >> 2);
@@ -51,7 +51,7 @@ console.log("2) 칠한 픽셀 = 충돌 판정");
     const region = { pal: z.reg.pal, theme: z.reg.theme };
     let prevRight = null;
     for (let S = z.c0; S < z.c0 + (FAST ? 2 : 4); S++) {
-      const r = new Uint8Array(32 * 116), l = [], s = [];
+      const r = new Uint8Array(32 * 176), l = [], s = [];
       const ch = drawChunk(P, z, S, r, l, s, { ...o, fe: 1, ze: 0 });
       const g = pixFine({ ug: ch.ug }, S * 32, region, fineSlice(ch));
       let st;
@@ -100,7 +100,7 @@ const rows = [];
 // ── 4) 실제 충돌로 다시 해 보기 ──
 console.log("4) 길찾기가 인정한 이동 → 실제 충돌 코드로 재현");
 class World {}
-installFinePhysics(World.prototype, { gt: 16, vt: 32, Oe: 1856, fe: 1, ze: 0, plat: 2, SKY_EDGE, Ft: 116 });
+installFinePhysics(World.prototype, { gt: 16, vt: 32, Oe: 2816, fe: 1, ze: 0, plat: 2, SKY_EDGE, Ft: 176 });
 function replay(W, xa, ya, xb, yb, mode) {
   const dt = 1 / 60;
   const b = { x: xa, y: ya, w: 10, h: 22, vx: 0, vy: 0, onGround: !1, hitWall: 0, groundCode: 0, dropThrough: 0, groundGtx: 0, groundRow: 0 };

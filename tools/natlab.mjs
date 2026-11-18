@@ -17,7 +17,7 @@ const rows = [];
 for (const seed of seeds)
   for (const z of ZONES) {
     if (only && !only.includes(z.id)) continue;
-    const o = { seed, Ft: 116, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1 };
+    const o = { seed, Ft: 176, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, noRepair: !!process.env.NOREP };
     const t0 = performance.now();
     const P = process.env.ATT != null ? Object.assign(makePlan(z, o, Number(process.env.ATT)), { tries: [] }) : planOf(z, o);
     const ms = performance.now() - t0;
@@ -51,7 +51,7 @@ for (const seed of seeds)
       };
       for (let n = 0; n < A.NN; n++) {
         const col = !A.reach[n] ? [120, 120, 120] : A.co[n] ? [60, 230, 90] : [255, 60, 220];
-        dot(A.nC[n] * 8 + 4, A.nY[n] - 2, col, 0);
+        dot(A.nC[n] * 8 + 4, A.nY[n] - 2, col, SC < 2 ? 1 : 0);
       }
       dot(44, FLOOR * 16 - 6, [40, 90, 255], 3);
       dot(P.WP - 56, FLOOR * 16 - 6, [255, 40, 40], 3);
