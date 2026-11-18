@@ -1,6 +1,6 @@
 // 지형 실험실 (terrain-lab.html): 한 구역을 여러 시드로 만들어 실제 게임 그림·길찾기 구조를 나란히 비교한다
 import { ZONES, upChunk, downChunk } from "./zones.js";
-import { planOf, drawChunk, FLOOR } from "./natgen.js";
+import { planOf, drawChunk, FLOOR, FT } from "./natgen.js";
 import { pixFine, fineSlice } from "./terrfine.js";
 import { PROFILES, profileKey, biomeOf } from "./terrprof.js";
 
@@ -24,7 +24,13 @@ const LAYER = (z) => (z.kind === "dungeon" ? "숨은 던전" : z.y < 0 ? "하늘
     sel.appendChild(g);
   }
   sel.value = q.get("zone") ?? "g1_0";
-  q.get("seeds") && ($("#seeds").value = q.get("seeds"));
+  // 시드를 주지 않으면 게임 저장의 세계 시드 (게임에서 보는 지형과 같은 모양)
+  let mySeed = null;
+  try {
+    mySeed = JSON.parse(localStorage.getItem("forgeroad_save") ?? "null")?.fr?.worldSeed ?? null;
+  } catch {}
+  if (q.get("seeds")) $("#seeds").value = q.get("seeds");
+  else if (mySeed != null) $("#seeds").value = String(mySeed >>> 0);
   q.get("view") && ($("#view").value = q.get("view"));
   q.get("scale") && ($("#scale").value = q.get("scale"));
 }
@@ -47,7 +53,7 @@ function paintZone(P, z, o) {
   const tc = tmp.getContext("2d");
   const region = { pal: z.reg.pal, theme: z.reg.theme };
   for (let S = z.c0; S < z.c1; S++) {
-    const r = new Uint8Array(32 * 116), l = new Array(32), s = new Array(32);
+    const r = new Uint8Array(32 * FT), l = new Array(32), s = new Array(32);
     const ch = drawChunk(P, z, S, r, l, s, { ...o, fe: 1, ze: 0, arena: !1 });
     const g = pixFine({ ug: ch.ug }, S * 32, region, fineSlice(ch));
     let st;
@@ -115,7 +121,7 @@ async function run() {
   history.replaceState(null, "", `?zone=${z.id}&seeds=${seeds.join(",")}&view=${view}&scale=${scale}`);
   const out = $("#out");
   out.innerHTML = "";
-  const o = { Ft: 116, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, biome: biomeOf(z), patterns: z.y === 0 ? z.reg?.patterns : null };
+  const o = { Ft: FT, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, biome: biomeOf(z), patterns: z.y === 0 ? z.reg?.patterns : null };
   for (const seed of seeds) {
     $("#busy").textContent = `시드 ${seed} 만드는 중…`;
     await frame();
