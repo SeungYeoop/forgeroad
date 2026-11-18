@@ -28,6 +28,7 @@ import { bossRun5 } from "./foes/boss5.js";
 import { bossRun6 } from "./foes/boss6.js";
 import { interp } from "./interp.js";
 import * as SP from "./spells.js";
+import * as ZN from "./zones.js";
 import * as SK from "./skills.js";
 import * as LOOK from "./look.js";
 import * as ICON from "./icons.js";
@@ -419,6 +420,28 @@ export function bootTextures(scene) {
       else (b.poly([[6, 0], [10, 5], [6, 11], [2, 5]], shade(m.color, 0.6)), b.poly([[6, 1], [8, 5], [6, 9], [4, 5]], m.color), b.px(5, 3, 0xffffff));
       b.outline();
     });
+  // 구역 관문: 돌 아치 + 안쪽 빛
+  g("fr_gate", 30, 46, (b) => {
+    const S0 = 0x5a5468, S1 = 0x7a748a, S2 = 0x3a3446;
+    b.rect(1, 42, 28, 4, S2);
+    b.rect(2, 10, 6, 33, S0);
+    b.rect(22, 10, 6, 33, S0);
+    b.rect(3, 10, 3, 32, S1);
+    b.rect(23, 10, 3, 32, S1);
+    b.poly([[2, 12], [6, 5], [15, 1], [24, 5], [28, 12], [22, 12], [20, 8], [15, 6], [10, 8], [8, 12]], S0);
+    b.poly([[4, 10], [8, 5], [15, 3], [15, 5], [10, 7], [7, 11]], S1);
+    b.rect(13, 1, 4, 5, 0xd8c090);
+    for (const y of [18, 26, 34]) (b.rect(2, y, 6, 1, S2), b.rect(22, y, 6, 1, S2));
+    b.outline();
+  });
+  g("fr_gate_glow", 16, 30, (b) => {
+    for (let y = 0; y < 30; y++)
+      for (let x = 0; x < 16; x++) {
+        const dx = (x - 7.5) / 8, dy = (y - 15) / 15;
+        const d = dx * dx + dy * dy;
+        d < 1 && b.px(x, y, 0xffffff, Math.round(230 * (1 - d)));
+      }
+  });
   // 귀환 표석
   g("fr_waystone", 18, 36, (b) => {
     b.rect(2, 30, 14, 6, 0x3a3440);
@@ -470,6 +493,9 @@ export function startRun(scene) {
     hits: 0,
     pickups: [],
     mats: {},
+    runSeed: (Math.random() * 4294967295) >>> 0,
+    packs: {},
+    dgSeen: [],
     zones: [],
     ents: [],
     chain: {},
@@ -2346,6 +2372,8 @@ export function hudCreate(hud) {
   hud.input.keyboard.addCapture("TAB");
   hud.input.keyboard.on("keydown-TAB", () => toggleBag(hud.run));
   hud.input.keyboard.on("keydown-B", () => toggleBag(hud.run));
+  hud.input.keyboard.on("keydown-M", () => toggleMap(hud));
+  hud.events.once("shutdown", () => (hud.frMap = null));
 }
 export function hudUpdate(hud) {
   const sc = hud.run;
@@ -3664,3 +3692,213 @@ export function fixTraps(r, { vt, Ft, fe, ze, plat }) {
       }
     }
 }
+
+// ══ 구역 지도 (알비온식 탐험) ═══════════════════════════
+export const zoned = !0;
+const zr = () => (ZN.buildZones(R.Ht), ZN);
+export const zoneEdge = (S) => {
+  const z = zr().zoneAtChunk(S);
+  return !!z && (z.c0 === S || z.c1 - 1 === S);
+};
+export const zoneFirst = (S) => zr().isFirst(S);
+export const pocketChunk = (S) => zr().isPocket(S);
+export const pocketLast = (S) => zr().isPocket(S) && ZN.isLast(S);
+export const sameZone = (a, b) => zr().zoneAtTile(a) === ZN.zoneAtTile(b);
+export const chunkSameZone = (a, b) => zr().zoneAtChunk(a) === ZN.zoneAtChunk(b);
+export const waystoneOk = (S) => zr().waystoneOk(ZN.zoneAtChunk(S));
+export const chestRoll = (S, k, tier) => zr().chestRoll(S, k, tier);
+export const zoneOfPlayer = (sc) => (sc?.world && sc.player ? zr().zoneAtTile(sc.world.gtx(sc.player.x)) : null);
+// 구역 양 끝: 위아래 전체를 막는 절벽 벽 (2칸)
+export function zoneWalls(S, data) {
+  const z = zr().zoneAtChunk(S);
+  if (!z || !data?.grid) return;
+  const cols = [];
+  z.c0 === S && cols.push(0, 1);
+  z.c1 - 1 === S && cols.push(30, 31);
+  for (const x of cols) for (let row = 0; row < R.Ft; row++) data.grid[row * 32 + x] = 1;
+}
+// 밟을 수 있는 평평한 칸 찾기 (없으면 그대로)
+function flatTile(world, t) {
+  for (const d of [0, 3, -3, 6, -6, 9, -9, 12, -12]) {
+    const x = t + d, g = world.groundRowAt(x);
+    if (g > 0 && world.groundRowAt(x - 1) === g && world.groundRowAt(x + 1) === g) return x;
+  }
+  return t;
+}
+// 이 구역의 출구들: [{tile, to, side, kind}]
+function exitsOf(world, z) {
+  const out = [];
+  const host = z.kind === "dungeon" ? ZN.dungeonHost(z.r) : null;
+  if (z.kind === "dungeon") {
+    host && out.push({ tile: z.c0 * 32 + 3, to: host.id, side: "D", kind: "L", label: "던전 밖으로" });
+    host && out.push({ tile: z.c1 * 32 - 4, to: host.id, side: "D", kind: "R", label: "던전 밖으로" });
+    return out;
+  }
+  z.L && out.push({ tile: z.c0 * 32 + 3, to: z.L.to, kind: "L" });
+  z.R && out.push({ tile: z.c1 * 32 - 4, to: z.R.to, kind: "R" });
+  z.gates.forEach((g, k) => out.push({ tile: flatTile(world, ZN.gateChunk(z, k, z.gates.length) * 32 + 16), to: g.to, kind: "G" }));
+  ZN.hasDungeon(z) && out.push({ tile: flatTile(world, ZN.dungeonChunk(z) * 32 + 22), to: `d${z.r}`, side: "L", kind: "D" });
+  return out;
+}
+// 도착할 자리: 상대 구역에서 나에게 이어진 쪽
+function backSide(dst, src) {
+  if (dst.kind === "dungeon") return "L";
+  if (dst.L?.to === src) return "L";
+  if (dst.R?.to === src) return "R";
+  const g = dst.gates.findIndex((x) => x.to === src);
+  if (g >= 0) return g;
+  if (ZN.dungeonHost(dst.r) === dst && src === `d${dst.r}`) return "D";
+  return "L";
+}
+function arriveAt(world, z, side) {
+  if (side === "L" || side === "R") return ZN.arriveTile(z, side);
+  if (side === "D") return flatTile(world, ZN.dungeonChunk(z) * 32 + 22) + 2;
+  return flatTile(world, ZN.gateChunk(z, side, z.gates.length) * 32 + 16) + 2;
+}
+export function travel(sc, to, side, from) {
+  zr();
+  if (to === ZN.HUB_ID) return void sc.extract?.();
+  if (sc.zoneBusy || sc.dying) return;
+  const z = ZN.BY_ID[to];
+  if (!z) return;
+  sc.zoneBusy = 1;
+  R.j.play("portal");
+  sc.cameras.main.fadeOut(160, 8, 6, 12);
+  sc.time.delayedCall(170, () => {
+    const s = side ?? (from ? backSide(z, from) : "L");
+    const tile = arriveAt(sc.world, z, s);
+    sc.travelTo(tile, s === "R" ? -1 : 1);
+    sc.cameras.main.fadeIn(260, 8, 6, 12);
+    sc.zoneBusy = 0;
+    arrive(sc, z);
+  });
+}
+function arrive(sc, z) {
+  const d = sd();
+  d.seen = d.seen ?? {};
+  const first = !d.seen[z.id];
+  d.seen[z.id] = 1;
+  R.it.write();
+  const D = ZN.dangerOf(z);
+  const h = sc.hud?.();
+  h?.regionBanner(z.name, `${D.name} · ${D.label}${first ? " · 처음 밟는 땅" : ""}`);
+  ZN.packChunk(z) >= 0 && !sc.fr?.packs?.[z.id] && sc.time.delayedCall(1600, () => sc.hud?.()?.toast("이 구역 어딘가에 정예 무리가 떠돈다", "#ff9a6a"));
+  z.kind === "dungeon" && sc.time.delayedCall(1600, () => sc.hud?.()?.toast("숨은 던전 · 정예가 많고 끝에 보물이 있다", "#c090ff"));
+}
+// 탐험 시작: 지난번 갈래로 바로 나가고, 어느 문으로 나갈지 묻는다
+export function zoneBegin(sc) {
+  zr();
+  ZN.setRunSeed(sc.fr?.runSeed ?? (Math.random() * 4294967295) >>> 0);
+  const d = sd();
+  const arm = d.lastArm ?? 0;
+  const z = ZN.startZone(arm);
+  sc.travelTo(ZN.arriveTile(z, "L"), 1);
+  const ask = (n = 0) => {
+    const h = sc.hud?.();
+    if (!h || h.modalOpen) return void (n < 40 && sc.time.delayedCall(150, () => ask(n + 1)));
+    const opts = ZN.ARMS.map((A, i) => {
+      const s = ZN.startZone(i);
+      const D = ZN.dangerOf(s);
+      return { label: `${A.name} 문`, desc: `${s.region.name} · ${D.name}`, icon: "icon_check", cb: () => ((d.lastArm = i), R.it.write(), i !== arm ? travel(sc, s.id, "L") : arrive(sc, s)) };
+    });
+    h.choice("어느 문으로 나갈까?", "바깥으로 갈수록 위험하다 · 들고 간 것은 쓰러지면 잃는다 · [M] 구역 지도", [...opts, { label: "그대로", cb: () => arrive(sc, z) }]);
+  };
+  sc.time.delayedCall(500, () => ask());
+}
+// 출구·관문·던전 입구 물체, 떠도는 정예 무리
+export function zoneObjs(evm, S, T, traits) {
+  zr();
+  const sc = evm.s, W = sc.world;
+  const z = ZN.zoneAtChunk(S.index);
+  if (!z) return;
+  for (const e of exitsOf(W, z)) {
+    if (Math.floor(e.tile / 32) !== S.index) continue;
+    const g = W.groundRowAt(e.tile);
+    if (g <= 0) continue;
+    evm.objs.push(exitObj(sc, S.index, T + (e.tile - S.index * 32) * 16 + 8, g * 16, z, e));
+  }
+  // 떠도는 정예 무리
+  const pc = ZN.packChunk(z);
+  const fr = sc.fr;
+  if (pc === S.index && fr && !(fr.packs ??= {})[z.id]) {
+    fr.packs[z.id] = 1;
+    const pool = S.region?.enemies ?? [];
+    if (pool.length) {
+      const pick = () => {
+        let t = pool.reduce((s, x) => s + (x.w ?? 1), 0) * Math.random();
+        for (const x of pool) if ((t -= x.w ?? 1) <= 0) return x.id;
+        return pool[0].id;
+      };
+      const n = 3 + (Math.random() < 0.4 ? 1 : 0);
+      const cx = T + 16 * 16;
+      for (let i = 0; i < n; i++) {
+        const x = cx + (i - n / 2) * 30, y = sc.surfaceYAt(x);
+        if (y < 0) continue;
+        const tr = [traits[Math.floor(Math.random() * traits.length)]];
+        i === 0 && tr.push(traits[Math.floor(Math.random() * traits.length)]);
+        sc.spawnEnemy(pick(), x, y, { traits: [...new Set(tr)], homeChunk: S.index });
+      }
+    }
+  }
+}
+function exitObj(sc, chunk, x, y, z, e) {
+  const ADD = R.zt.BlendModes.ADD;
+  const dst = e.to === ZN.HUB_ID ? null : ZN.BY_ID[e.to];
+  const D = dst ? ZN.dangerOf(dst) : { color: 0xffe08a, css: "#ffe08a", name: "거점" };
+  const arch = sc.add.image(x, y + 1, "fr_gate").setOrigin(0.5, 1).setDepth(5);
+  const glow = sc.add.image(x, y - 18, "fr_gate_glow").setTint(D.color).setBlendMode(ADD).setDepth(4).setAlpha(0.7);
+  const arrow = e.kind === "L" ? "◀ " : e.kind === "R" ? "▶ " : e.kind === "D" ? "▼ " : "◆ ";
+  const prompt = dst ? `${arrow}${e.label ?? dst.name} · ${D.name}` : `${arrow}거점으로 귀환 (안전)`;
+  const tag = R.ct(sc, x, y - 52, dst ? (e.kind === "D" ? "숨은 던전" : dst.short) : "거점", "tiny", D.css ?? "#ffe08a", { stroke: "#140e18", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(6);
+  e.kind === "D" && sc.fr && ((sc.fr.dgSeen ??= []).includes(z.id) || sc.fr.dgSeen.push(z.id));
+  const o = { chunk, x, y, sprites: [arch, glow, tag], alive: !0, prompt };
+  let t = Math.random() * 6, fxT = 0;
+  o.update = (dt) => {
+    t += dt;
+    glow.setAlpha(0.55 + Math.sin(t * 2.4) * 0.2).setScale(1 + Math.sin(t * 1.7) * 0.05);
+    fxT -= dt;
+    fxT <= 0 && ((fxT = 0.25), sc.fx.burst("glow", x + rnd(-9, 9), y - rnd(6, 36), 1, D.color));
+  };
+  o.interact = () => {
+    if (sc.boss && !sc.boss.dead) return void sc.hud?.()?.toast("보스가 길을 막고 있다", "#ff8a7a");
+    travel(sc, e.to, e.side, z.id);
+  };
+  return o;
+}
+// HUD: 거리 대신 구역 이름
+export function zoneHudText(hud, run) {
+  const z = zoneOfPlayer(run);
+  if (!z) return !1;
+  const D = ZN.dangerOf(z);
+  hud.distText.text !== z.name && hud.distText.setText(z.name);
+  const b = `${D.name} · ${D.label}   ·   [M] 구역 지도`;
+  hud.bestText.text !== b && hud.bestText.setText(b);
+  return !0;
+}
+export function zoneProgress(hud) {
+  const run = hud.run, z = zoneOfPlayer(run);
+  if (!z) return !1;
+  for (const n of [hud.progBg, hud.progFill, hud.progSkull, hud.progText]) n?.setVisible(!0);
+  hud.progBest?.setVisible(!1);
+  const t = run.world.gtx(run.player.x) - z.c0 * 32, len = (z.c1 - z.c0) * 32;
+  hud.progFill.width = (hud.progBg.width - 2) * Math.max(0, Math.min(1, t / len));
+  const dead = z.boss && run.bossDefeated.has(z.c1 - 2);
+  hud.progSkull.setAlpha(z.boss && !dead ? 1 : 0.2);
+  const n = exitsOf(run.world, z).length;
+  const s = z.boss ? (dead ? `보스 처치 · 출구 ${n}곳` : "구역 끝에 보스가 있다") : `출구 ${n}곳`;
+  hud.progText.text !== s && hud.progText.setText(s);
+  return !0;
+}
+function toggleMap(hud) {
+  if (hud.frMap) {
+    for (const o of hud.frMap) o.destroy();
+    hud.frMap = null;
+    return;
+  }
+  const run = hud.run;
+  if (!run?.fr) return;
+  zr();
+  hud.frMap = ZN.drawMap(hud, R, zoneOfPlayer(run), sd().seen ?? {}, { dungeons: run.fr.dgSeen ?? [] });
+  R.j.play("open");
+}
+export const _ZN = ZN;

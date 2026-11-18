@@ -8942,7 +8942,7 @@ class Xn {
     let T = this.meta.get(S);
     if (T) return T;
     let C = S;
-    for (; C > 0 && !this.meta.has(C - 1);) C--;
+    for (; C > 0 && !FG.zoneFirst(C) && !this.meta.has(C - 1);) C--;
     for (let E = C; E <= S; E++) this.get(E);
     return this.meta.get(S);
   }
@@ -8950,11 +8950,12 @@ class Xn {
     var h, m;
     const T = this.cache.get(S);
     if (T) return T;
-    const C = S === 0 ? 4 + UGR : this.getMeta(S - 1).endH,
+    const C = S === 0 || FG.zoneFirst(S) ? 4 + UGR : this.getMeta(S - 1).endH,
       E = [];
     for (let t = 1; t <= 4; t++)
       E.push(S - t >= 0 ? (((h = this.meta.get(S - t)) == null ? void 0 : h.event) ?? null) : null);
     const R = this.generate(S, C, E);
+    FG.zoneWalls(S, R);
     return (
       this.cache.set(S, R),
       this.meta.set(S, { endH: R.endH, event: ((m = R.event) == null ? void 0 : m.type) ?? null }),
@@ -8992,9 +8993,9 @@ class Xn {
       i = new Un(T, n, E);
     i.safePits = m.idx === 0;
     let e = null;
-    if (S === 0) {
+    if (!o && (S === 0 || FG.zoneEdge(S))) {
       (i.setH(6 + UGR), i.flat(vt));
-      for (let y = 0; y < 14; y++) i.noSpawn.add(y);
+      for (let y = 0; y < vt; y++) i.noSpawn.add(y);
     } else if (o) {
       e = { boss: m.boss, part: S === v ? 0 : 1, regionIdx: t };
       const y = 6 + UGR;
@@ -9206,6 +9207,10 @@ class Xn {
         }
     }
     !e && i.sky && chests.push(...i.sky.chests);
+    if (FG.pocketChunk(S)) {
+      for (const sp of d) E.chance(0.3) && sp.traits.push(E.pick(Ye));
+      FG.pocketLast(S) && l[24] > 0 && chests.push({ x: 24, row: Ft - l[24], tier: 2 }, { x: 20, row: Ft - l[20], tier: 1 });
+    }
     const p = [...i.decorHints];
     this.decorate(p, l, s, i, m, E);
     const g = [];
@@ -10092,12 +10097,13 @@ class zn {
   }
   update(S) {
     const T = this.chunkOfLocal(S);
-    for (let C = Math.max(0, T - 2); C <= T + 3; C++) this.loaded.has(C) || this.loadChunk(C);
-    for (const [C, E] of this.loaded) (C < T - 3 || C > T + 4) && this.unloadChunk(C, E);
+    // 구역 밖 조각은 불러오지 않는다 (벽 너머는 비어 있다)
+    for (let C = Math.max(0, T - 2); C <= T + 3; C++) this.loaded.has(C) || !FG.chunkSameZone(C, T) || this.loadChunk(C);
+    for (const [C, E] of this.loaded) (C < T - 3 || C > T + 4 || !FG.chunkSameZone(C, T)) && this.unloadChunk(C, E);
     // 다음에 불러올 구역(앞뒤)을 미리 조금씩 그려 둔다
     if (FG.prepaint)
       for (const C of [T + 4, T - 3])
-        if (C >= 0 && !this.loaded.has(C)) {
+        if (C >= 0 && !this.loaded.has(C) && FG.chunkSameZone(C, T)) {
           const d = this.gen.get(C);
           FG.prepaint(this.scene, d, C * vt, (a, v) => this.rawCode(a, v), d.region);
         }
@@ -15388,15 +15394,18 @@ class xr {
     for (const C of S.hazards) this.makeHazard(S, C, T);
     S.event && this.makeEvent(S, S.event, T);
     for (const sg of S.signs ?? []) {
-      if (sg.dist % 200 !== 100) continue;
+      if (sg.dist % 200 !== 100 || !FG.waystoneOk(S.index)) continue;
       // 표지판 옆에서 실제로 밟을 수 있는 칸 (갱도 구멍 위는 피한다)
       const col = this.s.collider, y = sg.row * gt;
       const ok = (px) => col.solidAtPx(px, y + 4) && col.solidAtPx(px - 6, y + 4) && col.solidAtPx(px + 6, y + 4) && !col.solidAtPx(px, y - 8);
       const px = [-22, 30, -40, 48, 8].map((d) => T + sg.x * gt + d).find(ok);
       px != null && this.objs.push(FG.waystone(this, S.index, px, y));
     }
+    FG.zoneObjs(this, S, T, Ye);
     (S.chests ?? []).forEach((c, k) => {
-      const o = this.chest(`${S.index}:c${k}`, T + c.x * gt + 8, c.row * gt, c.tier);
+      const tr = FG.chestRoll(S.index, k, c.tier);
+      if (tr == null) return;
+      const o = this.chest(`${S.index}:c${k}`, T + c.x * gt + 8, c.row * gt, tr);
       ((o.chunk = S.index), this.objs.push(o));
     });
   }
@@ -18544,10 +18553,11 @@ class Er extends zt.Scene {
       this.input.keyboard.on("keydown-ESC", () => {
         this.pauseReq = !0;
       }),
+      FG.zoneBegin(this),
       this.world.update(this.player.x),
       this.updateRegion(!0),
       this.computeNextMilestone(),
-      this.run.prevBest > 0 && this.placeRecordFlag());
+      !FG.zoned && this.run.prevBest > 0 && this.placeRecordFlag());
     const t = this.cameras.main;
     ((this.camX = Math.max(this.world.lx(0), this.player.x - ot / 2 + 60)),
       (this.camY = Ut(this.player.body.y - xt * 0.62, 0, Oe - xt)),
@@ -19373,6 +19383,7 @@ class Er extends zt.Scene {
     return this.nextMs;
   }
   checkRecords() {
+    if (FG.zoned) return;
     var C, E;
     const T = this.maxDist;
     for (; this.nextMs && T >= this.nextMs.dist;) {
@@ -19566,7 +19577,7 @@ class Er extends zt.Scene {
     for (let h = 0; h < 64; h++) {
       const m = this.world.groundRowAt(E - h),
         t = [1, 2, 3, 4].every((a) => this.world.groundRowAt(E - h - a) === m);
-      if (m > 0 && t && !this.world.gates.has(E - h)) {
+      if (m > 0 && t && !this.world.gates.has(E - h) && FG.sameZone(E, E - h)) {
         ((E = E - h - 2), (T.body.y = m * gt - 1));
         break;
       }
@@ -19653,6 +19664,29 @@ class Er extends zt.Scene {
       this.world.destroy(),
       (C = this.ambient) == null || C.destroy(),
       (window.__run = null));
+  }
+  // 구역 이동: 타일 x로 순간이동 (그 구역 안의 조각만 새로 만든다)
+  travelTo(tx, face = 1) {
+    const C = this.player,
+      R = Math.floor(tx / vt);
+    for (const e of this.enemies) e.remove();
+    ((this.enemies = []), this.boss && (this.boss.destroy(), (this.boss = null)), (this.arenaLock = null), (this.bossIntro = !1), this.projectiles.clearAll());
+    for (let a = R; a <= R + 2; a++) this.world.gen.getMeta(a);
+    const h = Math.max(0, R - 4),
+      m = (h - this.world.originChunk) * vt * gt;
+    this.world.originChunk = h;
+    for (const [a, v] of this.world.loaded) v.rt.x = this.world.lx(a * vt);
+    this.rebase(m);
+    const t = this.world.groundRowAt(tx);
+    ((C.body.x = this.world.lx(tx) + 8),
+      (C.body.y = (t > 0 ? t : Ft - 6 - UGR) * gt - 1),
+      (C.body.vy = 0),
+      (C.body.vx = 0),
+      (C.facing = face),
+      (this.camX = C.x - ot / 2),
+      (this.cameras.main.scrollX = this.camX),
+      this.world.update(C.x),
+      this.regionIdx >= 0 && this.updateRegion());
   }
   debugTeleport(T) {
     const C = this.player,
@@ -20367,6 +20401,7 @@ class wr extends zt.Scene {
     }
   }
   updateProgress(T, C, E) {
+    if (!E && FG.zoneProgress(this)) return;
     const R = qi(T),
       h = !E;
     for (const n of [this.progBg, this.progFill, this.progSkull, this.progText]) n.setVisible(h);
@@ -20404,10 +20439,10 @@ class wr extends zt.Scene {
     const h = R.player;
     (this.hpBar.set(h.hp / h.maxHp, E), this.hpText.setText(`${Math.ceil(h.hp)} / ${h.maxHp}`));
     const m = Math.floor(R.dist);
-    this.distText.setText(`${yt(m)}m`);
+    FG.zoneHudText(this, R) || this.distText.setText(`${yt(m)}m`);
     const t = Math.max(R.run.prevBest, Math.floor(R.maxDist)),
       a = R.nextMilestone();
-    (this.bestText.setText(`최고 ${yt(t)}m${a ? `   ·   다음 기록 ${yt(a.dist)}m (+${yt(a.gold)}G)` : ""}`),
+    (FG.zoned || this.bestText.setText(`최고 ${yt(t)}m${a ? `   ·   다음 기록 ${yt(a.dist)}m (+${yt(a.gold)}G)` : ""}`),
       ((t) => this.bestText.style.color !== t && this.bestText.setColor(t))(R.maxDist > R.run.prevBest && R.run.prevBest > 0 ? q.gold : q.textDim),
       this.goldText.setText(yt(R.run.gold + R.run.milestoneGold)),
       (this.goldScale = Math.max(1, this.goldScale - E * 2)),
