@@ -2405,6 +2405,7 @@ export function hudCreate(hud) {
     return s ? ct(hud, s.bg.x, s.bg.y - 25, "", "tiny", "#ffffff", { stroke: "#140e18", strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(5) : null;
   });
   UI.remakeHud(hud, R);
+  miniCreate(hud);
   hud.input.keyboard.addCapture("TAB");
   hud.input.keyboard.on("keydown-TAB", () => toggleBag(hud.run));
   hud.input.keyboard.on("keydown-B", () => toggleBag(hud.run));
@@ -2434,6 +2435,111 @@ export function hudUpdate(hud) {
   w2?.icon?.setVisible(!1);
   const f = hud.sSlots[3];
   if (f) for (const k of ["bg", "icon", "cd", "cdText", "key", "lock"]) f[k]?.setVisible?.(!1);
+  miniUpdate(hud);
+}
+
+// ── 미니맵 (왼쪽 아래, 상태창 바로 위) ─────────────────
+// 지금 구역 전체를 실제 지형 장(natgen)에서 줄여 그린다. 구역이 바뀔 때만 다시 만들고, 표시는 1초에 10번 갱신
+const MINI_W = 150, MINI_H = 68;
+function miniCreate(hud) {
+  const x = 6, y = R.xt - 72 - 18 - MINI_H;
+  hud.frMini = { x, y, zid: null, t: 0, blink: 0 };
+  hud.frMiniFrame = hud.add.nineslice(x - 3, y - 3, "ui_hud_panel", void 0, MINI_W + 6, MINI_H + 6, 6, 6, 6, 6).setOrigin(0).setDepth(-1).setAlpha(0.88);
+  hud.frMiniBg = hud.add.rectangle(x, y, MINI_W, MINI_H, 0x0a0812, 0.72).setOrigin(0).setDepth(0);
+  hud.frMiniImg = hud.add.image(x, y, "__DEFAULT").setOrigin(0).setDepth(1).setVisible(!1);
+  hud.frMiniG = hud.add.graphics().setDepth(2);
+  hud.events.once("shutdown", () => (hud.frMini = null));
+}
+// 구역 지형을 미니맵 크기로 (2×2 표본 중 3개 이상 바위면 바위 — 좁은 굴도 보이게), 윗면은 밝게
+function miniTexture(hud, sc, z) {
+  const P = ZG.planOf(z, { seed: sc.world.gen.seed, Ft: R.Ft, up: z.kind === "zone" ? ZN.upChunk(z) : -1, down: z.kind === "zone" ? ZN.downChunk(z) : -1 });
+  const sx = P.WP / MINI_W, sy = P.HP / MINI_H;
+  const key = "fr_minimap";
+  let tex = hud.textures.exists(key) ? hud.textures.get(key) : null;
+  if (!tex || tex.width !== MINI_W || tex.height !== MINI_H) (tex && hud.textures.remove(key), (tex = hud.textures.createCanvas(key, MINI_W, MINI_H)));
+  const ctx = tex.getContext(), im = ctx.createImageData(MINI_W, MINI_H), d = im.data;
+  const solid = new Uint8Array(MINI_W * MINI_H);
+  for (let my = 0; my < MINI_H; my++)
+    for (let mx = 0; mx < MINI_W; mx++) {
+      let n = 0;
+      for (const [ox, oy] of [[0.28, 0.28], [0.72, 0.28], [0.28, 0.72], [0.72, 0.72]]) P.F.solid((mx + ox) * sx, (my + oy) * sy) && n++;
+      solid[my * MINI_W + mx] = n >= 3 ? 1 : 0;
+    }
+  const pal = z.reg?.pal ?? {};
+  const base = z.y > 0 ? pal.rock ?? 0x6a6070 : z.y < 0 ? pal.rock ?? 0x9a8a7a : pal.soil ?? 0x8a6a50;
+  const top = z.y > 0 ? 0xc8b8a0 : pal.top ?? 0x9ad060;
+  const rgb = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  const shade = (c, f) => rgb(c).map((v) => Math.max(0, Math.min(255, Math.round(f > 0 ? v + (255 - v) * f : v * (1 + f)))));
+  // 지표 위: 바위 + 밝은 윗면, 땅속(동굴 구역 전체): 어두운 바위 + 은은한 바닥 — 땅 모양과 굴이 섞여 보이지 않게
+  const B = rgb(base), Tp = rgb(top), UB = shade(base, -0.45), UT = shade(base, 0.18);
+  const ugAt = (mx, my) => z.y > 0 || (P.h && (my + 0.5) * sy > P.h[Math.min(P.h.length - 1, Math.round(((mx + 0.5) * sx) / 4))] + 40);
+  for (let my = 0; my < MINI_H; my++)
+    for (let mx = 0; mx < MINI_W; mx++) {
+      const k = my * MINI_W + mx;
+      if (!solid[k]) continue;
+      const surf = my > 0 && !solid[k - MINI_W];
+      const c = ugAt(mx, my) ? (surf ? UT : UB) : surf ? Tp : B;
+      d[k * 4] = c[0];
+      d[k * 4 + 1] = c[1];
+      d[k * 4 + 2] = c[2];
+      d[k * 4 + 3] = 255;
+    }
+  ctx.putImageData(im, 0, 0);
+  tex.refresh();
+  hud.frMiniImg.setTexture(key).setVisible(!0);
+  return { P, sx, sy };
+}
+function miniUpdate(hud) {
+  const M = hud.frMini, sc = hud.run;
+  if (!M || !sc?.world || !sc.player) return;
+  const now = sc.time.now;
+  if (now - M.t < 100) return;
+  M.t = now;
+  const z = zoneOfPlayer(sc);
+  const show = !!z && !hud.frBag && !hud.frMap;
+  for (const o of [hud.frMiniFrame, hud.frMiniBg, hud.frMiniImg, hud.frMiniG]) o?.setVisible(show && (o !== hud.frMiniImg || M.zid === z?.id));
+  if (!show) return;
+  if (M.zid !== z.id) {
+    Object.assign(M, miniTexture(hud, sc, z), { zid: z.id, z });
+    hud.frMiniImg.setVisible(!0);
+  }
+  const W = sc.world, g0 = W.originChunk * 512 - z.c0 * 512;
+  const toM = (lx, y) => [M.x + (lx + g0) / M.sx, M.y + y / M.sy];
+  const G = hud.frMiniG.clear();
+  // 지금 화면 범위
+  const cam = sc.cameras.main, [cx0, cy0] = toM(cam.scrollX, cam.scrollY);
+  G.lineStyle(1, 0xffffff, 0.35).strokeRect(Math.round(cx0) + 0.5, Math.round(cy0) + 0.5, Math.round(R.ot / M.sx), Math.round(R.xt / M.sy));
+  // 출구 (숨은 던전 입구는 한 번 본 뒤에만)
+  for (const e of ZN.exitList(z)) {
+    if (e.at === "DG" && !(sc.fr?.dgSeen ?? []).includes(z.id)) continue;
+    const p = exitPos(W, z, e.at);
+    if (!p || p.row <= 0) continue;
+    const lx = W.lx(p.tile) + 8, y = p.py > 0 ? p.py : p.row * 16;
+    const [ex, ey] = toM(lx, y);
+    const col = e.at === "U" ? 0x7ae8ff : e.at === "D" ? 0xffa040 : e.at === "DG" ? 0xc080ff : 0xffe08a;
+    const X = Math.round(ex), Y = Math.round(ey) - 2;
+    G.fillStyle(0x140e18, 1).fillRect(X - 2, Y - 2, 5, 5);
+    if (e.at === "U") G.fillStyle(col, 1).fillTriangle(X - 2, Y + 2, X + 2, Y + 2, X, Y - 2);
+    else if (e.at === "D") G.fillStyle(col, 1).fillTriangle(X - 2, Y - 2, X + 2, Y - 2, X, Y + 2);
+    else G.fillStyle(col, 1).fillRect(X - 1, Y - 1, 3, 3);
+  }
+  // 적 (정예는 주황, 보스는 크게)
+  for (const en of sc.enemies ?? []) {
+    if (en.dead || en.removed) continue;
+    const [ex, ey] = toM(en.cx, en.body?.y ?? en.cy);
+    if (ex < M.x || ex >= M.x + MINI_W || ey < M.y || ey >= M.y + MINI_H) continue;
+    G.fillStyle(en.isElite ? 0xffa040 : 0xff4a4a, 1).fillRect(Math.round(ex), Math.round(ey) - 1, 1, 1);
+  }
+  if (sc.boss && !sc.boss.dead) {
+    const [bx, by] = toM(sc.boss.cx ?? sc.boss.body?.x ?? 0, sc.boss.body?.y ?? 0);
+    G.fillStyle(0xff2020, 1).fillRect(Math.round(bx) - 1, Math.round(by) - 3, 3, 3);
+  }
+  // 플레이어 (깜빡임)
+  const [px, py] = toM(sc.player.x, sc.player.body.y);
+  M.blink = (M.blink + 1) % 8;
+  const X = Math.round(px), Y = Math.round(py) - 1;
+  G.fillStyle(0x140e18, 1).fillRect(X - 2, Y - 2, 5, 5);
+  G.fillStyle(M.blink < 6 ? 0xffffff : 0x9ad0ff, 1).fillRect(X - 1, Y - 1, 3, 3);
 }
 
 // ── 가방·융합 화면 ─────────────────────────────────

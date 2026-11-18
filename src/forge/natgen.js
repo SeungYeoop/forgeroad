@@ -250,8 +250,15 @@ function island(P, cx, top, w, t, st, opt = {}) {
     }
   }
 }
+// 지상·동굴 구역의 세계 맨 아래는 늘 막혀 있게 (고치기 굴이 바닥을 뚫어 세계 밖으로 떨어지는 일이 없게)
+function sealBottom(P) {
+  if (P.kind === "sky") return;
+  const { F } = P, LW = F.LW, d = F.d;
+  for (let j = Math.floor((P.HP - 40) / Q); j < F.LH; j++) for (let i = 0, o = j * LW; i < LW; i++) d[o + i] < 4 && (d[o + i] = 4);
+}
 // 최종 장에서 떠 있는 아주 작은 바위 부스러기를 지운다 (파내기·깎기로 쪼개진 조각 등). 섬은 훨씬 크다
 function specks(P, minPts = 20) {
+  sealBottom(P);
   const { F } = P, LW = F.LW, LH = F.LH, d = F.d, n = d.length;
   const seen = scratch("SK", Uint8Array, n).fill(0), q = scratch("SQ", Int32Array, n);
   for (let s = 0; s < n; s++) {
