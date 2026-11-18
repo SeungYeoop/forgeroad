@@ -2438,11 +2438,11 @@ export function hudUpdate(hud) {
   miniUpdate(hud);
 }
 
-// ── 미니맵 (왼쪽 아래, 상태창 바로 위) ─────────────────
+// ── 미니맵 (오른쪽 아래) ─────────────────────────────
 // 지금 구역 전체를 실제 지형 장(natgen)에서 줄여 그린다. 구역이 바뀔 때만 다시 만들고, 표시는 1초에 10번 갱신
 const MINI_W = 150, MINI_H = 68;
 function miniCreate(hud) {
-  const x = 6, y = R.xt - 72 - 18 - MINI_H;
+  const x = R.ot - MINI_W - 7, y = R.xt - MINI_H - 7;
   hud.frMini = { x, y, zid: null, t: 0, blink: 0 };
   hud.frMiniFrame = hud.add.nineslice(x - 3, y - 3, "ui_hud_panel", void 0, MINI_W + 6, MINI_H + 6, 6, 6, 6, 6).setOrigin(0).setDepth(-1).setAlpha(0.88);
   hud.frMiniBg = hud.add.rectangle(x, y, MINI_W, MINI_H, 0x0a0812, 0.72).setOrigin(0).setDepth(0);
