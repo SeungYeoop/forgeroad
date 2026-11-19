@@ -3585,8 +3585,14 @@ function skyInner(P, R, I, x0i, x1i, top, tags, topAt = null) {
     const cl = (x) => fl(x) - H - (ruin ? 0 : 12 * (0.5 + 0.5 * P.N.fbm1(x / 30 + so, 2)));
     cutShape(P, a - 4, Math.min(fa, fb) - H - 28, b + 4, Math.max(fa, fb) + 4, (px, py) => Math.min(fl(px) - py, py - cl(px), px - a, b - px) + 0.5);
     wall(a, Math.min(fa, fb) - H - 16, b, Math.max(fa, fb), ruin ? "brick" : "rock");
-    ruin && brick(a, Math.min(fa, fb) - H, b, Math.max(fa, fb));
+    // 벽돌은 단마다 굴 둘레만
+    if (ruin) for (let i = 0; i <= k; i++) {
+      const ta = xa + ((xb - xa) * i) / (k + 1), tb = xa + ((xb - xa) * (i + 1)) / (k + 1), fy = sn(fa + (rise * i) / k);
+      brick(Math.min(ta, tb), fy - H, Math.max(ta, tb), fy);
+    }
   }
+  // 떨어지는 구멍 [x0, x1, 위 바닥, 아래 천장]
+  for (const [a, b, y0, y1] of I.drops ?? []) (box(a, y0 - 8, b, y1 + 28), wall(a, y0, b, y1, ruin ? "brick" : "rock"), ruin && brick(a, y0, b, y1));
   // 옆 입구: 방 끝에서 섬 옆면 밖까지 곧은 굴
   const out = [];
   for (const m of I.mouths ?? []) {
