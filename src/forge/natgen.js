@@ -818,13 +818,31 @@ function surfaceHeights(P) {
   }
   // 계단밭(단구): 완만한 비탈은 평평한 단 + 짧고 가파른 턱으로 → 경사면 대신 평지와 단이 이어진 픽셀 게임 지형
   // 먼저 비탈을 45° 이하로 (블록 계단 한 칸씩 걸어 오른다), 완만한 곳만 단으로 다듬는다
-  const TR = 32;
-  for (let i = 0; i < LW; i++) {
+  P.ro = ro;
+  return h;
+}
+// 비탈 기울기 제한: 너무 가파른 곳은 아래쪽(골짜기·산자락)을 채워 넓힌다 → 산은 높이를 지키고 자락이 길어진다
+// pins: [[x0, x1, y]] 높이를 지킬 자리 (구역 끝 출구). 그 둘레의 산은 깎는다
+// s: 칸마다 허용 기울기 (배열) — 완만한 자락과 가파른 턱이 섞여 곧은 삼각형이 되지 않는다
+function limitSlope(h, s, pins = []) {
+  const n = h.length;
+  for (const [x0, x1, y] of pins) {
+    // 고정 자리에서 바깥으로 기울기를 쌓아 가며 그보다 높은 곳은 깎는다
+    const i0 = Math.round(x0 / Q), i1 = Math.round(x1 / Q);
+    let lim = y;
+    for (let i = i0 - 1; i >= 0; i--) ((lim -= s[i] * Q), (h[i] = Math.max(h[i], lim)));
+    lim = y;
+    for (let i = i1 + 1; i < n; i++) ((lim -= s[i] * Q), (h[i] = Math.max(h[i], lim)));
+  }
+  for (let i = 1; i < n; i++) h[i] > h[i - 1] + s[i] * Q && (h[i] = h[i - 1] + s[i] * Q);
+  for (let i = n - 2; i >= 0; i--) h[i] > h[i + 1] + s[i] * Q && (h[i] = h[i + 1] + s[i] * Q);
+}
+// 계단밭(단구): 비탈을 평평한 단 + 짧은 턱으로 (턱 높이 TR은 1단 점프로 오른다)
+function terrace(h, TR) {
+  for (let i = 0; i < h.length; i++) {
     const k = Math.floor(h[i] / TR), f = h[i] / TR - k;
     h[i] = (k + smooth(smooth(f))) * TR;
   }
-  P.ro = ro;
-  return h;
 }
 function flattenH(h, xa, xb, y, feather) {
   for (let i = 0; i < h.length; i++) {
@@ -841,6 +859,9 @@ function buildGround(P) {
   // 구역 양 끝: 출구 자리(평평, 칸 경계) → 자연 지형으로 부드럽게
   flattenH(h, 0, 132, base, 300);
   flattenH(h, arenaFrom < WP ? arenaFrom - 40 : WP - 132, WP, base, arenaFrom < WP ? 260 : 300);
+  const slope = Float64Array.from({ length: LW }, (_, i) => clamp(0.5 + 0.42 * N.fbm1((i * Q) / 520 + 33.3, 2), 0.22, 0.85));
+  limitSlope(h, slope, [[0, 132, base], [arenaFrom < WP ? arenaFrom - 40 : WP - 132, WP, base]]);
+  terrace(h, 40);
   // 평평한 자리(함정·웅덩이·쉼터): 분지 바닥이나 완만한 언덕 위를 칸 경계 높이로 고른다
   const pads = [];
   const nPads = R.int(S.pads.n[0], S.pads.n[1]);

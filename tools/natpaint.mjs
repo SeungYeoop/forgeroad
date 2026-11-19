@@ -4,6 +4,7 @@ import { ZONES, upChunk, downChunk, FR_WORLD } from "../src/forge/zones.js";
 import { planOf, drawChunk } from "../src/forge/natgen.js";
 import { pixFine, fineSlice } from "../src/forge/terrfine.js";
 import { savePNG } from "./png.mjs";
+import fs from "node:fs";
 import { paintDeco } from "../src/forge/natdeco.js";
 
 const [id = "g1_0", seedS = "1", out = "paint.png", ...crop] = process.argv.slice(2);
@@ -44,9 +45,12 @@ for (const T of P.trees ?? []) {
 console.log("trees", (P.trees ?? []).length);
 const t0 = performance.now();
 let painted = 0;
+// PART=k/n: 조각 k, k+n, …만 그리고 날것(RGBA)을 out.raw로 (natpaintp.mjs가 합친다)
+const PART = process.env.PART ? process.env.PART.split("/").map(Number) : null;
 for (let S = z.c0; S < z.c1; S++) {
   const sx = (S - z.c0) * 512;
   if (sx + 512 <= cx || sx >= cx + W) continue;
+  if (PART && (S - z.c0) % PART[1] !== PART[0]) continue;
   const r = new Uint8Array(32 * 528), l = new Array(32), s = new Array(32);
   const ch = drawChunk(P, z, S, r, l, s, { ...o, arena: false });
   const g = pixFine({ ug: ch.ug }, S * 32, region, fineSlice(ch));
@@ -106,6 +110,10 @@ if (process.env.MARK) {
   for (const s of P.spots.filter((_, k) => k % 60 === 0)) fig(s.x, s.y);
 }
 console.log(`${id} seed ${seed}: ${painted} chunks painted in ${Math.round(performance.now() - t0)}ms (${Math.round((performance.now() - t0) / painted)}ms/chunk)`);
+if (PART) {
+  fs.writeFileSync(out + ".raw", img);
+  process.exit(0);
+}
 // DOWN=n: n×n 픽셀을 하나로 (큰 구역 전체를 한 장에)
 const DN = Number(process.env.DOWN || 1);
 if (DN > 1) {
