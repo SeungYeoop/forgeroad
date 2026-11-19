@@ -689,7 +689,9 @@ export function* pixFine(ch, base, region, S) {
   const propSprite = (p) => paintProp(p.k, p.s, p.v, p.acc != null ? { ...PP, acc: p.acc } : PP, p.sc ?? 1, p.g ?? 0, p.ext ? { h: p.s, w: p.v } : null);
   if (S.props && S.props.length) {
     let nP = 0;
-    for (const p of S.props) {
+    // 앞 소품 먼저, 뒤 장식은 남은 빈 칸에 (앞 소품 뒤에 보인다)
+    const order = S.props.filter((p) => !p.bg).concat(S.props.filter((p) => p.bg));
+    for (const p of order) {
       (++nP & 7) === 0 && (yield);
       const D = propSprite(p);
       const bx = Math.round(p.x - MX - D.ax), by = Math.round(p.y - OY - D.ay);
@@ -701,10 +703,9 @@ export function* pixFine(ch, base, region, S) {
           const x = bx + i, s4 = (j * D.w + i) * 4;
           if (x < 0 || x >= PW || !D.data[s4 + 3] || buf[y * PW + x] !== 0) continue;
           if (p.bg) {
-            // 뒷벽 층: 뒷벽이 있는 곳에만, 조금 어둡게 (깊이감)
-            const k = y * PW + x;
-            if (!wallBuf[k]) continue;
-            wallBuf[k] = pack(mix((D.data[s4] << 16) | (D.data[s4 + 1] << 8) | D.data[s4 + 2], 0x140c1e, p.dim ?? 0.22));
+            // 뒤 장식: 뒷벽이 있는 곳에만, 조금 어둡게 (깊이감) — 지형 그림 층에 그려 입체 겹 층에 가려지지 않는다
+            if (!wallBuf[y * PW + x]) continue;
+            put(x, y, mix((D.data[s4] << 16) | (D.data[s4 + 1] << 8) | D.data[s4 + 2], 0x140c1e, p.dim ?? 0.22));
             continue;
           }
           put(x, y, (D.data[s4] << 16) | (D.data[s4 + 1] << 8) | D.data[s4 + 2]);

@@ -49,11 +49,18 @@ const hash = (a, b) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 // 구역이 바뀌면 자리 목록을 새로 만든다
+const SIZE = new Map();
+const sizeOf = (k, s) => {
+  const key = k + ":" + s;
+  SIZE.has(key) || SIZE.set(key, propSize(k, s));
+  return SIZE.get(key);
+};
 function build(A, P) {
   const lights = [], drips = [], wins = [], trees = [];
   for (const p of P.props ?? []) {
     const L = LIGHT[p.k];
-    const [, h0] = p.ext ? [0, p.s] : propSize(p.k, p.s);
+    if (!LIGHT[p.k] && p.k !== "p_stalac") continue;
+    const [, h0] = p.ext ? [0, p.s] : sizeOf(p.k, p.s);
     const h = h0 * (p.sc ?? 1);
     if (L) {
       const cy = p.hang ? p.y + h * AT[p.k] : p.y - h * AT[p.k];

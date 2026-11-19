@@ -95,14 +95,14 @@ function worker() {
 }
 // 띠(band) 높이: 맨 아래 띠는 짧을 수 있다
 const bandH = (ch, band) => Math.min(BANDH, Math.round(ch.grid.length / COLS) * T - band * BANDH);
-export function prepaint(scene, ch, base, raw, region, band = 0) {
+export function prepaint(scene, ch, base, raw, region, band = 0, force = !1) {
   for (const [b, j] of PRE) j.scene !== scene && (PRE.delete(b), (j.dead = !0), j.wait || FREE.push(j.S));
   const pk = base + ":" + band;
-  if (PRE.has(pk) || PRE.size >= 4) return;
+  if (PRE.has(pk) || (!force && PRE.size >= 4)) return;
   const PH = bandH(ch, band);
   let S = FREE.pop();
   (!S || S.scene !== scene || S.cv.height !== PH) && (S = makeEntry(scene, PH));
-  const j = { scene, S, ch, base, raw, region, band, gen: null, done: !1, wait: !1 };
+  const j = { scene, S, ch, base, raw, region, band, gen: null, done: !1, wait: !1, pk, rt: null };
   PRE.set(pk, j);
   const W = worker();
   if (W) {
@@ -125,11 +125,28 @@ export function prepaint(scene, ch, base, raw, region, band = 0) {
     W.postMessage({ id, codes, CW, ROWS, margin: MARGIN, base, band, bandTop: band * BANDH, bandH: PH, ch: { n: ch.grid.length, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, region: { pal: region.pal, theme: region.theme } }, [codes.buffer]);
   } else j.gen = paintSteps(scene, S, ch, base, raw, region, band);
 }
+// 늦게 끝난 띠: 기다리던 그림판이 아직 같은 띠면 그린다
+function lateDraw(j) {
+  PRE.delete(j.pk);
+  const rt = j.rt;
+  j.rt = null;
+  if (rt && rt._frJob === j) ((rt._frJob = null), rt.draw(j.S.key, 0, 0));
+}
 export function prepaintStep(ms = 5) {
   const t0 = performance.now();
-  for (const j of PRE.values()) {
-    if (j.done || j.wait || !j.gen) continue;
+  for (const j of [...PRE.values()]) {
+    if (j.dead && !j.wait) {
+      PRE.delete(j.pk);
+      FREE.push(j.S);
+      continue;
+    }
+    if (j.done) {
+      j.rt && lateDraw(j);
+      continue;
+    }
+    if (j.wait || !j.gen) continue;
     while (performance.now() - t0 < ms) if (j.gen.next().done) { j.done = !0; break; }
+    j.done && j.rt && lateDraw(j);
     if (performance.now() - t0 >= ms) return;
   }
 }
@@ -137,7 +154,30 @@ export function paintChunk(scene, rt, ch, base, raw, region, band = 0) {
   const PH = bandH(ch, band);
   const pool = (scene._frTerr = scene._frTerr ?? new Map());
   const pk = base + ":" + band;
-  const pre = PRE.get(pk);
+  // 이 그림판이 다른 띠를 기다리던 중이면 그 일은 버린다 (결과가 와도 그리지 않는다)
+  const prevJ = rt._frJob;
+  if (prevJ) {
+    rt._frJob = null;
+    prevJ.rt = null;
+    if (prevJ.pk !== pk) {
+      prevJ.dead = !0;
+      pool.get(rt) === prevJ.S && pool.delete(rt);
+    }
+  }
+  // 버린(죽은) 같은 띠 일은 목록에서 빼고 새로 맡긴다
+  const pd = PRE.get(pk);
+  pd && pd.dead && (PRE.delete(pk), pd.wait || FREE.push(pd.S));
+  let pre = PRE.get(pk);
+  // 작업 스레드가 있으면 화면 스레드에서 그리지 않는다: 미리 그려 둔 게 없으면 지금 맡기고, 끝나면 그린다
+  if (!pre && worker()) (prepaint(scene, ch, base, raw, region, band, !0), (pre = PRE.get(pk)));
+  if (pre && pre.wait && !pre.dead && pre.scene === scene && pre.ch === ch && pre.S.cv.height === PH) {
+    const old = pool.get(rt);
+    old && old !== pre.S && FREE.push(old);
+    pool.set(rt, pre.S);
+    pre.rt = rt;
+    rt._frJob = pre;
+    return;
+  }
   if (pre) {
     PRE.delete(pk);
     if (pre.scene === scene && pre.ch === ch && pre.S.cv.height === PH && !pre.wait) {
