@@ -356,7 +356,7 @@ function island(P, cx, top, w, t, st, opt = {}) {
       let off = 0;
       if (opt.tiers) for (const T of opt.tiers) if (u >= T.u0 && u < T.u1) off = T.off;
       // 윗면은 평평하게 (가장자리만 한두 블록 내려간다)
-      return top + off + (r > 0.55 ? BLK : 0) + (r > 0.85 ? BLK : 0) + (opt.round && au > 0.86 ? Math.round((opt.round * ((au - 0.86) / 0.14) ** 2) / BLK) * BLK : 0);
+      return top + off + (r > 0.55 ? BLK : 0) + (r > 0.85 ? BLK : 0) + (opt.round && au > 0.86 ? Math.round((opt.round * ((au - 0.86) / 0.14) ** 2) / BLK) * BLK : 0) + (opt.hill ? opt.hill(x) : 0);
     });
   // 밑면은 16px 기둥마다 한 깊이(8px 단위) → 거꾸로 선 계단 피라미드 같은 블록 밑면
   const botAt = (x0) => {
@@ -3473,12 +3473,74 @@ function caveWorld(P, C, o) {
 // 하늘섬 속: 동굴 방(둥근 천장)·폐허 방(네모 + 벽돌)·계단 굴·옆 입구. 좌표 px (구역 기준)
 //   I = { kind: "cave"|"ruin", halls: [{x0,x1,F,h,role,kind,type}], pass: [[xa,fa,xb,fb,H]], mouths: [{side:"E"|"W", x, F}] }
 //   돌려준다: 입구 [{side, e(섬 옆 x), F}]
-function skyInner(P, R, I, x0i, x1i, top, tags) {
+// 네모난 섬 깨기 ① 윗면 낮은 둔덕 (가장자리·지킬 자리 keep [[x, 반폭]] 근처는 평평하게)
+function hillOf(P, R, x0, x1, keep, A = 72) {
+  const so = R() * 99, cx = (x0 + x1) / 2, hw = (x1 - x0) / 2;
+  return (x) => {
+    const au = Math.abs(x - cx) / hw;
+    let p = clamp((0.74 - au) / 0.14, 0, 1);
+    for (const [k, r] of keep) p = Math.min(p, clamp((Math.abs(x - k) - r) / 80, 0, 1));
+    if (p <= 0) return 0;
+    const n = 0.5 + 0.5 * P.N.fbm1(x / 230 + so, 2);
+    return -Math.round((A * Math.max(0, n * 1.7 - 0.55) * p) / BLK) * BLK;
+  };
+}
+// ② 옆면을 군데군데 안쪽으로 둥글게 깎는다 (입구·섬 속 길 근처는 피한다). depAt(x) = 윗면에서 밑면까지 깊이
+function sideBites(P, R, x0, x1, top, depAt, I) {
+  const boxes = [];
+  for (const h of I?.halls ?? []) boxes.push([h.x0, h.x1, h.F - h.h, h.F]);
+  for (const [xa, fa, xb, fb, H = 136] of I?.pass ?? []) boxes.push([Math.min(xa, xb), Math.max(xa, xb), Math.min(fa, fb) - H, Math.max(fa, fb)]);
+  for (const m of I?.mouths ?? []) boxes.push([Math.min(m.x, m.edge ?? (m.side === "E" ? x1 : x0)) - 64, Math.max(m.x, m.edge ?? (m.side === "E" ? x1 : x0)) + 64, m.F - 260, m.F + 80]);
+  for (const sd of [-1, 1]) {
+    const ex = sd < 0 ? x0 : x1, D = depAt(ex - sd * 24);
+    for (let k = 0, n = R.int(2, 3); k < n; k++) {
+      const r = R.range(40, 88), yc = top + R.range(0.2, 0.85) * D;
+      if (yc - r < top + 72 || yc + r > top + D - 24) continue;
+      const cxx = ex + sd * r * 0.4;
+      if (boxes.some(([a, b, c, d]) => cxx - r - 48 < b && cxx + r + 48 > a && yc - r - 48 < d && yc + r + 48 > c)) continue;
+      const so = R() * 99;
+      cutShape(P, cxx - r - 8, yc - r - 8, cxx + r + 8, yc + r + 8, (px, py) => r * (0.9 + 0.2 * (0.5 + 0.5 * P.N.fbm1(Math.atan2(py - yc, px - cxx) * 2 + so, 2))) - Math.hypot(px - cxx, py - yc));
+    }
+  }
+}
+function sideCrags(P, R, x0, x1, top, depAt, I) {
+  const out = [], mF = (I?.mouths ?? []).map((m) => [m.side, m.F]);
+  for (const sd of [-1, 1]) {
+    const ex = sd < 0 ? x0 : x1, D = depAt(ex - sd * 24);
+    for (let k = 0, n = R.int(3, 5); k < n; k++) {
+      const rx = R.range(60, 150), ry = R.range(50, 120), yc = top + 170 + R() * Math.max(0, D - 220);
+      if (yc + ry > top + D + 60) continue;
+      if (mF.some(([side, F]) => (side === "E") === sd > 0 && Math.abs(yc - (F - 72)) < ry + 190)) continue;
+      const cxx = ex + sd * R.range(10, 50), so = R() * 99;
+      if (cxx - rx < 140 || cxx + rx > Math.min(P.WP, P.arenaFrom) - 140) continue;
+      addShape(P, cxx - rx - 8, yc - ry - 8, cxx + rx + 8, yc + ry + 8, (px, py) => {
+        const a = Math.atan2(py - yc, px - cxx), q = 0.82 + 0.3 * (0.5 + 0.5 * P.N.fbm1(a * 2.2 + so, 2));
+        return (1 - Math.hypot((px - cxx) / rx, (py - yc) / ry) / q) * Math.min(rx, ry);
+      });
+      out.push({ x0: cxx - rx - 10, x1: cxx + rx + 10, y0: yc - ry - 10, y1: yc + ry + 10 });
+    }
+  }
+  return out;
+}
+function innerNeed(I, T, x0, x1) {
+  const need = [];
+  for (const h of I?.halls ?? []) need.push([h.x0 - 24, h.x1 + 24, h.F - T + 64]);
+  for (const [xa, fa, xb, fb] of I?.pass ?? []) need.push([Math.min(xa, xb) - 24, Math.max(xa, xb) + 24, Math.max(fa, fb) - T + 64]);
+  for (const m of I?.mouths ?? []) need.push(m.side === "E" ? [m.x - 24, (m.edge ?? x1) + 8, m.F - T + 64] : [(m.edge ?? x0) - 8, m.x + 24, m.F - T + 64]);
+  return (x, dep) => {
+    for (const [a, b, d] of need) {
+      const out = x < a ? a - x : x > b ? x - b : 0, v = d - out * 1.4;
+      v > dep && (dep = v);
+    }
+    return dep;
+  };
+}
+function skyInner(P, R, I, x0i, x1i, top, tags, topAt = null) {
   const sn = (v) => Math.round(v / BLK) * BLK, ruin = I.kind === "ruin", lo = x0i + 16, hi = x1i - 16;
   const box = (a, b, c, d) => cutShape(P, a - 4, b - 4, c + 4, d + 4, (px, py) => Math.min(px - a, c - px, py - b, d - py) + 0.5);
   const slab = (a, b, c, d) => addShape(P, a - 4, b - 4, c + 4, d + 4, (px, py) => Math.min(px - a, c - px, py - b, d - py) + 0.5);
   const wall = (a, b, c, d, m) => {
-    const A = Math.max(a, lo), B = Math.min(c, hi), Y = Math.max(b, top + 16);
+    const A = Math.max(a, lo), B = Math.min(c, hi), Y = Math.max(b, (topAt ? Math.max(topAt(A), topAt(B - 1)) : top) + 16);
     B > A && d > Y && P.walls.push({ x0: A, y0: Y, x1: B, y1: d, m });
   };
   const brick = (a, b, c, d) => P.mats.push({ x0: a - 24, y0: b - 24, x1: c + 24, y1: d + 24, m: "brick" });
@@ -3529,7 +3591,15 @@ function skyInner(P, R, I, x0i, x1i, top, tags) {
   const out = [];
   for (const m of I.mouths ?? []) {
     const F = sn(m.F), e = m.edge ?? (m.side === "E" ? x1i : x0i), a = m.side === "E" ? sn(m.x) : e - 64, b = m.side === "E" ? e + 64 : sn(m.x);
-    box(a, F - 144, b, F);
+    if (ruin) box(a, F - 144, b, F);
+    else {
+      const cxm = (a + b) / 2, hx = (b - a) / 2, cym = F - 72, rr = 44;
+      cutShape(P, a - 4, F - 152, b + 4, F + 4, (px, py) => {
+        const qx = Math.abs(px - cxm) - (hx - rr), qy = Math.abs(py - cym) - (72 - rr);
+        const o2 = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rr;
+        return py > F - 30 ? Math.min(F - py, hx - Math.abs(px - cxm)) + 0.5 : -o2 + 0.5;
+      });
+    }
     wall(a, F - 144, b, F, ruin ? "brick" : "rock");
     ruin && brick(a, F - 144, b, F);
     out.push({ side: m.side, e, F });
@@ -3716,12 +3786,21 @@ function skyWorld(P, groundAt, style, o = {}) {
       const a2 = lv[k], b2 = lv[k + 1], f = clamp((v - a2) / (b2 - a2), 0, 1);
       return a2 + (b2 - a2) * smooth(smooth(f));
     };
+    const flat = o.design?.gate?.flat;
+    const gKeep = [[dX, 220]];
+    for (const [xa, fa, xb, fb] of o.design?.gate?.inner?.pass ?? []) (fa <= peakY && gKeep.push([xa, 110]), fb <= peakY && gKeep.push([xb, 110]));
+    const gHill = flat ? hillOf(P, R, xa, xb, gKeep, 80) : null;
     const topFn = (x) => {
+      if (flat) {
+        const au = Math.abs(x - cx) / (gw / 2);
+        return peakY + gHill(x) + (au > 0.88 ? Math.round((40 * ((au - 0.88) / 0.12) ** 2) / BLK) * BLK : 0);
+      }
       const L = x < dX ? dX - xa : xb - dX, dd = Math.abs(x - dX);
       if (dd <= pl) return peakY;
       return quant(peakY + shH * Math.pow(clamp((dd - pl) / Math.max(40, L - pl - shW), 0, 1), 0.9));
     };
     const lobes = Array.from({ length: R.int(2, 4) }, () => ({ u: R.range(-0.55, 0.55), s: R.range(0.12, 0.26), d: R.range(90, 240) }));
+    const gNeed = o.design?.gate?.inner ? innerNeed(o.design.gate.inner, peakY, xa, xb) : null;
     const so = R() * 99;
     const botFn = (x) => {
       const u = (x - cx) / (gw / 2);
@@ -3732,7 +3811,8 @@ function skyWorld(P, groundAt, style, o = {}) {
         const v = (u - Lb.u) / Lb.s, q = 1 - v * v;
         if (q > 0) dep += Lb.d * q * q * e;
       }
-      return topFn(x) + dep * (0.88 + 0.24 * (0.5 + 0.5 * P.N.fbm1(x / 60 + so, 3)));
+      dep *= 0.88 + 0.24 * (0.5 + 0.5 * P.N.fbm1(x / 60 + so, 3));
+      return topFn(x) + (gNeed ? gNeed(x, dep) : dep);
     };
     island(P, cx, peakY, gw, tS, st2, { topFn, botFn, sub: false, lobes: 0 });
     G = { x0: xa, x1: xb, top: peakY, rim: 0, gate: 1, topAt: topFn };
@@ -3741,7 +3821,7 @@ function skyWorld(P, groundAt, style, o = {}) {
       const x = s > 0 ? xb - 12 : xa + 12;
       return { x, y: topFn(x) };
     };
-    G.obj = { x0: xa - 8, x1: xb + 8, y0: peakY - 8, y1: peakY + shH + 60 };
+    G.obj = { x0: xa - 8, x1: xb + 8, y0: peakY - 96, y1: peakY + shH + 60 };
     objs.push(G.obj);
     for (let x = xa; x < xb; x += 96) {
       let yb = 0;
@@ -3851,17 +3931,13 @@ function skyWorld(P, groundAt, style, o = {}) {
       else if (sh === "lumpy") for (const u of [-0.55, -0.1, 0.4].map((v) => v + R.range(-0.08, 0.08))) lobes.push({ u, s: R.range(0.14, 0.22), d: t * R.range(0.35, 0.6) });
       else if (sh !== "block") for (let k = 0, n = sh === "spire" ? 1 : R.int(1, 2); k < n; k++) lobes.push({ u: R.range(-0.4, 0.4), s: R.range(0.2, 0.34), d: t * (sh === "spire" ? R.range(0.06, 0.12) : R.range(0.12, 0.24)) });
       // 큰 덩어리(block): 섬마다 밑 모양을 다르게 (form) — 옆은 둥글게 줄어든다. 속 굴·방 밑에는 늘 바위가 남게 (need)
-      let form = null, need = [];
+      let form = null, need = null;
       if (sh === "block") {
         const fm = q.form ?? R.pick(["bowl", "cone", "keel", "tiers", "roots"]);
         form = { fm, a: fm === "cone" ? 0.12 : fm === "bowl" ? 0.3 : 0.2, p: fm === "cone" ? 1.4 : fm === "bowl" ? 0.45 : 0.8, sk: fm === "keel" ? R.pick([-1, 1]) * R.range(0.3, 0.45) : 0 };
         if (fm === "roots") for (let k = 0, n = R.int(4, 6); k < n; k++) lobes.push({ u: -0.75 + (1.5 * (k + R.range(0.2, 0.8))) / n, s: R.range(0.06, 0.11), d: t * R.range(0.25, 0.55) });
         else if (fm === "keel") lobes.push({ u: form.sk, s: R.range(0.3, 0.4), d: t * R.range(0.35, 0.5) });
         else lobes.push({ u: R.range(-0.3, 0.3), s: R.range(0.22, 0.32), d: t * R.range(0.15, 0.3) });
-        const T = sn(q.top), I = q.inner ?? {};
-        for (const h of I.halls ?? []) need.push([h.x0 - 24, h.x1 + 24, h.F - T + 64]);
-        for (const [xa, fa, xb, fb] of I.pass ?? []) need.push([Math.min(xa, xb) - 24, Math.max(xa, xb) + 24, Math.max(fa, fb) - T + 64]);
-        for (const m of I.mouths ?? []) need.push(m.side === "E" ? [m.x - 24, x0 + w + 8, m.F - T + 64] : [x0 - 8, m.x + 24, m.F - T + 64]);
       }
       return (x) => {
         const u = (x - cx) / hw;
@@ -3875,10 +3951,6 @@ function skyWorld(P, groundAt, style, o = {}) {
         if (form?.fm === "tiers") dep = Math.round(dep / 64) * 64 + 16 * P.N.fbm1(x / 30 + so, 2);
         dep = dep * (0.92 + 0.16 * (0.5 + 0.5 * P.N.fbm1(x / 46 + so, 3))) + 3 * P.N.n1(x / 7 + so);
         // 속 굴 밑 받침: 바깥으로 갈수록 비스듬히 줄어든다
-        for (const [a, b, d] of need) {
-          const out = x < a ? a - x : x > b ? x - b : 0, v = d - out * 0.9;
-          v > dep && (dep = v);
-        }
         return dep;
       };
     };
@@ -3891,11 +3963,28 @@ function skyWorld(P, groundAt, style, o = {}) {
       const dep = shapeDep(q, x0, w, t);
       const bx = isleBox(q.cx, hiTop, w, t, 20);
       bx.ok || log("isle box warn", q.id, Math.round(q.cx), top);
-      island(P, q.cx, top, w, t, st2, { sub: false, lobes: 0, tiers, round: q.shape === "block" ? 40 : 0, botFn: (x) => Math.min(top + dep(x), Math.max(top + 24, gAt(x) - 240)) });
+      const keep = [[rz ?? -1e9, 120]];
+      for (const [xa, fa, xb, fb] of q.inner?.pass ?? []) (fa <= top && keep.push([xa, 110]), fb <= top && keep.push([xb, 110]));
+      const hill0 = q.shape === "block" ? hillOf(P, R, x0, x1, keep) : null;
+      const riser = q.shape === "block" && st && st.dy > 200 ? (x) => {
+        const d = st.hi === "L" ? x - rz : rz - x;
+        if (d < 0) return -d < 200 ? Math.round((96 * (1 + d / 200) ** 2) / BLK) * BLK : 0;
+        return d < 160 ? -Math.round((0.35 * st.dy * (1 - d / 160) ** 2) / BLK) * BLK : 0;
+      } : null;
+      const hill = hill0 || riser ? (x) => (hill0 ? hill0(x) : 0) + (riser ? riser(x) : 0) : null;
+      // 밑면: 높은 쪽·낮은 쪽 각자 윗면에서 잰 깊이 + 섬 속 길 받침(절대 높이), 땅에서 240px 이상
+      const lTop = (x) => (st && (st.hi === "R" ? x >= rz : x < rz) ? hiTop : top);
+      const nAbs = q.shape === "block" && q.inner ? innerNeed(q.inner, 0, x0, x1) : null;
+      // 턱 경계 밑면은 300px에 걸쳐 부드럽게
+      const bTop = (x) => { if (!st) return top; const k = clamp(((st.hi === "R" ? x - rz : rz - x) + 150) / 300, 0, 1); return top + (hiTop - top) * smooth(k); };
+      const botAbs = (x) => Math.min(nAbs ? nAbs(x, bTop(x) + dep(x)) : bTop(x) + dep(x), Math.max(lTop(x) + 24, gAt(x) - 240));
+      island(P, q.cx, top, w, t, st2, { sub: false, lobes: 0, tiers, hill, round: q.shape === "block" ? 40 : 0, botFn: botAbs });
       const head = { x0: 0, x1: 0, y0: -9, y1: -9 };
       objs.push(head);
+      if (q.shape === "block") {
+      }
       if (q.inner)
-        for (const m of skyInner(P, R, q.inner, x0, x1, top, tags)) {
+        for (const m of skyInner(P, R, q.inner, x0, x1, top, tags, (x) => (st && (st.hi === "R" ? x >= rz : x < rz) ? hiTop : top))) {
           const pt = { x0: m.e - 40, x1: m.e + 40, top: m.F, rim: 0, t, obj: head, bpId: q.id, edgeAt: () => ({ x: m.e + (m.side === "E" ? -8 : 8), y: m.F }) };
           plats.push(pt);
           byId.set(q.id + (m.side === "E" ? ">" : "<"), pt);
@@ -3903,14 +3992,15 @@ function skyWorld(P, groundAt, style, o = {}) {
       const topAt = (x) => (st && (st.hi === "R" ? x >= rz : x < rz) ? hiTop : top);
       for (let x = x0; x < x1; x += 48) {
         const xb = Math.min(x1, x + 48);
-        let yb = 0;
-        for (let xx = x; xx <= xb; xx += 8) yb = Math.max(yb, top + dep(Math.min(xx, x1 - 1)));
-        objs.push({ x0: x - (x === x0 ? 8 : 0), x1: xb + (xb === x1 ? 8 : 0), y0: Math.min(topAt(x), topAt(xb - 1)) - 48, y1: yb + 16, of: head });
+        let yb = 0, hb = 0;
+        for (let xx = x; xx <= xb; xx += 8) ((yb = Math.max(yb, botAbs(Math.min(xx, x1 - 1)))), hill && (hb = Math.min(hb, hill(xx))));
+        objs.push({ x0: x - (x === x0 ? 8 : 0), x1: xb + (xb === x1 ? 8 : 0), y0: Math.min(topAt(x), topAt(xb - 1)) + hb - 56, y1: yb + 16, of: head });
       }
       const part = (a, b, tp, outerL, outerR) => {
         const I = { x0: a, x1: b, top: tp, rim: 16, t, obj: head, bpId: q.id };
         const od = q.shape === "block" ? 48 : 16;
-        I.edgeAt = (sd) => (sd > 0 ? (outerR ? { x: b - 8, y: tp + od } : { x: b - 8, y: tp }) : outerL ? { x: a + 8, y: tp + od } : { x: a + 8, y: tp });
+        const rd = riser && tp === hiTop ? 88 : 0;
+        I.edgeAt = (sd) => (sd > 0 ? (outerR ? { x: b - 8, y: tp + od } : { x: b - 8, y: tp + rd }) : outerL ? { x: a + 8, y: tp + od } : { x: a + 8, y: tp + rd });
         return I;
       };
       let lo, hi = null;
