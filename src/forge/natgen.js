@@ -215,6 +215,8 @@ function placeDeco(P) {
       for (const dx of [-12, -6, 6, 12]) ok = ok && F.solid(x + dx, y + 8) && !F.solid(x + dx, y - 9);
       // 설계 구역: 작은 디딤돌 위에는 나무를 두지 않는다 (나무 폭만큼 발판이 있어야)
       if (P.bp) for (const dx of [-w * 0.6, w * 0.6]) ok = ok && F.solid(x + dx, y + 8);
+      // 설계 구역: 하늘이 트인 곳에만 (섬 속 동굴·신전 바닥에는 두지 않는다)
+      if (P.bp) for (let yy = y - 8; ok && yy > 0; yy -= 16) ok = !F.solid(x, yy);
       // 위 공간이 비었는가
       for (let dx = -w / 2; ok && dx <= w / 2; dx += 8) for (let yy = y - 4; ok && yy > y - h; yy -= 8) ok = !F.solid(x + dx, yy);
       if (ok && !P.trees.some((T) => Math.abs(T.x - x) < (T.w + w) * 0.3 && Math.abs(T.y - y) < 40)) P.trees.push({ x: Math.round(x), y, w, key: decoKey(kind, sz, R.int(0, 5), reg.pal) });
@@ -354,7 +356,7 @@ function island(P, cx, top, w, t, st, opt = {}) {
       let off = 0;
       if (opt.tiers) for (const T of opt.tiers) if (u >= T.u0 && u < T.u1) off = T.off;
       // 윗면은 평평하게 (가장자리만 한두 블록 내려간다)
-      return top + off + (r > 0.55 ? BLK : 0) + (r > 0.85 ? BLK : 0);
+      return top + off + (r > 0.55 ? BLK : 0) + (r > 0.85 ? BLK : 0) + (opt.round && au > 0.86 ? Math.round((opt.round * ((au - 0.86) / 0.14) ** 2) / BLK) * BLK : 0);
     });
   // 밑면은 16px 기둥마다 한 깊이(8px 단위) → 거꾸로 선 계단 피라미드 같은 블록 밑면
   const botAt = (x0) => {
@@ -3468,6 +3470,72 @@ function caveWorld(P, C, o) {
 // 큰 섬(쉼터·보물·전망)과 디딤돌 길: 돌·구름을 섞어 2~4개씩, 한쪽으로 비스듬히 오른다 (사다리처럼 쌓지 않는다)
 // 길은 검사기와 같은 점프 크기로 놓는다: 한 번에 오름 ≤ 74px, 틈 44~92px, 뛰는 길(머리 자리)에 다른 것이 없게
 // o: { sky: 하늘 구역, exits: [{x0, x1, t}] 하늘 구역 출입 섬 }
+// 하늘섬 속: 동굴 방(둥근 천장)·폐허 방(네모 + 벽돌)·계단 굴·옆 입구. 좌표 px (구역 기준)
+//   I = { kind: "cave"|"ruin", halls: [{x0,x1,F,h,role,kind,type}], pass: [[xa,fa,xb,fb,H]], mouths: [{side:"E"|"W", x, F}] }
+//   돌려준다: 입구 [{side, e(섬 옆 x), F}]
+function skyInner(P, R, I, x0i, x1i, top, tags) {
+  const sn = (v) => Math.round(v / BLK) * BLK, ruin = I.kind === "ruin", lo = x0i + 16, hi = x1i - 16;
+  const box = (a, b, c, d) => cutShape(P, a - 4, b - 4, c + 4, d + 4, (px, py) => Math.min(px - a, c - px, py - b, d - py) + 0.5);
+  const slab = (a, b, c, d) => addShape(P, a - 4, b - 4, c + 4, d + 4, (px, py) => Math.min(px - a, c - px, py - b, d - py) + 0.5);
+  const wall = (a, b, c, d, m) => {
+    const A = Math.max(a, lo), B = Math.min(c, hi), Y = Math.max(b, top + 16);
+    B > A && d > Y && P.walls.push({ x0: A, y0: Y, x1: B, y1: d, m });
+  };
+  const brick = (a, b, c, d) => P.mats.push({ x0: a - 24, y0: b - 24, x1: c + 24, y1: d + 24, m: "brick" });
+  // 방 (뒷벽이 먼저 놓은 것이 이기므로 기둥 → 벽 순서)
+  for (const h of I.halls ?? []) {
+    const a = sn(h.x0), b = sn(h.x1), F = sn(h.F), H = h.h, cx = (a + b) / 2, hw = (b - a) / 2, so = R() * 99;
+    if (ruin) {
+      box(a, F - H, b, F);
+      if (h.type !== "vault") for (let x = a + 40; x < b - 30; x += 64) (wall(x, F - H + 20, x + 16, F, "stem"), wall(x - 8, F - H + 12, x + 24, F - H + 20, "stem"));
+      wall(a, F - H, b, F, h.type === "vault" ? "wood" : "brick");
+      brick(a, F - H, b, F);
+      // 천장 받침돌
+      for (let x = a + 40; x < b - 30; x += 64) (slab(x - 16, F - H, x + 32, F - H + 8), slab(x - 8, F - H + 8, x + 24, F - H + 16));
+      if (h.type === "sanctum") {
+        slab(cx - 176, F - 16, cx + 176, F);
+        slab(cx - 112, F - 32, cx + 112, F - 16);
+        slab(cx - 56, F - 48, cx + 56, F - 32);
+        tags.push({ x0: cx - 56, x1: cx + 56, y0: F - 220, y1: F - 40, role: "treasure", big: 1 });
+      }
+      if (h.type === "vault") for (const u of b - a > 300 ? [0.3, 0.7] : []) slab(sn(a + (b - a) * u) - 24, F - 16, sn(a + (b - a) * u) + 24, F);
+    } else {
+      const cl = (x) => {
+        const u = (x - cx) / hw, e = Math.max(0, 1 - u * u);
+        return F - H * (0.5 + 0.5 * Math.sqrt(e)) * (0.88 + 0.24 * (0.5 + 0.5 * P.N.fbm1(x / 44 + so, 3)));
+      };
+      cutShape(P, a - 4, F - H * 1.2 - 8, b + 4, F + 4, (px, py) => Math.min(F - py, py - cl(px), px - a, b - px) + 0.5);
+      wall(a, F - H * 1.2, b, F, "rock");
+      if (h.kind === "pool") {
+        const pw = Math.min(208, (b - a) * 0.42), xa = sn(cx - pw / 2), xb = sn(cx + pw / 2);
+        box(xa, F - 8, xb, F + 48);
+        spec(P, xa, F + 8, xb, F + 48, "water");
+      }
+      if (h.kind === "pillar") for (let x = a + 56; x < b - 40; x += 72) wall(x, F - H, x + 20, F, "stem");
+    }
+    h.role && h.type !== "sanctum" && tags.push({ x0: a + 24, x1: b - 24, y0: F - H, y1: F + 24, role: h.role });
+    h.type === "sanctum" && tags.push({ x0: a + 24, x1: b - 24, y0: F - H, y1: F + 24, role: "arena" });
+  }
+  // 계단 굴: 단 높이 ≤48, 단 폭 = 거리/(단 수+1)
+  for (const [xa, fa0, xb, fb0, H = 136] of I.pass ?? []) {
+    const fa = sn(fa0), fb = sn(fb0), rise = fb - fa, k = Math.max(1, Math.ceil(Math.abs(rise) / 48)), a = Math.min(xa, xb), b = Math.max(xa, xb), so = R() * 99;
+    const fl = (x) => sn(fa + (rise * Math.min(k, Math.floor(clamp((x - xa) / (xb - xa || 1), 0, 0.9999) * (k + 1)))) / k);
+    const cl = (x) => fl(x) - H - (ruin ? 0 : 12 * (0.5 + 0.5 * P.N.fbm1(x / 30 + so, 2)));
+    cutShape(P, a - 4, Math.min(fa, fb) - H - 28, b + 4, Math.max(fa, fb) + 4, (px, py) => Math.min(fl(px) - py, py - cl(px), px - a, b - px) + 0.5);
+    wall(a, Math.min(fa, fb) - H - 16, b, Math.max(fa, fb), ruin ? "brick" : "rock");
+    ruin && brick(a, Math.min(fa, fb) - H, b, Math.max(fa, fb));
+  }
+  // 옆 입구: 방 끝에서 섬 옆면 밖까지 곧은 굴
+  const out = [];
+  for (const m of I.mouths ?? []) {
+    const F = sn(m.F), e = m.edge ?? (m.side === "E" ? x1i : x0i), a = m.side === "E" ? sn(m.x) : e - 64, b = m.side === "E" ? e + 64 : sn(m.x);
+    box(a, F - 144, b, F);
+    wall(a, F - 144, b, F, ruin ? "brick" : "rock");
+    ruin && brick(a, F - 144, b, F);
+    out.push({ side: m.side, e, F });
+  }
+  return out;
+}
 function skyWorld(P, groundAt, style, o = {}) {
   const R = rng(P.seed ^ 0x51ca7e), { WP, arenaFrom } = P;
   const lim = Math.min(WP, arenaFrom) - 40;
@@ -3659,7 +3727,7 @@ function skyWorld(P, groundAt, style, o = {}) {
       const u = (x - cx) / (gw / 2);
       if (u <= -1 || u >= 1) return topFn(x) + 8;
       const e = 1 - u * u;
-      let dep = 40 + (tS - 40) * Math.pow(e, 1.6);
+      let dep = 40 + (tS - 40) * Math.pow(e, o.design?.gate?.belly ?? 1.6);
       for (const Lb of lobes) {
         const v = (u - Lb.u) / Lb.s, q = 1 - v * v;
         if (q > 0) dep += Lb.d * q * q * e;
@@ -3667,7 +3735,8 @@ function skyWorld(P, groundAt, style, o = {}) {
       return topFn(x) + dep * (0.88 + 0.24 * (0.5 + 0.5 * P.N.fbm1(x / 60 + so, 3)));
     };
     island(P, cx, peakY, gw, tS, st2, { topFn, botFn, sub: false, lobes: 0 });
-    G = { x0: xa, x1: xb, top: peakY, rim: 0, gate: 1 };
+    G = { x0: xa, x1: xb, top: peakY, rim: 0, gate: 1, topAt: topFn };
+    G.mouths = o.design?.gate?.inner ? skyInner(P, R, o.design.gate.inner, xa, xb, peakY, tags) : [];
     G.edgeAt = (s) => {
       const x = s > 0 ? xb - 12 : xa + 12;
       return { x, y: topFn(x) };
@@ -3780,17 +3849,37 @@ function skyWorld(P, groundAt, style, o = {}) {
       const lobes = [];
       if (sh === "twin") for (const u of [-0.42, 0.42]) lobes.push({ u: u + R.range(-0.06, 0.06), s: R.range(0.26, 0.34), d: t * R.range(0.55, 0.7) });
       else if (sh === "lumpy") for (const u of [-0.55, -0.1, 0.4].map((v) => v + R.range(-0.08, 0.08))) lobes.push({ u, s: R.range(0.14, 0.22), d: t * R.range(0.35, 0.6) });
-      else for (let k = 0, n = sh === "spire" ? 1 : R.int(1, 2); k < n; k++) lobes.push({ u: R.range(-0.4, 0.4), s: R.range(0.2, 0.34), d: t * (sh === "spire" ? R.range(0.06, 0.12) : R.range(0.12, 0.24)) });
+      else if (sh !== "block") for (let k = 0, n = sh === "spire" ? 1 : R.int(1, 2); k < n; k++) lobes.push({ u: R.range(-0.4, 0.4), s: R.range(0.2, 0.34), d: t * (sh === "spire" ? R.range(0.06, 0.12) : R.range(0.12, 0.24)) });
+      // 큰 덩어리(block): 섬마다 밑 모양을 다르게 (form) — 옆은 둥글게 줄어든다. 속 굴·방 밑에는 늘 바위가 남게 (need)
+      let form = null, need = [];
+      if (sh === "block") {
+        const fm = q.form ?? R.pick(["bowl", "cone", "keel", "tiers", "roots"]);
+        form = { fm, a: fm === "cone" ? 0.12 : fm === "bowl" ? 0.3 : 0.2, p: fm === "cone" ? 1.4 : fm === "bowl" ? 0.45 : 0.8, sk: fm === "keel" ? R.pick([-1, 1]) * R.range(0.3, 0.45) : 0 };
+        if (fm === "roots") for (let k = 0, n = R.int(4, 6); k < n; k++) lobes.push({ u: -0.75 + (1.5 * (k + R.range(0.2, 0.8))) / n, s: R.range(0.06, 0.11), d: t * R.range(0.25, 0.55) });
+        else if (fm === "keel") lobes.push({ u: form.sk, s: R.range(0.3, 0.4), d: t * R.range(0.35, 0.5) });
+        else lobes.push({ u: R.range(-0.3, 0.3), s: R.range(0.22, 0.32), d: t * R.range(0.15, 0.3) });
+        const T = sn(q.top), I = q.inner ?? {};
+        for (const h of I.halls ?? []) need.push([h.x0 - 24, h.x1 + 24, h.F - T + 64]);
+        for (const [xa, fa, xb, fb] of I.pass ?? []) need.push([Math.min(xa, xb) - 24, Math.max(xa, xb) + 24, Math.max(fa, fb) - T + 64]);
+        for (const m of I.mouths ?? []) need.push(m.side === "E" ? [m.x - 24, x0 + w + 8, m.F - T + 64] : [x0 - 8, m.x + 24, m.F - T + 64]);
+      }
       return (x) => {
         const u = (x - cx) / hw;
         if (u <= -1 || u >= 1) return 8;
         const e = 1 - u * u;
-        let dep = sh === "spire" ? t * (0.16 + 0.84 * Math.pow(e, 2.2)) : sh === "slab" ? t * (0.34 + 0.4 * Math.pow(e, 0.45)) : sh === "lumpy" ? t * (0.2 + 0.3 * e) : sh === "tower" ? t * (0.42 + 0.58 * Math.pow(e, 0.5)) : sh === "twin" ? t * (0.2 + 0.22 * e) : t * (0.22 + 0.62 * Math.pow(e, 0.8));
+        let dep = form ? t * (form.a + (1 - form.a) * Math.pow(Math.max(0, 1 - ((u - form.sk * 0.5) / (1 + Math.abs(form.sk) * 0.5)) ** 2), form.p)) : sh === "spire" ? t * (0.16 + 0.84 * Math.pow(e, 2.2)) : sh === "slab" ? t * (0.34 + 0.4 * Math.pow(e, 0.45)) : sh === "lumpy" ? t * (0.2 + 0.3 * e) : sh === "tower" ? t * (0.42 + 0.58 * Math.pow(e, 0.5)) : sh === "twin" ? t * (0.2 + 0.22 * e) : t * (0.22 + 0.62 * Math.pow(e, 0.8));
         for (const L of lobes) {
           const v = (u - L.u) / L.s, qq = 1 - v * v;
           if (qq > 0) dep += L.d * qq * qq * Math.sqrt(e);
         }
-        return dep * (0.92 + 0.16 * (0.5 + 0.5 * P.N.fbm1(x / 46 + so, 3))) + 3 * P.N.n1(x / 7 + so);
+        if (form?.fm === "tiers") dep = Math.round(dep / 64) * 64 + 16 * P.N.fbm1(x / 30 + so, 2);
+        dep = dep * (0.92 + 0.16 * (0.5 + 0.5 * P.N.fbm1(x / 46 + so, 3))) + 3 * P.N.n1(x / 7 + so);
+        // 속 굴 밑 받침: 바깥으로 갈수록 비스듬히 줄어든다
+        for (const [a, b, d] of need) {
+          const out = x < a ? a - x : x > b ? x - b : 0, v = d - out * 0.9;
+          v > dep && (dep = v);
+        }
+        return dep;
       };
     };
     // 섬 하나: 낮은 쪽(lo)·높은 쪽(hi) 발판, 충돌 상자는 48px 조각마다 실제 밑면까지
@@ -3802,9 +3891,15 @@ function skyWorld(P, groundAt, style, o = {}) {
       const dep = shapeDep(q, x0, w, t);
       const bx = isleBox(q.cx, hiTop, w, t, 20);
       bx.ok || log("isle box warn", q.id, Math.round(q.cx), top);
-      island(P, q.cx, top, w, t, st2, { sub: false, lobes: 0, tiers, botFn: (x) => top + dep(x) });
+      island(P, q.cx, top, w, t, st2, { sub: false, lobes: 0, tiers, round: q.shape === "block" ? 40 : 0, botFn: (x) => Math.min(top + dep(x), Math.max(top + 24, gAt(x) - 240)) });
       const head = { x0: 0, x1: 0, y0: -9, y1: -9 };
       objs.push(head);
+      if (q.inner)
+        for (const m of skyInner(P, R, q.inner, x0, x1, top, tags)) {
+          const pt = { x0: m.e - 40, x1: m.e + 40, top: m.F, rim: 0, t, obj: head, bpId: q.id, edgeAt: () => ({ x: m.e + (m.side === "E" ? -8 : 8), y: m.F }) };
+          plats.push(pt);
+          byId.set(q.id + (m.side === "E" ? ">" : "<"), pt);
+        }
       const topAt = (x) => (st && (st.hi === "R" ? x >= rz : x < rz) ? hiTop : top);
       for (let x = x0; x < x1; x += 48) {
         const xb = Math.min(x1, x + 48);
@@ -3814,7 +3909,8 @@ function skyWorld(P, groundAt, style, o = {}) {
       }
       const part = (a, b, tp, outerL, outerR) => {
         const I = { x0: a, x1: b, top: tp, rim: 16, t, obj: head, bpId: q.id };
-        I.edgeAt = (sd) => (sd > 0 ? (outerR ? { x: b - 8, y: tp + 16 } : { x: b - 8, y: tp }) : outerL ? { x: a + 8, y: tp + 16 } : { x: a + 8, y: tp });
+        const od = q.shape === "block" ? 48 : 16;
+        I.edgeAt = (sd) => (sd > 0 ? (outerR ? { x: b - 8, y: tp + od } : { x: b - 8, y: tp }) : outerL ? { x: a + 8, y: tp + od } : { x: a + 8, y: tp });
         return I;
       };
       let lo, hi = null;
@@ -3828,7 +3924,13 @@ function skyWorld(P, groundAt, style, o = {}) {
       P.islands.length && (P.islands[P.islands.length - 1].bp = q.id);
     }
     G && byId.set("G", G);
+    // ▲ 섬 옆 입구 (속 신전)
+    for (const m of G?.mouths ?? []) byId.set("G" + (m.side === "E" ? ">" : "<"), { x0: m.e - 40, x1: m.e + 40, top: m.F, rim: 0, obj: G.obj, edgeAt: () => ({ x: m.e + (m.side === "E" ? -8 : 8), y: m.F }) });
     const port = (k) => {
+      if (k.startsWith("G:") && G) {
+        const x = Number(k.slice(2));
+        return { x0: x - 40, x1: x + 40, top: G.topAt(x), rim: 0, obj: G.obj, edgeAt: (sd) => ({ x: x + sd * 24, y: G.topAt(x + sd * 24) }) };
+      }
       if (!k.startsWith("g:")) return byId.get(k);
       const g = groundPlat(Number(k.slice(2)), 80);
       g && (g.obj = { x0: 0, x1: 0, y0: -9, y1: -9 });

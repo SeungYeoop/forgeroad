@@ -2,7 +2,7 @@
 import { ZONES, upChunk, downChunk } from "../src/forge/zones.js";
 import { makePlan } from "../src/forge/natgen.js";
 const z = ZONES.find((q) => q.id === process.argv[2]);
-const P = makePlan(z, { seed: 1, Ft: 528, up: upChunk(z), down: downChunk(z), fe: 1, ze: 0, noRepair: true }, 0);
+const P = makePlan(z, { seed: Number(process.env.SEED ?? 1), Ft: 528, up: upChunk(z), down: downChunk(z), fe: 1, ze: 0, noRepair: true }, 0);
 const A = P.A, { nC, nY, NN, reach } = A;
 const g = new Map();
 for (let n = 0; n < NN; n++) if (!reach[n]) { const k = Math.floor(nC[n] / 10) + ":" + Math.floor(nY[n] / 40); g.set(k, (g.get(k) ?? []).concat(n)); }

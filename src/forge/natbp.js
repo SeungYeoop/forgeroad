@@ -4,7 +4,7 @@
 
 export const BLUEPRINTS = {
   // ── g1_0 「재의 들판」: 1번 지역 첫 지상 구역. 난이도 낮음 ──
-  // ▲ 문 x≈4352 (거대 하늘섬 꼭대기), ▼ 문 x≈3330 (서쪽 동굴 맨 아래 심연 동굴)
+  // ▲ 문 x≈4352 y≈1000 (산만 한 하늘섬 꼭대기), ▼ 문 x≈3330 (서쪽 동굴 맨 아래 심연 동굴)
   // 땅속: 서쪽 절반 자연 동굴, 동쪽 절반 고대 유적 던전 (층마다 무너진 벽으로 이어진다)
   g1_0: {
     // 지표 구간 (높이는 위로 +px)
@@ -22,47 +22,72 @@ export const BLUEPRINTS = {
     spots: [{ xa: 4960, xb: 5160, role: "treasure" }, { xa: 6300, xb: 6900, role: "arena" }, { xa: 1000, xb: 1700, role: "arena" }],
     // 지표 굴 입구 (→ 입구 동굴): 골짜기 서쪽 비탈 (연못 옆)
     mouths: [{ x: 2140, to: "C1" }],
-    // 하늘: 봉우리 섬(▲) + 오르는 길 둘 + 갈래 섬. 섬마다 역할
-    //   주 길(서): 산 정상 → M1 → M2 → M3 → 턱 섬 T(되돌아 오름) → N1 → N2 → 봉우리 섬 왼쪽 어깨
-    //   동쪽 길: 산 동쪽 어깨 → E1 → E2(고원 위) → E3 → 턱 섬 ET(구역 끝) → F1 → F2 → F3 → 봉우리 섬 오른쪽 어깨
-    //   갈래: 전망·보물 섬 (막다른 곳), 땅에서 바로 오르는 낮은 섬
-    //   step: 턱 섬 — hi 쪽이 dy 높다 (낮은 쪽으로 들어와 턱을 올라 되돌아 간다). "id^" = 높은 쪽 발판
+    // 하늘: 산만 한 ▲ 문 섬(속에 신전) + 큰 섬 위주. 큰 섬은 옆 굴 입구로 들어가 섬 속 동굴을 지나 꼭대기로 나온다
+    //   서쪽 길: 산 정상 → A1 → W1(속 동굴·샘) → W2(속 동굴, 보물) → W3(속 폐허, 보물실) → W4(속 기둥 동굴) → W5 들판 섬 → ▲ 섬 서쪽 어깨
+    //   동쪽 길: 산 동쪽 어깨 → E1 → E2(속 동굴·샘) → E3(속 기둥 동굴) → E4(속 동굴·샘, 보물) → E5(속 동굴, 보물) → E6 → ▲ 섬 동쪽 어깨
+    //   높은 하늘: ▲ 섬 서쪽 비탈 → W6 보물섬 → W7 전망섬 · E6 턱 위 → E7 보물섬
+    //   ▲ 섬 속 신전 (양쪽 길을 잇는 지름길, 어깨 끝 바로 밑 입구로 내려선다): 서쪽 옆 입구 → 계단 → 기둥 회랑(전투) → 계단 → 성소(3단 제단, 큰 상자) → 계단 → 동쪽 옆 입구
+    //   "id>" / "id<" = 동쪽 / 서쪽 옆 굴 입구, "id^" = 턱 섬의 높은 쪽, "G:x" = ▲ 섬 비탈 x 자리, "g:x" = 땅 x 자리 평지
+    //   섬 속: halls 방 [x0, x1, 바닥 F, 높이 h] (kind pool 샘 · pillar 뒤 기둥) · pass 계단 굴 [xa, fa, xb, fb] · mouths 옆 입구
     sky: {
-      peakY: 2450,
-      gate: { cx: 4350, w: 2200, sh: 420, tS: 900 },
+      peakY: 1000,
+      gate: {
+        cx: 4350, w: 2800, sh: 760, tS: 1500, belly: 0.7,
+        inner: {
+          kind: "ruin",
+          halls: [
+            { x0: 3440, x1: 4300, F: 2160, h: 220, type: "colonnade", role: "arena" }, // 기둥 회랑
+            { x0: 4540, x1: 5160, F: 2320, h: 240, type: "sanctum" }, // 성소
+          ],
+          pass: [[3200, 1960, 3440, 2160, 150], [4300, 2160, 4540, 2320, 150], [5160, 2320, 5500, 1950, 150]],
+          mouths: [{ side: "W", x: 3200, F: 1960, edge: 3020 }, { side: "E", x: 5500, F: 1950, edge: 5680 }],
+        },
+      },
       isles: [
-        // 주 길
-        { id: "M1", cx: 3700, top: 3992, w: 380, t: 150, role: "rest" }, // 산 위 쉼터: 봉우리 섬 밑이 올려다보인다
-        { id: "M2", cx: 2900, top: 3864, w: 560, t: 220, role: "arena", shape: "twin" }, // 첫 하늘 전투 (나는 적)
-        { id: "M3", cx: 2120, top: 3640, w: 380, t: 190, role: "rest", shape: "slab" },
-        { id: "T", cx: 1364, top: 3520, w: 540, t: 240, role: "vista", shape: "tower", step: { at: 0.556, dy: 72, hi: "L" } }, // 되돌아 오르는 턱 섬: 서쪽 하늘이 다 보인다
-        { id: "N1", cx: 1990, top: 3232, w: 520, t: 210, role: "arena", shape: "lumpy" },
-        { id: "N2", cx: 2790, top: 3040, w: 400, t: 170, role: "rest" }, // 봉우리 앞 쉼터
-        // 동쪽 길
-        { id: "E1", cx: 5600, top: 4304, w: 380, t: 140, role: "rest", shape: "slab" },
-        { id: "E2", cx: 6420, top: 4072, w: 600, t: 190, role: "arena", shape: "twin" }, // 고원 위 전투
-        { id: "E3", cx: 7180, top: 3920, w: 420, t: 180, role: "arena", shape: "lumpy" },
-        { id: "ET", cx: 7899, top: 3712, w: 330, t: 260, role: "vista", shape: "tower", step: { at: 0.4545, dy: 72, hi: "R" } }, // 구역 끝 바위 기둥: 되돌아 오른다
-        { id: "F1", cx: 7368, top: 3408, w: 500, t: 200, role: "arena", step: { at: 0.5, dy: 72, hi: "L" } }, // 갈림 섬: 왼쪽 → 봉우리, 턱 위 → 동쪽 보물섬
-        { id: "F2", cx: 6600, top: 3184, w: 520, t: 210, role: "treasure", shape: "slab" },
-        { id: "F3", cx: 5900, top: 3040, w: 400, t: 170, role: "rest", shape: "spire" }, // 봉우리 앞 쉼터 (동)
-        // 갈래 섬
+        { id: "A1", cx: 3700, top: 3992, w: 520, t: 220, role: "rest" }, // 산 위 쉼터: ▲ 섬 밑이 올려다보인다
+        // 서쪽 큰 섬
+        { id: "W1", cx: 2280, top: 3440, w: 1440, t: 700, shape: "block", form: "bowl", role: "rest",
+          inner: { halls: [{ x0: 2480, x1: 2900, F: 3880, h: 220, role: "arena" }, { x0: 1960, x1: 2180, F: 3700, h: 200, kind: "pool", role: "rest" }],
+            pass: [[2480, 3880, 2180, 3700], [1960, 3700, 1640, 3440]], mouths: [{ side: "E", x: 2900, F: 3880 }] } },
+        { id: "W2", cx: 790, top: 2860, w: 1220, t: 720, shape: "block", form: "roots", role: "arena",
+          inner: { halls: [{ x0: 1000, x1: 1300, F: 3332, h: 210, role: "arena" }, { x0: 560, x1: 760, F: 3132, h: 190, role: "treasure" }],
+            pass: [[1000, 3332, 760, 3132], [560, 3132, 320, 2860]], mouths: [{ side: "E", x: 1300, F: 3332 }] } },
+        { id: "W3", cx: 2200, top: 2250, w: 1200, t: 700, shape: "block", form: "tiers", role: "rest",
+          inner: { kind: "ruin", halls: [{ x0: 1680, x1: 2000, F: 2752, h: 200, type: "colonnade", role: "arena" }, { x0: 2260, x1: 2440, F: 2532, h: 180, type: "vault", role: "treasure" }],
+            pass: [[2000, 2752, 2260, 2532], [2440, 2532, 2720, 2250]], mouths: [{ side: "W", x: 1680, F: 2752 }] } },
+        { id: "W4", cx: 870, top: 1700, w: 1140, t: 660, shape: "block", form: "cone", role: "arena",
+          inner: { halls: [{ x0: 1060, x1: 1380, F: 2142, h: 200, role: "rest" }, { x0: 640, x1: 820, F: 1942, h: 180, kind: "pillar", role: "arena" }],
+            pass: [[1060, 2142, 820, 1942], [640, 1942, 400, 1700]], mouths: [{ side: "E", x: 1380, F: 2142 }] } },
+        { id: "W5", cx: 2225, top: 1800, w: 950, t: 260, shape: "slab", role: "arena" }, // ▲ 섬 앞 들판 섬
+        { id: "W6", cx: 2300, top: 1250, w: 700, t: 320, shape: "lumpy", role: "treasure" }, // 높은 하늘 보물섬
+        { id: "W7", cx: 950, top: 1180, w: 700, t: 300, shape: "spire", role: "vista" }, // 가장 높은 서쪽 전망섬
+        // 동쪽 큰 섬
+        { id: "E1", cx: 5560, top: 4304, w: 380, t: 140, shape: "slab", role: "rest" },
+        { id: "E2", cx: 6520, top: 3700, w: 1100, t: 600, shape: "block", form: "keel", role: "arena",
+          inner: { halls: [{ x0: 6060, x1: 6400, F: 4080, h: 210, role: "arena" }, { x0: 6640, x1: 6800, F: 3880, h: 190, kind: "pool", role: "rest" }],
+            pass: [[6400, 4080, 6640, 3880], [6800, 3880, 7000, 3700]], mouths: [{ side: "W", x: 6060, F: 4080 }] } },
+        { id: "E3", cx: 7640, top: 3200, w: 900, t: 640, shape: "block", form: "roots", role: "rest",
+          inner: { halls: [{ x0: 7280, x1: 7580, F: 3592, h: 220, kind: "pillar", role: "arena" }],
+            pass: [[7580, 3592, 7940, 3200]], mouths: [{ side: "W", x: 7280, F: 3592 }] } },
+        { id: "E4", cx: 6400, top: 2560, w: 1000, t: 640, shape: "block", form: "bowl", role: "arena",
+          inner: { halls: [{ x0: 6560, x1: 6850, F: 3012, h: 220, kind: "pool", role: "rest" }, { x0: 6180, x1: 6320, F: 2812, h: 190, role: "treasure" }],
+            pass: [[6560, 3012, 6320, 2812], [6180, 2812, 5960, 2560]], mouths: [{ side: "E", x: 6850, F: 3012 }] } },
+        { id: "E5", cx: 7550, top: 2050, w: 900, t: 620, shape: "block", form: "cone", role: "rest", step: { at: 0.4, dy: 72, hi: "L" },
+          inner: { halls: [{ x0: 7180, x1: 7480, F: 2452, h: 220, role: "arena" }],
+            pass: [[7480, 2452, 7860, 2050]], mouths: [{ side: "W", x: 7180, F: 2452 }] } },
+        { id: "E6", cx: 6330, top: 1780, w: 900, t: 300, shape: "slab", role: "arena", step: { at: 0.6, dy: 72, hi: "R" } }, // ▲ 섬 앞 턱 섬
+        { id: "E7", cx: 7630, top: 1400, w: 840, t: 340, shape: "lumpy", role: "treasure" }, // 높은 하늘 보물섬 (동)
+        // 갈래 섬 (땅 가까이)
         { id: "CV", cx: 4870, top: 3984, w: 340, t: 150, role: "treasure", shape: "spire" }, // 산 정상에서 오르는 보물섬
         { id: "WL", cx: 486, top: 4480, w: 440, t: 140, role: "arena", shape: "slab", step: { at: 0.5, dy: 72, hi: "L" } }, // 들판 위 낮은 섬 (첫 나는 적)
         { id: "WM", cx: 1060, top: 4176, w: 520, t: 200, role: "rest", shape: "lumpy" }, // 구릉 위 쉼터
-        { id: "WT", cx: 555, top: 3280, w: 450, t: 190, role: "arena", step: { at: 0.511, dy: 72, hi: "L" } },
-        { id: "UW", cx: 1080, top: 2992, w: 340, t: 170, role: "rest", shape: "spire" },
-        { id: "HW", cx: 1700, top: 2780, w: 360, t: 170, role: "treasure" }, // 서쪽 하늘 끝 보물섬
-        { id: "VP", cx: 2356, top: 4568, w: 400, t: 120, role: "rest", shape: "slab" }, // 연못 위 낮은 섬
         { id: "XT", cx: 7969, top: 4504, w: 190, t: 120, role: "treasure", shape: "spire" }, // 출구 들판 위 작은 보물 바위
-        { id: "UE", cx: 7872, top: 3120, w: 380, t: 170, role: "treasure", shape: "lumpy" }, // 동쪽 하늘 끝 보물섬
-        { id: "HE", cx: 7100, top: 2880, w: 500, t: 170, role: "vista", shape: "slab" }, // 동쪽 높은 전망섬
       ],
-      // 이을 길 (아래 → 위). "g:x" = 땅 x 자리 평지
+      // 이을 길 (아래 → 위)
       links: [
-        ["g:4250", "M1"], ["M1", "M2"], ["M2", "M3"], ["M3", "T"], ["T^", "N1"], ["N1", "N2"], ["N2", "G"],
-        ["g:5040", "E1"], ["E1", "E2"], ["E2", "E3"], ["E3", "ET"], ["ET^", "F1"], ["F1^", "F2"], ["F2", "F3"], ["F3", "G"],
-        ["g:4250", "CV"], ["T^", "WT"], ["WT^", "UW"], ["UW", "HW"], ["g:1060", "WL"], ["WL^", "WM"], ["g:2880", "VP"], ["g:7520", "XT"], ["F1^", "UE"], ["UE", "HE"],
+        ["g:4250", "A1"], ["A1", "W1>"], ["W1", "W2>"], ["W2", "W3<"], ["W3", "W4>"], ["W4", "W5"], ["W5", "G"],
+        ["g:5040", "E1"], ["E1", "E2<"], ["E2", "E3<"], ["E3", "E4>"], ["E4", "E5<"], ["E5^", "E6^"], ["E6", "G"],
+        ["G:3500", "W6", 5], ["W6", "W7"], ["E6^", "E7"], ["g:4250", "CV"], ["g:1060", "WL"], ["WL^", "WM"], ["g:7520", "XT"],
       ],
     },
     // 서쪽 자연 동굴 (x 0~4100): 방 [x0, x1, 바닥 y, 높이] + 종류·역할
