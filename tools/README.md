@@ -22,6 +22,8 @@
 - 실제 게임 그림 PNG: `node --import ./tools/json-hook.mjs tools/natpaint.mjs gm3_0 1 out.png [x y w h]`
 - 길찾기 ↔ 충돌 재현: `node --import ./tools/json-hook.mjs tools/natphys.mjs`
 - 실게임(헤드리스 크롬, Vite는 `localhost`로 열린다 — 127.0.0.1이 아니다): `TEST_URL=http://localhost:5198/ node tools/natcheck.mjs <스크린샷 폴더> [구역id,…]`
+- 실게임 순간이동 화면: `TEST_URL=http://localhost:5198/ node tools/natview.mjs <스크린샷 폴더> g1_0 "x,y,이름;x,y,이름"` (x·y = 구역 안 px, y = 발 높이, `ZOOM=0.6`). 설계가 오래 걸리는 구역은 natcheck에 `TRAVEL_WAIT=25000`
+- 설계도 구역(`src/forge/natbp.js`, 지금은 g1_0): 하늘섬·동굴 방·던전 방을 정한 대로 짓는다. 진단 (모두 `node --import ./tools/json-hook.mjs tools/<이름> g1_0`): 못 닿은 마디 무리 `natunr.mjs` · 하늘 디딤돌 뛰기 `nathops.mjs` · 상자·적·역할 수 `natloot.mjs` · 지표 높이·평평한 곳·섬 목록 `natgprof.mjs` · 하늘에서 가장 높이 닿은 곳 `natup.mjs` · 하늘 오르기 실패 이유 `natsky.mjs`
 - 여러 시드 비교 디버그 페이지: `npm run dev` → http://localhost:5173/terrain-lab.html?zone=gm3_0&seeds=1,2,3,4 (배포판에도 포함: …/terrain-lab.html)
 - 주의: 이 노트북은 계속 100% 부하가 걸리면 몇 초 뒤 CPU가 크게 느려진다. 긴 일괄 검사의 시간 수치는 앞쪽 몇 개만 믿을 것
 - 주의: 헤드리스는 느려서 게임 시간이 실제보다 천천히 간다(속도 판단 금지). 페이지 새로고침 직후 7~10초 기다릴 것(부팅 렌더링).

@@ -496,6 +496,7 @@ export function* pixFine(ch, base, region, S) {
       rock: rampOf(mix(regionBase, 0x2a2430, 0.45)),
       stem: rampOf(0xd8ccb0),
     };
+    const wdef = new Uint8Array(PW * PH);
     for (const r of S.walls) {
       const R6 = WC[r.m] ?? WC.rock;
       const x0 = Math.max(0, Math.floor(r.x0 - MX)), x1 = Math.min(PW, Math.ceil(r.x1 - MX));
@@ -503,7 +504,8 @@ export function* pixFine(ch, base, region, S) {
       for (let y = y0; y < y1; y++)
         for (let x = x0; x < x1; x++) {
           const ex = x + MP;
-          if (M[y * EW + ex] || wallBuf[y * PW + x]) continue;
+          if (M[y * EW + ex] || wdef[y * PW + x]) continue;
+          wdef[y * PW + x] = 1;
           const wx = X0 + x, yw = y + OY;
           let L;
           if (r.m === "stem") L = (wx % 5 === 0 ? 2 : 1);
@@ -520,7 +522,9 @@ export function* pixFine(ch, base, region, S) {
     }
   }
   // ── 7) 장식 (실제 윤곽에) ──
+  const onBrick = (x, y) => MM && x >= 0 && x < PW && y >= 0 && y < PH && MM[y * PW + x] === 3;
   const decoFloor = (x, y, wx, r) => {
+    if (onBrick(x, y)) return;
     const h = H(wx, r, 21);
     if (isUGp(x, y) && BI) {
       switch (ug.biome) {
@@ -590,7 +594,7 @@ export function* pixFine(ch, base, region, S) {
     } else if (cap === "snow" && h > 0.9) empty(x, y - 1) && put(x, y - 1, 0xffffff);
   };
   const decoCeil = (x, y, wx, r) => {
-    if (!(isUGp(x, y) && BI)) return;
+    if (!(isUGp(x, y) && BI) || onBrick(x, y - 1)) return;
     const h = H(wx, r, 81);
     switch (ug.biome) {
       case "lush":

@@ -1,7 +1,8 @@
 // 자연 지형을 실제 그림(terrfine.js)으로 그려 PNG로 저장 — 픽셀 아트 품질 확인용
 //   node --import ./tools/json-hook.mjs tools/natpaint.mjs <구역id> <시드> <출력.png> [x0 y0 w h]
 import { ZONES, upChunk, downChunk, FR_WORLD } from "../src/forge/zones.js";
-import { planOf, drawChunk } from "../src/forge/natgen.js";
+import { planOf, drawChunk, adoptPlan } from "../src/forge/natgen.js";
+import v8 from "node:v8";
 import { pixFine, fineSlice } from "../src/forge/terrfine.js";
 import { savePNG } from "./png.mjs";
 import fs from "node:fs";
@@ -15,7 +16,8 @@ const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "l
 const GROUND_BIO = { "-3": "drip", "-2": "deep", "-1": "lush", 1: "drip", 2: "geode", 3: "magma" };
 o.biome = z.y > 0 ? CAVE_BIO(z.x, z.y) : GROUND_BIO[z.x] ?? "drip";
 o.patterns = z.y === 0 ? z.reg?.patterns : null;
-const P = planOf(z, o);
+// PLANFILE: 미리 만든 설계(natpaintp가 한 번만 만든다)
+const P = process.env.PLANFILE ? adoptPlan(z, seed, v8.deserialize(fs.readFileSync(process.env.PLANFILE))) : planOf(z, o);
 const region = { pal: z.reg.pal, theme: z.reg.theme };
 const [cx = 0, cy = 0, cw = P.WP, chh = P.HP] = crop.map(Number);
 const W = cw, Hh = chh, img = new Uint8Array(W * Hh * 4);

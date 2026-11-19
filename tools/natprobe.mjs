@@ -9,5 +9,5 @@ for (let n = 0; n < NN; n++) {
   const x = nC[n] * 8 + 4;
   if (x < +x0 || x > +x1 || nY[n] < +y0 || nY[n] > +y1) continue;
   const o = (A.adj[n] ?? A.out(n)).map((b) => `${nC[b] * 8 + 4}:${nY[b]}`);
-  console.log(x, nY[n], reach[n] ? "R" : "-", o.filter((s) => +s.split(":")[0] > x).slice(0, 8).join(" "));
+  console.log(x, nY[n], reach[n] ? "R" : "-", A.co[n] ? "co" : "  ", o.filter((s) => +s.split(":")[1] < nY[n]).slice(0, 10).join(" "));
 }

@@ -14,6 +14,7 @@
 import { decoKinds, decoKey, decoHeight, decoWidth } from "./natdeco.js";
 import { makeNoise, rng, strHash, clamp, lerp, smooth } from "./noise.js";
 import { profileOf, profileKey } from "./terrprof.js";
+import { BLUEPRINTS } from "./natbp.js";
 
 export const Q = 4; // 격자 간격 (px)
 const TS = 16;
@@ -84,7 +85,7 @@ export function planOf(z, o) {
 // ── 다른 스레드(natworker)에서 만든 설계를 주고받기 ──
 export const planKey = (z, seed) => `${z.id}:${seed}`;
 export const hasPlan = (z, seed) => PLANS.has(planKey(z, seed));
-const KEEP = ["kind", "pkey", "seed", "attempt", "W", "WP", "HP", "Ft", "LW", "LH", "isZone", "arenaFrom", "upX", "downX", "gy", "h", "spots", "hzSpots", "pads", "peak", "chest", "deep", "ugTop", "islands", "check", "tries", "ms", "repairs", "trees", "mats", "walls", "feats", "spec"];
+const KEEP = ["kind", "pkey", "seed", "attempt", "W", "WP", "HP", "Ft", "LW", "LH", "isZone", "arenaFrom", "upX", "downX", "gy", "h", "spots", "hzSpots", "pads", "peak", "chest", "deep", "ugTop", "islands", "check", "tries", "ms", "repairs", "trees", "mats", "walls", "feats", "spec", "roomTags"];
 export function packPlan(P) {
   const data = { d: P.F.d };
   for (const k of KEEP) data[k] = P[k];
@@ -125,6 +126,7 @@ export function makePlan(z, o, attempt) {
   };
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
   let t0 = now();
+  P.bp = BLUEPRINTS[z.id] ?? null;
   if (kind === "ground") buildGround(P);
   else if (kind === "cave") buildCave(P);
   else buildSky(P);
@@ -141,7 +143,7 @@ export function makePlan(z, o, attempt) {
     if (A.miss.length === 0 && ++trapIt > 5) break;
     t0 = now();
     // 고치기 전 상태 (고친 뒤 이어졌던 목표가 끊기면 되돌린다)
-    const snap = A.miss.length === 0 ? P.F.d.slice() : null;
+    const snap = P.F.d.slice();
     const fixed = repair(P, A);
     const t1 = now();
     fixed && (specks(P), blockSnap(P));
@@ -152,11 +154,11 @@ export function makePlan(z, o, attempt) {
     const A0 = A;
     A = analyze(P);
     P.tm.an += now() - t2;
-    if (snap && A.miss.length > 0) {
-      // 구덩이를 고치다 길을 끊었다: 되돌리고 그만 고친다 (갇힘 몇 곳보다 길이 중요하다)
+    if (A.miss.some((g) => !A0.miss.includes(g))) {
+      // 고치다가 이어져 있던 길을 끊었다: 되돌린다 (같은 짝은 다시 고르지 않는다)
       P.F.d.set(snap);
       A = A0;
-      break;
+      if (A0.miss.length === 0) break;
     }
   }
   P.check = { ok: A.ok, score: A.score, miss: A.miss, traps: A.trapCount, repairs: P.repairs };
@@ -191,7 +193,7 @@ function placeDeco(P) {
   const reg = P.z.reg;
   if (P.kind === "cave" || !reg?.pal) return;
   const { F, N } = P, R = rng((P.seed ^ 0x7e3e5) >>> 0);
-  const kinds = decoKinds(reg), lim = Math.min(P.WP, P.arenaFrom) - 160;
+  const kinds = decoKinds(reg).filter((k) => !P.bp || (k !== "pillar" && k !== "arch")), lim = Math.min(P.WP, P.arenaFrom) - 160;
   const avoid = [P.peak, P.chest, P.deep, ...(P.mouths ?? [])].filter(Boolean);
   const pads = P.pads ?? [];
   const surfMax = (x) => (P.kind === "ground" && P.h ? P.h[Math.min(P.h.length - 1, Math.round(x / Q))] + 8 : P.HP - 8);
@@ -211,6 +213,8 @@ function placeDeco(P) {
       let ok = true;
       // 밑동 양쪽이 평평한가
       for (const dx of [-12, -6, 6, 12]) ok = ok && F.solid(x + dx, y + 8) && !F.solid(x + dx, y - 9);
+      // 설계 구역: 작은 디딤돌 위에는 나무를 두지 않는다 (나무 폭만큼 발판이 있어야)
+      if (P.bp) for (const dx of [-w * 0.6, w * 0.6]) ok = ok && F.solid(x + dx, y + 8);
       // 위 공간이 비었는가
       for (let dx = -w / 2; ok && dx <= w / 2; dx += 8) for (let yy = y - 4; ok && yy > y - h; yy -= 8) ok = !F.solid(x + dx, yy);
       if (ok && !P.trees.some((T) => Math.abs(T.x - x) < (T.w + w) * 0.3 && Math.abs(T.y - y) < 40)) P.trees.push({ x: Math.round(x), y, w, key: decoKey(kind, sz, R.int(0, 5), reg.pal) });
@@ -357,7 +361,7 @@ function island(P, cx, top, w, t, st, opt = {}) {
     const x = Math.floor(x0 / 16) * 16 + 8;
     return Math.max(topAt(x0) + BLK, Math.round(botRaw(x) / BLK) * BLK);
   };
-  const botRaw = (x) => {
+  const botRaw = opt.botFn ?? ((x) => {
     const u = (x - cx) / hw, au = u < 0 ? -u : u;
     const env = 1 - au * au;
     if (env <= 0) return topAt(x);
@@ -374,7 +378,7 @@ function island(P, cx, top, w, t, st, opt = {}) {
     dep *= 1 - crag + 2 * crag * n;
     dep += 3 * N.n1(x / 5 + so);
     return topAt(x) + (dep > 6 ? dep : 6);
-  };
+  });
   // 격자 세로줄마다 윗면·밑면을 한 번만 재서 채운다
   {
     const { F } = P, LW = F.LW, LH = F.LH, d = F.d;
@@ -838,8 +842,9 @@ function limitSlope(h, s, pins = []) {
   for (let i = n - 2; i >= 0; i--) h[i] > h[i + 1] + s[i] * Q && (h[i] = h[i + 1] + s[i] * Q);
 }
 // 계단밭(단구): 비탈을 평평한 단 + 짧은 턱으로 (턱 높이 TR은 1단 점프로 오른다)
-function terrace(h, TR) {
+function terrace(h, TR, skip = null) {
   for (let i = 0; i < h.length; i++) {
+    if (skip && skip[i]) continue;
     const k = Math.floor(h[i] / TR), f = h[i] / TR - k;
     h[i] = (k + smooth(smooth(f))) * TR;
   }
@@ -854,17 +859,24 @@ function flattenH(h, xa, xb, y, feather) {
 }
 function buildGround(P) {
   const { prof: S, LW, LH, WP, N, R, F, arenaFrom } = P;
-  const h = surfaceHeights(P);
+  const bp = P.bp;
+  const h = bp ? bpSurface(P, bp) : sectionSurface(P);
   const base = FLOOR * TS;
   // 구역 양 끝: 출구 자리(평평, 칸 경계) → 자연 지형으로 부드럽게
   flattenH(h, 0, 132, base, 300);
   flattenH(h, arenaFrom < WP ? arenaFrom - 40 : WP - 132, WP, base, arenaFrom < WP ? 260 : 300);
   const slope = Float64Array.from({ length: LW }, (_, i) => clamp(0.5 + 0.42 * N.fbm1((i * Q) / 520 + 33.3, 2), 0.22, 0.85));
-  limitSlope(h, slope, [[0, 132, base], [arenaFrom < WP ? arenaFrom - 40 : WP - 132, WP, base]]);
-  terrace(h, 40);
   // 평평한 자리(함정·웅덩이·쉼터): 분지 바닥이나 완만한 언덕 위를 칸 경계 높이로 고른다
   const pads = [];
-  const nPads = R.int(S.pads.n[0], S.pads.n[1]);
+  if (bp)
+    for (const q of bp.pads ?? []) {
+      let sum = 0, n = 0;
+      for (let x = q.xa; x <= q.xb; x += Q) ((sum += h[Math.round(x / Q)]), n++);
+      const y = Math.round(sum / n / TS) * TS;
+      flattenH(h, q.xa, q.xb, y, 56);
+      pads.push({ xa: q.xa, xb: q.xb, y, basin: false });
+    }
+  const nPads = bp ? 0 : R.int(S.pads.n[0], S.pads.n[1]);
   for (let k = 0, tries = 0; k < nPads && tries < 80; tries++) {
     const wT = R.int(S.pads.w[0], S.pads.w[1]);
     const xa = Math.round(R.range(260, Math.min(WP, arenaFrom) - 300 - wT * TS) / TS) * TS;
@@ -888,25 +900,14 @@ function buildGround(P) {
     k++;
   }
   P.pads = pads;
+  {
+    const pins = [[0, 132, base], [arenaFrom < WP ? arenaFrom - 40 : WP - 132, WP, base], ...pads.map((p) => [p.xa, p.xb, p.y])];
+    limitSlope(h, slope, pins);
+    const skip = new Uint8Array(LW);
+    for (const p of pads) for (let i = Math.floor(p.xa / Q); i <= Math.ceil(p.xb / Q) && i < LW; i++) skip[i] = 1;
+    terraceVar(h, rng(P.seed ^ 0x7e77a), skip);
+  }
   P.h = h;
-  // 비탈 가파름 (돌출·처마 비틀기 세기)
-  const st = new Float64Array(LW);
-  for (let i = 0; i < LW; i++) {
-    let s = 0;
-    for (let k = -3; k <= 3; k++) {
-      const a = Math.max(0, Math.min(LW - 1, i + k - 1)), b = Math.max(0, Math.min(LW - 1, i + k + 1));
-      s = Math.max(s, Math.abs(h[b] - h[a]) / (2 * Q));
-    }
-    st[i] = s;
-  }
-  const flatMask = new Float64Array(LW);
-  for (let i = 0; i < LW; i++) {
-    const x = i * Q;
-    let m = 0;
-    if (x < 150 || x > Math.min(WP, arenaFrom) - 150) m = 1;
-    for (const p of pads) if (x > p.xa - 24 && x < p.xb + 24) m = 1;
-    flatMask[i] = m;
-  }
   const hAt = (x) => {
     const u = x / Q;
     if (u <= 0) return h[0];
@@ -914,91 +915,82 @@ function buildGround(P) {
     const i = u | 0, f = u - i;
     return h[i] + (h[i + 1] - h[i]) * f;
   };
-  const OV = S.overhang, GR = S.grain;
   const Fs = F.d;
   for (let j = 0; j < LH; j++) {
     const y = j * Q;
     for (let i = 0; i < LW; i++) {
-      const hy = h[i];
-      let f;
-      if (y < hy - 160) f = -12;
-      else if (y > hy + 160) f = 12;
-      else {
-        // 픽셀 블록 지형: 지표는 높이 그대로 (비틀기·잔결은 블록 맞추기에서 잡티가 되므로 쓰지 않는다)
-        f = y - hy;
-        f = f > 12 ? 12 : f < -12 ? -12 : f;
-      }
-      Fs[j * LW + i] = f;
+      const f = y - h[i];
+      Fs[j * LW + i] = f > 12 ? 12 : f < -12 ? -12 : f;
     }
   }
-  // 땅속: 바닥이 평평한 방과 통로 (8px 블록)
-  const bottom = (P.Ft - 5) * TS;
-  {
-    const C = cellsOf(P), lim = Math.min(WP, arenaFrom);
-    const surfRow = (cx) => Math.floor(hAt(cx * BLK + 4) / BLK);
-    const NXl = Math.floor(lim / BLK) - 4;
-    const top = (cx) => (cx > NXl ? 1e9 : surfRow(cx) + 18);
-    const bot = Math.floor((bottom - 24) / BLK) & ~1;
-    const pre = [];
-    if (P.downX >= 0) {
-      const dx = Math.round(clamp(P.downX + R.range(-120, 120), 260, lim - 260) / BLK), fy = (bot - R.int(0, 30)) & ~1;
-      pre.push({ x0: dx - 12, x1: dx + 12, fy, h: 10, type: "small", deep: 1 });
-      P.deep = { x: Math.round((dx * BLK - 8) / TS) * TS + 8, y: fy * BLK };
+  // 땅속 (8px 블록 칸)
+  const bottom = (P.Ft - 5) * TS, lim = Math.min(WP, arenaFrom);
+  const C = cellsOf(P);
+  const surfRow = (cx) => Math.floor(hAt(clamp(cx, 0, C.NX - 1) * BLK + 4) / BLK);
+  // 골짜기 연못: 둑은 한 칸씩 (걸어서 나온다)
+  for (const pd of P.ponds ?? []) {
+    const cx = Math.round(pd.x / BLK), hw = Math.max(6, Math.round(pd.w / BLK / 2));
+    const rows = [];
+    for (let x = cx - hw - 2; x <= cx + hw + 2; x++) rows.push(surfRow(x));
+    const sr = rows.slice().sort((a, b) => a - b)[rows.length >> 1];
+    if (Math.max(...rows) - Math.min(...rows) > (P.bp ? 5 : 0)) continue;
+    for (let x = cx - hw - 2; x <= cx + hw + 2; x++) {
+      const r0 = surfRow(x);
+      for (let y = r0; y < sr; y++) C.cell[y * C.NX + x] = -1;
+      for (let y = sr; y < r0; y++) C.cell[y * C.NX + x] = 1;
     }
-    // 굴 입구: 평지(산·평평한 자리 밖)에서 계단 굴로 내려간다
-    const nm = Math.max(1, Math.round(lim / 2200));
-    for (let k = 0, t = 0; k < nm && t < 200; t++) {
-      const mx = R.range(400, lim - 400);
-      if (pads.some((p) => mx > p.xa - 100 && mx < p.xb + 100) || (P.mtn && mx > P.mtn.a - 200 && mx < P.mtn.b + 200)) continue;
-      if (Math.abs(hAt(mx + 64) - hAt(mx - 64)) > 24 || P.mouths.some((m) => Math.abs(m.x - mx) < 900)) continue;
-      const cx = Math.round(mx / BLK);
-      pre.push({ x0: cx, x1: cx, fy: surfRow(cx), h: 0, pt: 1 });
-      P.mouths.push({ x: mx, y: hAt(mx), dir: 1 });
-      k++;
+    const d = R.int(3, 5);
+    for (let x = cx - hw; x <= cx + hw; x++) {
+      const e = Math.min(x - (cx - hw), cx + hw - x), dd = Math.min(d, 1 + e);
+      for (let y = sr; y < sr + dd; y++) C.cell[y * C.NX + x] = -1;
+      P.specReq.push({ x0: x, y0: sr, x1: x + 1, y1: sr + dd, k: "water" });
     }
-    const usable = (() => {
-      let a = 0;
-      for (let x = 0; x < C.NX; x += 4) a += Math.max(0, bot - top(x)) * 4;
-      return a;
-    })();
-    const out = roomCaves(P, C, { top, bot, pre, target: Math.round(usable / 9000) });
-    P.rooms = out;
-    // 큰 산 밑을 가로지르는 굴 (산 양쪽을 걸어서 오간다)
-    if (P.mtn) {
-      const a = Math.round(P.mtn.a / BLK), b = Math.round(P.mtn.b / BLK);
-      out.route(a, surfRow(a), b, surfRow(b));
-    }
-    cleanCells(C, Math.max(0, Math.min(...Array.from(h)) / BLK - 2) | 0);
-    writeCells(P, C);
-    applySpecReq(P);
   }
-  // 문 자리 바닥은 정확하게 평평하게
-  if (P.deep) flatFloor(P, P.deep.x - 40, P.deep.x + 40, P.deep.y, 12, 30, 18);
-  // 굴러온 바위 (비탈·절벽 아래)
-  const Bo = S.boulders;
-  for (let k = 0 * R.int(Bo.n[0], Bo.n[1]), t = 0; k > 0 && t < 60; t++) {
-    const x = R.range(200, Math.min(arenaFrom, WP) - 200);
-    if (pads.some((p) => x > p.xa - 60 && x < p.xb + 60)) continue;
-    if (P.mouths.some((m) => Math.abs(x - m.x) < 120)) continue;
-    const r = R.range(Bo.r[0], Bo.r[1]), rx = r * R.range(1, 1.5), cy = hAt(x) + r * R.range(0.15, 0.45);
-    const so = R() * 99;
-    addShape(P, x - rx - 4, cy - r - 4, x + rx + 4, cy + r + 4, (px, py) => {
-      const dx = (px - x) / rx, dy = (py - cy) / r;
-      const rr = 1 + 0.18 * N.n2(px / 9 + so, py / 9);
-      return (rr - Math.sqrt(dx * dx + dy * dy)) * r * 0.9;
+  const NXl = Math.floor(lim / BLK) - 4, bot = Math.floor((bottom - 24) / BLK) & ~1;
+  const toC = (x) => Math.round(x / BLK);
+  // 지표 역할 자리 (보물·전투): 그 자리 지면 위
+  for (const q of bp?.spots ?? []) {
+    let top = 1e9;
+    for (let x = q.xa; x <= q.xb; x += 16) top = Math.min(top, hAt(x));
+    (P.roomTags ??= []).push({ x0: q.xa, x1: q.xb, y0: top - 200, y1: hAt((q.xa + q.xb) / 2) + 24, role: q.role });
+  }
+  if (bp?.dungeon) {
+    const dg = dungeonWorld(P, C, bp.dungeon);
+    caveWorld(P, C, {
+      y0: base / BLK + 18,
+      y1: bot,
+      gap: [70, 84],
+      lim: NXl,
+      topAt: (cx) => (cx > NXl ? 1e9 : surfRow(cx) + 16),
+      surfRow,
+      design: bp,
+      extern: dg,
+      fill: bp.caveFill ?? null,
+      mouths: (bp.mouths ?? []).map((m) => ({ x: toC(m.x), y: surfRow(toC(m.x)), to: m.to })),
+      sinks: (bp.sinks ?? []).map((m) => ({ x: toC(m.x), y: surfRow(toC(m.x)) })),
+      deepX: -1,
+      shafts: 0,
+      noGrotto: 1,
     });
-    k--;
-  }
-  // 지상 지형 덩어리: 거대 나무·바위 아치·폐허 탑·거대 버섯·속 빈 통나무·돌기둥 계단
-  groundFeatures(P, hAt);
-  // 하늘: 땅에서 ▲ 문(꼭대기 섬)까지 이어지는 섬 사슬 + 흩어진 섬 (지형 덩어리 위도 땅으로 본다)
-  const groundAt = (x) => {
-    let g = hAt(x);
-    for (const Ft2 of P.feats) if (x >= Ft2.x0 && x < Ft2.x1 && Ft2.top < g) g = Ft2.top;
-    return g;
-  };
-  skyLayers(P, groundAt, S.islands.style);
-  // 구역 양 끝은 보이는 벽 없이 보이지 않는 벽(zones.js SKY_EDGE) + 카메라 제한으로 막는다
+  } else caveWorld(P, C, {
+    y0: base / BLK + 18,
+    y1: bot,
+    gap: [70, 84],
+    lim: NXl,
+    maxGrand: 2,
+    topAt: (cx) => (cx > NXl ? 1e9 : surfRow(cx) + 16),
+    surfRow,
+    mouths: (P.mouthX ?? []).filter((x) => x > 320 && x < lim - 320).map((x) => ({ x: toC(x), y: surfRow(toC(x)) })),
+    sinks: (P.sinks ?? []).filter((x) => x > 320 && x < lim - 320).map((x) => ({ x: toC(x), y: surfRow(toC(x)) })),
+    deepX: P.downX >= 0 ? toC(clamp(P.downX, 300, lim - 300)) : -1,
+    shafts: R.int(2, 3),
+  });
+  cleanCells(C, Math.max(0, Math.min(...Array.from(h)) / BLK - 2) | 0);
+  writeCells(P, C);
+  applySpecReq(P);
+  if (P.deep) flatFloor(P, P.deep.x - 40, P.deep.x + 40, P.deep.y, 12, 30, 18);
+  // 하늘: 산만 한 하늘섬(▲ 문) + 큰 섬 + 디딤돌 길 (땅 위 구조물은 두지 않는다)
+  skyWorld(P, hAt, S.islands.style, bp?.sky ? { design: bp.sky } : {});
   P.ugTop = Math.max(UG_TOP, Math.ceil(Math.max(...Array.from(h)) / TS) + 3);
 }
 // ── 지상 지형 덩어리 (8px 블록 사각형으로 짓는다, 재질은 그림에만 쓰인다) ──
@@ -1217,7 +1209,7 @@ function groundFeatures(P, hAt) {
         l = Math.min(l, v);
         h = Math.max(h, v);
       }
-      if (h - l > 150) continue;
+      if (h - l > 96) continue;
       ((x = cx), (lo = l), (hi = h));
     }
     if (x < 0) continue;
@@ -1368,7 +1360,22 @@ function skyLayers(P, groundAt0, style, lower = null) {
     return e <= 0 ? 8 : A.t * 1.45 * e + 8;
   };
   // 겹치는 가로 구간에서 위 섬 밑면과 아래 섬 윗면 사이에 몸이 지나갈 공간이 있는가
+  // 계단 점프 길 (다른 섬·디딤판이 들어오면 안 된다)
+  const noGo = [];
+  let stairMode = false;
   const free = (B, pad = 18, margin = 40) => {
+    const dB = B.t > 16 ? B.t * 1.45 + 8 : 16;
+    for (const Z of noGo) if (B.cx + B.w / 2 > Z.x0 && B.cx - B.w / 2 < Z.x1 && B.top + dB > Z.y0 && B.top < Z.y1) return false;
+    // 비탈 바로 위에 낮게 뜨면 비탈을 오르는 길을 막는다: 비탈 위에서는 밑면과 땅 사이 140px 이상 (평평한 땅 위 디딤판은 괜찮다)
+    if (!stairMode) {
+      let lo = 1e9, hi = -1e9;
+      for (let x = B.cx - B.w / 2 - 24; x <= B.cx + B.w / 2 + 24; x += 16) {
+        const g = groundAt(clamp(x, 0, WP - 1));
+        lo = Math.min(lo, g);
+        hi = Math.max(hi, g);
+      }
+      if (lo < P.HP - 40 && hi - lo > 24 && B.top < lo && lo - (B.top + (B.t > 16 ? B.t * 1.45 + 8 : 16)) < 140) return false;
+    }
     for (const A of placed) {
       const x0 = Math.max(A.cx - A.w / 2, B.cx - B.w / 2) - pad, x1 = Math.min(A.cx + A.w / 2, B.cx + B.w / 2) + pad;
       if (x0 >= x1) continue;
@@ -1566,25 +1573,68 @@ function skyLayers(P, groundAt0, style, lower = null) {
       for (let x = x0; x <= x1; x += 16) best = Math.min(best, groundAt(clamp(x, 0, WP - 1)));
       return best;
     };
+    // 구불구불한 구름 계단: 좌우로 불규칙하게 흔들리고(같은 쪽으로 두세 번 이어 오르기도), 간격·크기가 제각각.
+    // 5~8칸마다 작은 바위 쉼터 섬. 구름 모양도 가끔 한쪽이 한 칸 솟은 뭉게구름
+    const band0 = stairSide > 0 ? stairX : stairX - 340, band1 = band0 + 340;
+    let xa = stairSide > 0 ? stairX : stairX - 110, wPrev = 110, dirS = stairSide, rest = R.int(5, 8);
+    // 점프 길 상자: 아래 칸 → 위 칸 사이 (다른 칸이 끼면 머리가 닿는다 — 검사기는 구름도 단단한 바닥으로 본다)
+    const depth = (I) => (I.t > 16 ? 24 : 16);
+    const hits = (I, B) => I.cx + I.w / 2 > B.x0 && I.cx - I.w / 2 < B.x1 && I.top + depth(I) > B.y0 && I.top < B.y1;
+    const corOf = (A, B) => {
+      const ar = A.cx + A.w / 2, al = A.cx - A.w / 2, br = B.cx + B.w / 2, bl = B.cx - B.w / 2;
+      const [x0, x1] = bl >= ar ? [ar, bl] : br <= al ? [br, al] : [Math.max(al, bl), Math.min(ar, br)];
+      return { x0: x0 - 10, x1: x1 + 10, y0: Math.min(A.top, B.top) - 40, y1: Math.max(A.top, B.top) };
+    };
+    let prevI = null, lastCor = null;
+    stairMode = true;
     for (let guard = 0; guard < 120; guard++, k++) {
-      const w = snap(R.range(88, 128));
+      const isRest = --rest <= 0;
+      const w = snap(isRest ? R.range(150, 210) : R.range(72, 136));
       let got = null;
-      for (const sh of [0, 40, 80, 120]) {
-        const out = (k % 2 ? R.range(120, 150) : 0) + sh;
-        const xa = stairSide > 0 ? stairX + out : stairX - out - w, xb = xa + w;
-        const C2 = { cx: (xa + xb) / 2, top: snap(y), w, t: 16 };
-        if (xa < 60 || xb > lim - 20 || !free(C2, 6, 10)) continue;
+      for (let tr = 0; tr < 24 && !got; tr++) {
+        // 자리가 없으면 조금 낮춰서 (위 칸과 더 벌어지지 않게 8px씩, 세 번까지)
+        if (tr && tr % 8 === 0) y = Math.min(y + 8, prevI ? prevI.top + 84 : y);
+        // 방향: 대개 번갈아, 가끔 같은 쪽으로. 띠를 벗어나면 되돌린다
+        let d = k === 0 ? 0 : tr % 8 < 4 ? (R() < 0.7 ? -dirS : dirS) : tr % 2 ? 1 : -1;
+        const g = R.range(12, 56);
+        let nx = d === 0 ? (stairSide > 0 ? stairX : stairX - w) : d > 0 ? xa + wPrev + g : xa - g - w;
+        if (nx < band0) nx = xa + wPrev + g;
+        if (nx + w > band1) nx = xa - g - w;
+        const C2 = { cx: nx + w / 2, top: snap(y), w, t: isRest ? R.range(22, 30) : 16 };
+        if (nx < 60 || nx + w > lim - 20 || !free(C2, 6, 10)) continue;
+        if (lastCor && hits(C2, lastCor) && tr < 20) continue;
+        if (prevI) {
+          const cor = corOf(prevI, C2);
+          if (placed.some((I) => I !== prevI && hits(I, cor)) && tr < 20) continue;
+          C2.cor = cor;
+        }
         got = C2;
-        break;
+        dirS = nx > xa ? 1 : nx < xa ? -1 : dirS;
+        xa = nx;
       }
-      if (!got) break;
-      spec(P, got.cx - w / 2, got.top, got.cx + w / 2, got.top + 16, "cloud");
+      if (!got) { globalThis.__dbg && console.log("stair stop", k, Math.round(y), Math.round(xa)); break; }
+      if (isRest) {
+        island(P, got.cx, got.top, got.w, got.t, style, { sub: false, shape: "plateau", lobes: R.int(0, 1) });
+        rest = R.int(5, 8);
+      } else {
+        spec(P, got.cx - w / 2, got.top, got.cx + w / 2, got.top + 16, "cloud");
+        // 뭉게구름: 한쪽 위에 작은 구름 덩이 (한 칸 높은 턱, 걸어서 넘는다)
+        if (w >= 104 && R() < 0.4) {
+          const pw = snap(w * R.range(0.35, 0.5)), px = R() < 0.5 ? got.cx - w / 2 + 8 : got.cx + w / 2 - 8 - pw;
+          spec(P, px, got.top - 8, px + pw, got.top, "cloud");
+        }
+      }
       placed.push(got);
+      wPrev = w;
+      lastCor = got.cor ?? null;
+      got.cor && noGo.push(got.cor);
+      prevI = got;
       const g = surfBelow(got.cx - w / 2 - 40, got.cx + w / 2 + 40, got.top);
       const rem = g - got.top;
-      if (rem <= 88) break;
-      y = got.top + Math.min(R.range(64, 84), Math.max(40, rem - 56));
+      if (rem <= 88) { globalThis.__dbg && console.log("stair ground", k, Math.round(got.top), g); break; }
+      y = got.top + Math.min(R.range(52, 84), Math.max(40, rem - 56));
     }
+    stairMode = false;
   }
   for (let y = yLow, k = 0; y > 320 && k < 40; k++, y -= R.range(200, 300)) {
     const row = [];
@@ -1805,128 +1855,431 @@ function zoneEnds(P) {
 // 떠 있는 바위 조각·뾰족한 돌기·갈 수 없는 구멍은 만들지 않는다.
 // o: { top(x) 방을 놓아도 되는 가장 높은 줄, bot 가장 낮은 바닥 줄, pre: 미리 정한 방·입구(pt: 점), target: 방 개수 }
 function roomCaves(P, C, o) {
-  const { R } = P, { cell, NX, NY } = C;
-  const setA = (x, y) => x >= 1 && y >= 1 && x < NX - 1 && y < NY - 1 && (cell[y * NX + x] = -1);
+  // 동굴만의 난수 (동굴을 고쳐도 하늘섬·지상 배치가 바뀌지 않게)
+  const R = rng(P.seed ^ 0x5ca7e1), { cell, NX, NY } = C;
+  // probe: 파지 않고 세기만 (통로 후보 비교용). floor = 다른 굴의 바닥을 지우는 칸, air = 이미 빈 칸
+  let probe = null;
+  const setA = (x, y) => {
+    if (x < 1 || y < 1 || x >= NX - 1 || y >= NY - 1) return;
+    const k = y * NX + x;
+    if (!probe) return void (cell[k] = -1);
+    if (cell[k] === -1) probe.air++;
+    else if (cell[k - NX] === -1) probe.floor++;
+  };
   const setR = (x, y) => x >= 0 && y >= 0 && x < NX && y < NY && (cell[y * NX + x] = 1);
+  const isA = (x, y) => x >= 0 && y >= 0 && x < NX && y < NY && cell[y * NX + x] === -1;
+  // 오르는 간격: 1단 점프(75px)에 여유를 두고 8칸(64px) 이하
+  const STEP = 8;
   const rooms = [...o.pre];
   // 방이 들어갈 자리 (다른 방과 m칸 떨어져, 위쪽 한계 아래)
   const fits = (x0, x1, y0, y1, m) => {
     if (x0 < 6 || x1 > NX - 6 || y1 > o.bot || y0 < 2) return false;
     for (let x = x0 - 2; x <= x1 + 2; x += 3) if (y0 < o.top(Math.min(NX - 1, Math.max(0, x)))) return false;
-    for (const r of rooms) if (x0 < r.x1 + m && x1 > r.x0 - m && y0 < r.fy + m && y1 > r.fy - r.h - m) return false;
+    for (const r of rooms) if (x0 < r.x1 + m && x1 > r.x0 - m && y0 < r.fy + m && y1 > r.fy - (r.hh ?? r.h) - m) return false;
     return true;
   };
+  // 블록 걸음 잡음: 3~8칸마다 최대 d칸씩 바뀐다 (1칸 돌기·홈 없이 큼직한 들쭉날쭉)
+  const walk = (n, lo, hi, d = 1, r0 = 3, r1 = 8) => {
+    const a = new Int16Array(n);
+    let v = R.int(lo, hi), run = 0;
+    for (let i = 0; i < n; i++) {
+      if (run-- <= 0) ((v = clamp(v + R.int(-d, d), lo, hi)), (run = R.int(r0, r1)));
+      a[i] = v;
+    }
+    return a;
+  };
+  // 바위는 모든 굴을 판 뒤에 놓는다 (나중에 판 통로가 지우지 않게)
+  const later = [];
+  // 굴뚝: 좌우 벽이 번갈아 튀어나온다. 튀어나온 벽의 윗면이 디딤 단 (STEP 이하 간격, 떠 있는 발판 없음)
+  // 칸 xl..xr-1, 위 바닥 줄 yUp(upSide 쪽 바닥과 이어진다), 아래 바닥 줄 yDn. 맨 아래 칸은 upSide 쪽만 튀어나온다
+  // tr: 돌출 아랫면 쐐기 기울기 (아래로 한 줄마다 tr칸씩 벽 쪽으로 좁아진다 → 밑의 단에서 뛰어오를 머리 자리)
+  const chimneyRock = (xl, xr, yUp, yDn, upSide, oMin, oMax, tr = 1) => {
+    const D = yDn - yUp, W = xr - xl;
+    if (D <= 12) return;
+    let n = Math.ceil(D / STEP);
+    n % 2 || n++;
+    const o = [R.int(oMin, oMax), R.int(oMin, oMax)];
+    let yb = yDn, rem = D;
+    for (let k = 0; k < n; k++) {
+      const left = n - k, lo = Math.max(4, rem - STEP * (left - 1)), hi = Math.min(STEP, rem - 4 * (left - 1));
+      const hk = k === n - 1 ? rem : clamp(Math.round(rem / left) + R.int(-1, 1), lo, hi);
+      rem -= hk;
+      // 이 칸 위 경계의 디딤 단이 있는 쪽 = 튀어나오는 쪽
+      const S = (n - k - 1) % 2 === 0 ? upSide : 1 - upSide;
+      // 바로 아래 단(반대쪽)과의 가로 틈 4~5칸: 1단 점프 꼭대기 거리 (멀면 2단 점프가 위 돌출에 머리를 박는다)
+      o[S] = k === 0 ? R.int(oMin, oMax) : clamp(W - R.int(4, 5) - o[1 - S], 3, W - 7);
+      const top = yb - hk;
+      for (let y = top; y < yb; y++) {
+        const fb = yb - 1 - y, w = k === 0 ? o[S] : Math.max(1, o[S] - tr * (hk - 1 - fb));
+        for (let i = 0; i < w; i++) setR(S ? xr - 1 - i : xl + i, y);
+      }
+      yb = top;
+    }
+  };
+  // 매달린 바위(천장에서 내려온 굵은 기둥, 아래는 계단식으로 좁아진다). 바닥과 gap칸 이상 띄운다
+  const hanging = (xc, yc, yEnd, w) => {
+    for (let y = yc; y < yEnd; y++) {
+      const k = yEnd - y, hw = Math.min(w, 1 + Math.floor(k / 2) + 1);
+      for (let x = xc - hw; x <= xc + hw; x++) setR(x, y);
+    }
+  };
+  // 바닥 둔덕 (낮은 단, 옆은 계단): 높이 ht ≤ 5칸
+  const mound = (xa, xb, fy, ht) => {
+    for (let k = 0; k < ht; k++) {
+      const a = xa + k * R.int(1, 3), b = xb - k * R.int(1, 3);
+      if (b - a < 4) break;
+      for (let x = a; x < b; x++) setR(x, fy - 1 - k);
+    }
+  };
   // 방 파기: 바닥 fy(바위 줄), 칸 x0..x1-1, 높이 h
-  const carveRoom = (r) => {
-    const { x0, x1, fy, h, type } = r, w = x1 - x0;
-    // 천장: 가운데가 조금 높은 블록 아치 + 3칸 이상 이어지는 들쭉날쭉
-    let jag = 0, run = 0;
+  // 벽돌 (던전): 뒷벽은 공기에, 재질은 둘레 바위 2칸에
+  const brick = (x0, y0, x1, y1) => {
+    if (probe) return;
+    P.walls.push({ x0: x0 * BLK, y0: y0 * BLK, x1: x1 * BLK, y1: y1 * BLK, m: "brick" });
+    P.mats.push({ x0: (x0 - 2) * BLK, y0: (y0 - 2) * BLK, x1: (x1 + 2) * BLK, y1: (y1 + 2) * BLK, m: "brick" });
+  };
+  // 큰 자연 동굴: 들쭉날쭉한 높은 천장, 바닥은 낮은 단들 (단 사이 STEP 이하), 매달린 바위, 아래가 뚫린 바위 기둥
+  const N = P.N, so = R() * 99;
+  const carveGreat = (r) => {
+    const { x0, x1, fy, h } = r, w = x1 - x0;
+    const tops = new Int32Array(w), lv = new Int32Array(w);
+    let hold = 0, run = 0;
     for (let x = x0; x < x1; x++) {
-      const u = ((x - x0 + 0.5) / w) * 2 - 1;
-      if (run-- <= 0) ((jag = R.int(-1, 1)), (run = R.int(3, 7)));
-      const arch = type === "tall" ? 0 : Math.round(h * 0.28 * Math.sqrt(Math.max(0, 1 - u * u)));
-      const top = fy - h - arch - jag;
+      const u = (x - x0 + 0.5) / w, d = Math.sqrt(Math.max(0, 1 - (2 * u - 1) ** 2));
+      if (run-- <= 0) ((hold = Math.round(h * (0.4 + 0.6 * d) + h * 0.38 * N.fbm1(x / 70 + so, 3))), (run = R.int(2, 5)));
+      tops[x - x0] = fy - Math.max(14, hold);
+    }
+    // 바닥 단: 양 끝(문)은 바닥 그대로
+    let l = 0;
+    for (let x = x0 + R.int(10, 18); x < x1 - 12; ) {
+      const seg = R.int(16, 40), nl = clamp(l + R.int(2, 5) * (l === 0 || R() < 0.55 ? 1 : -1), 0, 14);
+      const xe = Math.min(x1 - 12, x + seg);
+      for (let xx = x; xx < xe; xx++) lv[xx - x0] = x1 - 12 - xx < 14 ? Math.min(nl, 4) : nl;
+      l = nl;
+      x = xe;
+    }
+    let topMin = fy;
+    for (let x = x0; x < x1; x++) {
+      const t = tops[x - x0];
+      topMin = Math.min(topMin, t);
+      for (let y = t; y < fy - lv[x - x0]; y++) setA(x, y);
+    }
+    r.hh = fy - topMin;
+    // 매달린 바위 덩어리
+    for (let k = R.int(3, 5); k > 0; k--) {
+      const cx = R.int(x0 + 20, x1 - 20), yEnd = fy - lv[cx - x0] - R.int(14, 24);
+      if (yEnd - tops[cx - x0] > 6) hanging(cx, tops[cx - x0] - 2, yEnd, R.int(5, 10));
+    }
+    // 아래가 뚫린 굵은 바위 기둥 (아치 높이 11~14칸)
+    if (w > 200 && R() < 0.8) {
+      const pw = R.int(10, 16), px = R.int(x0 + 40, x1 - 40 - pw), aH = R.int(11, 14);
+      for (let x = px; x < px + pw; x++) {
+        const u = ((x - px + 0.5) / pw) * 2 - 1, b = fy - lv[x - x0] - aH - Math.round(3 * Math.sqrt(Math.max(0, 1 - u * u)));
+        for (let y = tops[x - x0] - 2; y < b; y++) setR(x, y);
+      }
+    }
+    // 물웅덩이
+    if (R() < 0.5) {
+      const pw = R.int(14, 26), px = R.int(x0 + 24, x1 - 24 - pw), base = fy - lv[px - x0];
+      let flat = true;
+      for (let x = px; x < px + pw; x++) fy - lv[x - x0] !== base && (flat = false);
+      if (flat) {
+        const d = R.int(3, 6);
+        for (let x = px; x < px + pw; x++) for (let y = base; y < base + d; y++) setA(x, y);
+        P.specReq.push({ x0: px, y0: base, x1: px + pw, y1: base + d, k: "water" });
+      }
+    }
+  };
+  // 던전 방: 네모난 방, 모서리는 계단식으로 깎고 넓은 방은 계단식 둥근 천장. 벽돌 벽
+  const carveDun = (r) => {
+    const { x0, x1, fy, h, type } = r, w = x1 - x0, ch = R.int(2, 3);
+    const vault = (type === "hall" || type === "tiered") && R() < 0.6 ? R.int(3, 6) * 2 : 0;
+    let topMin = fy;
+    for (let x = x0; x < x1; x++) {
+      const e = Math.min(x - x0, x1 - 1 - x), u = ((x - x0 + 0.5) / w) * 2 - 1;
+      const v = vault ? Math.floor((vault * Math.sqrt(Math.max(0, 1 - u * u))) / 2) * 2 : 0;
+      const top = fy - h - v + Math.max(0, ch - e);
+      topMin = Math.min(topMin, top);
       for (let y = top; y < fy; y++) setA(x, y);
     }
-    // 바닥 변화 (평평하되 단조롭지 않게)
+    r.hh = fy - topMin;
+    // 기둥 (뒷벽 그림만, 뒷벽보다 먼저)
+    if (w > 60 && !probe)
+      for (let x = x0 + R.int(10, 16); x < x1 - 10; x += R.int(18, 28)) P.walls.push({ x0: x * BLK, y0: topMin * BLK, x1: (x + 3) * BLK, y1: fy * BLK, m: "rock" });
+    brick(x0, topMin, x1, fy);
     if (type === "tiered") {
-      // 2~3 단: 단 사이 1~3블록
-      const n = R.int(2, 3);
-      let lv = 0;
-      for (let k = 1; k < n; k++) {
-        const xs = x0 + Math.round((w * k) / n) + R.int(-3, 3), d = R.int(1, 3) * (R() < 0.5 ? 1 : -1);
-        lv = Math.max(0, lv + d);
-        for (let x = xs; x < x1; x++) for (let y = fy - lv; y < fy; y++) setR(x, y);
+      const a = x0 + 8, b = x1 - 8, n = R.int(3, 4);
+      let l = 0;
+      for (let k = 0; k < n; k++) {
+        const xs = a + Math.round(((b - a) * k) / n), xe = a + Math.round(((b - a) * (k + 1)) / n);
+        l = k === n - 1 ? Math.min(l, 4) : clamp(l + R.int(2, 4) * (l === 0 || R() < 0.6 ? 1 : -1), 2, 10);
+        for (let x = xs; x < xe; x++) for (let y = fy - l; y < fy; y++) setR(x, y);
       }
-    } else if (type === "hall" && w > 40 && R() < 0.8) {
-      // 넓은 홀: 낮은 단(1~2블록) 하나 또는 얕은 웅덩이 하나
-      const pw = R.int(8, Math.min(20, Math.floor(w / 3))), px = R.int(x0 + 8, x1 - 8 - pw), ph = R.int(1, 2);
-      if (R() < 0.45) for (let x = px; x < px + pw; x++) for (let y = fy - ph; y < fy; y++) setR(x, y);
-      else {
-        // 물웅덩이 (조금 더 깊게)
-        const d = R.int(4, 8), pw2 = Math.min(x1 - px - 4, pw + R.int(6, 16));
-        for (let x = px; x < px + pw2; x++) for (let y = fy; y < fy + d; y++) setA(x, y);
-        P.specReq.push({ x0: px, y0: fy, x1: px + pw2, y1: fy + d, k: "water" });
+    } else if (type === "hall") {
+      // 가운데 단 (계단 2칸씩) 또는 물웅덩이
+      if (R() < 0.5) {
+        const dw = R.int(16, Math.max(17, Math.floor(w * 0.4))), dx = x0 + Math.floor((w - dw) / 2), nk = R.int(2, 3);
+        for (let k = 0; k < nk; k++) for (let x = dx + 2 * k; x < dx + dw - 2 * k; x++) for (let y = fy - 2 * k - 2; y < fy - 2 * k; y++) setR(x, y);
+      } else {
+        const pw = R.int(12, 22), px = x0 + R.int(10, w - 10 - pw), d = R.int(3, 5);
+        for (let x = px; x < px + pw; x++) for (let y = fy; y < fy + d; y++) setA(x, y);
+        P.specReq.push({ x0: px, y0: fy, x1: px + pw, y1: fy + d, k: "water" });
       }
-    }
-    if ((type === "hall" || type === "tiered") && R() < 0.3) {
-      // 튕김 버섯: 벽 가까이 바닥에
-      const bx = R() < 0.5 ? x0 + 2 : x1 - 6;
-      P.specReq.push({ x0: bx, y0: fy - 1, x1: bx + 4, y1: fy, k: "bounce" });
     } else if (type === "tall") {
-      // 높은 방: 벽에 붙은 평평한 발판이 번갈아 (한 번 2단 점프로 오르는 간격)
-      let side = R() < 0.5 ? 0 : 1;
-      for (let ly = fy - R.int(9, 10); ly > fy - h + 7; ly -= R.int(9, 10), side ^= 1) {
-        const lw = R.int(Math.floor(w * 0.35), Math.floor(w * 0.5));
-        const a = side ? x1 - lw : x0, b = side ? x1 : x0 + lw;
-        if (R() < 0.5) P.specReq.push({ x0: a, y0: ly, x1: b, y1: ly + 1, k: "plank" });
-        else for (let x = a; x < b; x++) (setR(x, ly), setR(x, ly + 1));
-      }
+      const oM = Math.floor((w - 10) / 2), sd = R() < 0.5 ? 0 : 1;
+      later.push(() => chimneyRock(x0, x1, fy - h + 4, fy, sd, oM - 2, oM, 99));
     }
   };
-  const TYPES = [["hall", 0.42], ["tiered", 0.24], ["tall", 0.14], ["small", 0.2]];
+  const carveRoom = (r) => {
+    if (r.type === "great") return carveGreat(r);
+    if (r.dun) return carveDun(r);
+    const { x0, x1, fy, h, type } = r, w = x1 - x0;
+    // 천장: 한쪽으로 치우친 둥근 지붕 + 큼직한 들쭉날쭉
+    const pk = R.range(0.2, 0.8), dome = type === "tall" || type === "small" ? h * 0.12 : h * R.range(0.15, 0.35);
+    const jag = walk(w, -2, 2, 1, 3, 9);
+    // 벽: 바닥 위 3줄부터 바깥으로 0~3칸 패인다
+    const wl = walk(h + 40, 0, 3, 1, 3, 7), wr = walk(h + 40, 0, 3, 1, 3, 7);
+    let topMin = fy;
+    for (let x = x0; x < x1; x++) {
+      const u = (x - x0 + 0.5) / w, t = u < pk ? (u - pk) / pk : (u - pk) / (1 - pk);
+      const top = fy - h - Math.round(dome * Math.max(0, 1 - t * t)) - jag[x - x0];
+      topMin = Math.min(topMin, top);
+      for (let y = top; y < fy; y++) setA(x, y);
+    }
+    r.hh = fy - topMin;
+    for (let y = topMin + 2; y < fy - 3; y++) {
+      const k = fy - y;
+      if (k >= wl.length) continue;
+      // 패인 벽은 위쪽 천장선 아래에서만
+      for (let d = 1; d <= wl[k]; d++) isA(x0, y - 1) && isA(x0, y + 1) && setA(x0 - d, y);
+      for (let d = 1; d <= wr[k]; d++) isA(x1 - 1, y - 1) && isA(x1 - 1, y + 1) && setA(x1 - 1 + d, y);
+    }
+    if (type === "tiered") {
+      // 여러 단: 단 사이 2~4블록 (한 번 점프로 오른다). 문 옆(양 끝 8칸)은 바닥 그대로
+      const a = x0 + 8, b = x1 - 8, n = R.int(3, 5);
+      let lv = 0;
+      for (let k = 0; k < n; k++) {
+        const xs = a + Math.round(((b - a) * k) / n), xe = a + Math.round(((b - a) * (k + 1)) / n);
+        lv = k === n - 1 ? Math.min(lv, R.int(2, 4)) : clamp(lv + R.int(2, 4) * (lv === 0 || R() < 0.6 ? 1 : -1), 2, 12);
+        for (let x = xs; x < xe; x++) for (let y = fy - lv; y < fy; y++) setR(x, y);
+      }
+    } else if (type === "hall") {
+      // 넓은 홀: 낮은 둔덕·물웅덩이·매달린 바위 기둥
+      const nf = Math.max(1, Math.round(w / 60));
+      for (let k = 0; k < nf; k++) {
+        const v = R(), cx = x0 + Math.round(((k + 0.5) / nf) * w) + R.int(-6, 6);
+        if (v < 0.35) mound(cx - R.int(6, 12), cx + R.int(6, 12), fy, R.int(2, 5));
+        else if (v < 0.6 && h >= 18) {
+          // 매달린 바위: 바닥 위 9~12칸 띄워서 (머리·2단 점프 자리)
+          const yTop = fy - h - 6, yEnd = fy - R.int(9, 12);
+          let yc = yTop;
+          while (yc < yEnd && isA(cx, yc)) yc++;
+          if (yEnd - yc >= 4) hanging(cx, yTop, yEnd, R.int(3, 5));
+        } else if (v < 0.8) {
+          const pw = R.int(10, 22), px = clamp(cx - (pw >> 1), x0 + 6, x1 - 6 - pw), d = R.int(3, 6);
+          for (let x = px; x < px + pw; x++) for (let y = fy; y < fy + d; y++) setA(x, y);
+          P.specReq.push({ x0: px, y0: fy, x1: px + pw, y1: fy + d, k: "water" });
+        }
+      }
+      if (R() < 0.3) {
+        const bx = R() < 0.5 ? x0 + 2 : x1 - 6;
+        P.specReq.push({ x0: bx, y0: fy - 1, x1: bx + 4, y1: fy, k: "bounce" });
+      }
+    } else if (type === "cavern") {
+      // 여러 층 공간: 가운데쯤 계단식 바위 언덕 (단마다 STEP 이하, 양쪽 비탈 길이가 다르다). 문 옆은 비운다
+      const levels = Math.min(R.int(3, 6), Math.floor((h - 16) / STEP));
+      let a = x0 + 10 + R.int(0, Math.floor(w * 0.15)), b = x1 - 10 - R.int(0, Math.floor(w * 0.15)), y = fy;
+      for (let k = 0; k < levels && b - a > 8; k++) {
+        const st = R.int(5, STEP);
+        for (let yy = y - st; yy < y; yy++) for (let x = a; x < b; x++) setR(x, yy);
+        y -= st;
+        const cut = b - a - R.int(6, 10);
+        const fl = Math.round(cut * R.range(0.2, 0.8));
+        a += Math.max(4, fl);
+        b -= Math.max(4, cut - fl);
+      }
+      if (R() < 0.5) {
+        const cx = x0 + Math.round(w * R.range(0.4, 0.6)), yEnd = fy - R.int(10, 14);
+        hanging(cx, fy - h - 8, yEnd, R.int(3, 6));
+      }
+    } else if (type === "tall") {
+      // 높은 방: 양쪽 벽이 번갈아 튀어나온 큰 단 (지그재그로 오른다)
+      const oM = Math.floor((w - 12) / 2), ys = fy - h + 4, sd = R() < 0.5 ? 0 : 1;
+      later.push(() => chimneyRock(x0, x1, ys, fy, sd, oM - 2, oM, Math.max(2, Math.round(oM / 5))));
+    }
+  };
+  // [종류, 확률, 너비, 높이]
+  const TYPES = [
+    ["hall", 0.32, [90, 136], [26, 40]],
+    ["cavern", 0.18, [110, 136], [40, 50]],
+    ["tiered", 0.18, [90, 136], [26, 38]],
+    ["tall", 0.14, [44, 64], [90, 124]],
+    ["small", 0.18, [44, 70], [18, 26]],
+  ];
   const pickT = () => {
     let v = R();
-    for (const [t, p] of TYPES) if ((v -= p) <= 0) return t;
-    return "hall";
+    for (const T of TYPES) if ((v -= T[1]) <= 0) return T;
+    return TYPES[0];
   };
   for (const r of rooms) !r.pt && carveRoom(r);
-  for (let t = 0; t < 6000 && rooms.length < o.target; t++) {
-    const type = pickT();
-    const [w, h] = type === "hall" ? [R.int(40, 110), R.int(12, 20)] : type === "tiered" ? [R.int(50, 110), R.int(14, 22)] : type === "tall" ? [R.int(26, 40), R.int(40, 66)] : [R.int(18, 34), R.int(9, 13)];
-    const x0 = R.int(8, NX - 8 - w), fy = R.int(4, o.bot) & ~1;
-    if (!fits(x0, x0 + w, fy - h - Math.ceil(h * 0.3) - 2, fy + 2, 10)) continue;
-    const r = { x0, x1: x0 + w, fy, h, type };
+  // 배치: 던전 구역(반듯한 격자, 먼저 자리를 잡는다) → 큰 자연 동굴 → 나머지 자연 방(줄 없이 흩어서, 크기·높이 제각각)
+  const SW = 160, SH = 72;
+  const ncol = Math.floor((NX - 16) / SW), nrow = Math.floor((o.bot - 4) / SH);
+  for (let k = P.kind === "cave" ? 2 : 1, tries = 0; k > 0 && tries < 20; tries++) {
+    const cw = R.int(2, 3), c0 = R.int(0, Math.max(0, ncol - cw)), r0 = R.int(0, Math.max(0, Math.min(nrow - 2, 3)));
+    const made = [];
+    for (let c = c0; c < c0 + cw; c++)
+      for (let rr = r0; rr < r0 + 2; rr++) {
+        const sx = 8 + c * SW, sy = o.bot - rr * SH;
+        for (let t = 0; t < 6; t++) {
+          const T = [TYPES[0], TYPES[2], TYPES[3], TYPES[4]][R.int(0, 3)];
+          const w = Math.min(R.int(T[2][0], T[2][1]), SW - 24), h = Math.min(R.int(T[3][0], T[3][1]), T[0] === "tall" ? 2 * SH - 16 : SH - 14);
+          const x0 = sx + R.int(8, SW - 16 - w), fy = (sy - R.int(2, 6)) & ~1;
+          if (!fits(x0, x0 + w, fy - h - 16, fy + 3, 8)) continue;
+          const r = { x0, x1: x0 + w, fy, h, type: T[0], dun: 1 };
+          rooms.push(r);
+          made.push(r);
+          carveRoom(r);
+          break;
+        }
+      }
+    made.length >= 2 && k--;
+  }
+  // 큰 자연 동굴
+  {
+    const want = Math.max(1, Math.round((NX * (o.bot - 40)) / 260000));
+    for (let k = 0, t = 0; k < want && t < 300; t++) {
+      const w = R.int(240, 400), h = R.int(44, 80), x0 = R.int(10, NX - 10 - w), fy = R.int(h + 30, o.bot) & ~1;
+      if (!fits(x0, x0 + w, fy - h - 24, fy + 3, 14)) continue;
+      const r = { x0, x1: x0 + w, fy, h, type: "great" };
+      rooms.push(r);
+      carveRoom(r);
+      k++;
+    }
+  }
+  // 나머지 자연 방: 아무 데나 (격자 줄 없이)
+  const NT = [
+    ["hall", 0.38, [60, 180], [18, 46]],
+    ["cavern", 0.2, [100, 200], [36, 62]],
+    ["tiered", 0.2, [80, 170], [24, 44]],
+    ["small", 0.22, [30, 70], [14, 28]],
+  ];
+  for (let t = 0; t < 5000 && rooms.length < o.target; t++) {
+    let v = R(), T = NT[0];
+    for (const q of NT) if ((v -= q[1]) <= 0) { T = q; break; }
+    const w = R.int(T[2][0], T[2][1]), h = R.int(T[3][0], T[3][1]);
+    const x0 = R.int(8, NX - 8 - w), fy = R.int(h + 20, o.bot) & ~1;
+    if (!fits(x0, x0 + w, fy - h - Math.ceil(h * 0.35) - 3, fy + 3, 12)) continue;
+    const r = { x0, x1: x0 + w, fy, h, type: T[0] };
     rooms.push(r);
     carveRoom(r);
   }
   // ── 통로 ──
-  const H = () => R.int(6, 8);
+  const H = () => R.int(12, 16);
+  // 평평한 통로 (천장은 큼직하게 들쭉날쭉)
+  let dunLink = 0;
   const horiz = (xa, xb, fy, h) => {
-    for (let x = Math.min(xa, xb); x <= Math.max(xa, xb); x++) for (let y = fy - h; y < fy; y++) setA(x, y);
-  };
-  // 45° 계단 (한 칸씩 오르내린다 → 걸어서 간다)
-  const stairs = (x, y, dir, n, dn, h) => {
-    for (let i = 0; i <= n; i++) {
-      const f = y + dn * i, xx = x + dir * i;
-      for (let yy = Math.min(f, f - dn) - h; yy < f; yy++) setA(xx, yy);
+    const a = Math.min(xa, xb), b = Math.max(xa, xb), jg = dunLink ? new Int16Array(b - a + 1) : walk(b - a + 1, 0, 2, 1, 4, 10);
+    dunLink && brick(a, fy - h, b + 1, fy);
+    for (let x = a; x <= b; x++) {
+      for (let y = fy - h - jg[x - a]; y < fy; y++) setA(x, y);
+      // 바닥 줄이 이미 비어 있으면 (다른 굴 위를 지난다) 바닥이 없는 통로
+      probe && isA(x, fy) && probe.hole++;
     }
   };
-  // 세로굴: 폭 10칸, 9칸마다 벽에 붙은 발판이 번갈아
-  const shaft = (x, ya, yb, h) => {
-    const top = Math.min(ya, yb) - h, bot = Math.max(ya, yb);
-    for (let xx = x - 5; xx < x + 5; xx++) for (let y = top; y < bot; y++) setA(xx, y);
-    let side = 0;
-    for (let ly = bot - 9; ly > top + 6; ly -= 9, side ^= 1) for (let xx = side ? x : x - 5; xx < (side ? x + 5 : x); xx++) (setR(xx, ly), setR(xx, ly + 1));
+  // 계단 (한 칸씩 오르내린다 → 걸어서 간다). 사이사이 평평한 쉼터(slack칸까지), 천장은 들쭉날쭉. 끝 x를 돌려준다
+  const stairs = (x, y, dir, n, dn, h, slack = 0) => {
+    let xx = x, f = y, left = n, sl = slack, jg = 0, run = 0;
+    const col = (fPrev) => {
+      if (run-- <= 0) ((jg = dunLink ? 0 : R.int(0, 3)), (run = R.int(3, 8)));
+      dunLink && brick(xx, Math.min(f, fPrev) - h, xx + 1, f);
+      for (let yy = Math.min(f, fPrev) - h - jg; yy < f; yy++) setA(xx, yy);
+      probe && isA(xx, f) && probe.hole++;
+    };
+    col(f);
+    while (left > 0) {
+      const r = Math.min(left, R.int(4, 12));
+      for (let i = 0; i < r; i++) ((xx += dir), (f += dn), col(f - dn));
+      left -= r;
+      if (left > 0 && sl > 0) {
+        const L = Math.min(sl, R.int(2, 7));
+        for (let i = 0; i < L; i++) ((xx += dir), col(f));
+        sl -= L;
+      }
+    }
+    return xx;
+  };
+  // 굴뚝 길: 위 통로는 가운데까지, 아래 통로는 굴뚝 벽 밖 2칸에서 낮은 문(6칸)으로 들어온다
+  const chimney = (xa, ya, xb, yb, xm, h) => {
+    const up = ya < yb, xU = up ? xa : xb, yU = Math.min(ya, yb), xL = up ? xb : xa, yL = Math.max(ya, yb);
+    const upSide = xU < xm ? 0 : 1, lowSide = 1 - upSide;
+    const hw = R.int(6, 8), xl = xm - hw, xr = xm + hw;
+    horiz(xU, xm, yU, h);
+    const xo = lowSide ? xr + 2 : xl - 3;
+    horiz(xL, xo, yL, h);
+    for (let x = Math.min(xm, xo); x <= Math.max(xm, xo); x++) for (let y = yL - 6; y < yL; y++) setA(x, y);
+    for (let y = yU - h; y < yL; y++) for (let x = xl; x < xr; x++) setA(x, y);
+    dunLink && brick(xl, yU - h, xr, yL);
+    const tr = dunLink ? 99 : 1;
+    probe || later.push(() => chimneyRock(xl, xr, yU, yL, upSide, 3, 5, tr));
   };
   // A 바닥(xa, ya) → B 바닥(xb, yb): 평평한 통로, 높이 차는 계단(자리가 되면) 또는 세로굴
-  const route = (xa, ya, xb, yb) => {
+  // 후보 경로를 여럿 만들어 다른 굴의 바닥을 가장 덜 지우는 것을 판다 (지운 바닥 = 공중에 뜬 계단·통로 끝)
+  const route = (xa, ya, xb, yb, pref = 0) => {
     const h = H(), dir = xb >= xa ? 1 : -1, dx = Math.abs(xb - xa), dy = yb - ya, ady = Math.abs(dy);
     if (ady === 0) return horiz(xa, xb, ya, h);
-    if (ady <= dx - 2) {
-      const xs = xa + dir * R.int(0, dx - ady);
-      horiz(xa, xs, ya, h);
-      stairs(xs, ya, dir, ady, Math.sign(dy), h);
-      horiz(xs + dir * ady, xb, yb, h);
-      return;
+    const cands = [];
+    if (ady <= 4 && dx > 8)
+      // 낮은 턱 (한 번 점프): 통로 가운데에 단 하나
+      for (let k = 0; k < 4; k++) {
+        const xs = xa + dir * R.int(3, dx - 3);
+        cands.push(() => (horiz(xa, xs, ya, h), horiz(xs, xb, yb, h)));
+      }
+    else {
+      if (ady <= dx - 2)
+        for (let k = 0; k < 5; k++) {
+          const sl = dx - ady, pre = Math.round(sl * R.range(0, 0.6)), land = Math.round((sl - pre) * R.range(0.3, 1));
+          const xs = xa + dir * pre;
+          cands.push(() => {
+            horiz(xa, xs, ya, h);
+            const xe = stairs(xs, ya, dir, ady, Math.sign(dy), h, land);
+            horiz(xe, xb, yb, h);
+          });
+        }
+      for (let k = 0; k < 5; k++) {
+        const xm = xa + dir * Math.round(clamp(dx * (0.1 + 0.2 * k), Math.min(16, dx / 2), Math.max(dx / 2, dx - 16)));
+        const c = () => chimney(xa, ya, xb, yb, xm, h);
+        c.pen = cands.length ? (pref ? 1e6 : dunLink ? 60 : 600) : 0;
+        cands.push(c);
+      }
     }
-    const xm = xa + dir * Math.floor(dx / 2);
-    horiz(xa, xm, ya, h);
-    shaft(xm, ya, yb, h);
-    horiz(xm, xb, yb, h);
+    let best = null, bs = 1e18;
+    for (const c of cands) {
+      probe = { air: 0, floor: 0, hole: 0 };
+      c();
+      const sc = probe.floor * 4 + probe.hole * 3 + probe.air * 0.4 + R() * 2 + (c.pen ?? 0);
+      probe = null;
+      sc < bs && ((bs = sc), (best = c));
+    }
+    best();
   };
   const door = (r, dir) => (r.pt ? r.x0 : dir > 0 ? r.x1 : r.x0 - 1);
   const link = (A, B) => {
+    dunLink = A.dun && B.dun ? 1 : 0;
     const [L, Rr] = A.x0 + A.x1 <= B.x0 + B.x1 ? [A, B] : [B, A];
-    if (L.x1 + 4 <= Rr.x0 || L.pt || Rr.pt) return route(door(L, 1), L.fy, door(Rr, -1), Rr.fy);
+    if (L.x1 <= Rr.x0 || L.pt || Rr.pt) return route(door(L, 1), L.fy, door(Rr, -1), Rr.fy, L.pt || Rr.pt ? 1 : 0);
     // 위아래로 겹친 방: 오른쪽 바깥으로 돌아서
-    const xo = Math.min(NX - 8, Math.max(L.x1, Rr.x1) + R.int(6, 12));
+    const xo = Math.min(NX - 14, Math.max(L.x1, Rr.x1) + R.int(12, 18));
     route(L.x1, L.fy, xo, Rr.fy);
     horiz(Rr.x1, xo, Rr.fy, H());
   };
   // 최소 신장 트리 (가로 거리 + 세로 거리×2) + 덤으로 몇 개 더 (고리 길)
   const cx = (r) => (r.x0 + r.x1) / 2;
-  const cost = (a, b) => Math.abs(cx(a) - cx(b)) + 2 * Math.abs(a.fy - b.fy);
+  // 자연 동굴끼리는 비탈 굴로 이을 수 있는 짝을 고른다 (높이 차가 가로 틈보다 크면 세로굴이 필요하다)
+  const cost = (a, b) => {
+    const dy = Math.abs(a.fy - b.fy), gap = Math.max(0, Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1));
+    return Math.abs(cx(a) - cx(b)) + 2 * dy + (!(a.dun && b.dun) && dy > 4 && dy > gap - 2 ? 3000 : 0);
+  };
   const n = rooms.length;
   const inT = new Uint8Array(n), best = new Float64Array(n).fill(1e18), from = new Int32Array(n).fill(-1);
   best[0] = 0;
@@ -1946,13 +2299,79 @@ function roomCaves(P, C, o) {
     if (rooms[i].pt || R() > 0.3) continue;
     let j = -1;
     for (let k = 0; k < n; k++) if (k !== i && !rooms[k].pt && !edges.some(([a, b]) => (a === i && b === k) || (a === k && b === i)) && (j < 0 || cost(rooms[i], rooms[k]) < cost(rooms[i], rooms[j]))) j = k;
-    j >= 0 && cost(rooms[i], rooms[j]) < 260 && edges.push([i, j]);
+    j >= 0 && cost(rooms[i], rooms[j]) < 300 && edges.push([i, j]);
   }
   for (const [a, b] of edges) link(rooms[a], rooms[b]);
-  rooms.route = route;
-  // 방 바닥 줄은 바위로 (통로·세로굴이 바닥에 낸 구멍 메우기)
-  for (const r of rooms) if (!r.pt) for (let x = r.x0; x < r.x1; x++) setR(x, r.fy);
+  dunLink = 0;
+  for (const fn of later) fn();
+  later.length = 0;
+  // 방 바닥 줄은 바위로 (통로·세로굴이 바닥에 낸 구멍 메우기). 물웅덩이 자리는 빼고
+  const pools = P.specReq.filter((q) => q.k === "water");
+  for (const r of rooms)
+    if (!r.pt)
+      for (let x = r.x0; x < r.x1; x++) pools.some((q) => x >= q.x0 && x < q.x1 && q.y0 === r.fy) || isA(x, r.fy - 1) && setR(x, r.fy);
+  fixDrops(C, R, o.inCave ?? (() => true));
+  rooms.route = (...a) => (route(...a), later.forEach((fn) => fn()), (later.length = 0));
+  // 고치기에서 쓴다: 끊긴 두 곳 사이에 굴을 하나 더 판다 (칸 좌표, 바닥 줄)
+  P.caveRoute = (xa, ya, xb, yb) => {
+    dunLink = 0;
+    rooms.route(xa, ya, xb, yb);
+  };
   return rooms;
+}
+// 오를 수 없는 낭떠러지 고치기 (칸 단위): 바닥 끝 아래가 8칸(64px)보다 깊고 근처에 디딜 데도 없으면
+// 아래 바닥에 바위 계단 더미(단마다 8칸 이하)를 쌓는다. 끝 밑이 얕게 파인 곳은 메워 벽으로 만든다
+function fixDrops(C, R, inCave) {
+  const { cell, NX, NY } = C;
+  const solid = (x, y) => x < 0 || y < 0 || x >= NX || y >= NY || cell[y * NX + x] === 1;
+  const stand = (x, y) => solid(x, y) && !solid(x, y - 1) && !solid(x, y - 2) && !solid(x, y - 3);
+  const put = (x, y) => x >= 0 && y >= 0 && x < NX && y < NY && (cell[y * NX + x] = 1);
+  let fixes = 0;
+  for (let y = 4; y < NY - 2; y++)
+    for (let x = 2; x < NX - 2; x++) {
+      if (!stand(x, y)) continue;
+      for (const dir of [-1, 1]) {
+        const xn = x + dir;
+        if (solid(xn, y) || solid(xn, y + 1)) continue;
+        let y2 = y + 1;
+        while (y2 < NY && !solid(xn, y2)) y2++;
+        const d = y2 - y;
+        if (d <= 8 || y2 >= NY - 1 || !inCave(xn, y2)) continue;
+        // 근처(14칸 안, 8칸 아래까지)에 디딜 곳이 있으면 거기서 뛰어오른다
+        let ok = false;
+        for (let k = 1; k <= 14 && !ok; k++) for (let yy = y + 1; yy <= y + 8 && !ok; yy++) stand(x + dir * k, yy) && (ok = true);
+        if (ok) continue;
+        // 끝 밑이 비었다(처마): 얕으면(10칸 이하) 메워서 벽으로
+        let wall = true;
+        for (let yy = y + 1; yy < y2; yy++) solid(x, yy) || (wall = false);
+        if (!wall) {
+          let p = 0;
+          while (p < 12 && !solid(x - dir * p, y + 1)) p++;
+          if (p > 10) continue;
+          for (let k = 0; k < p; k++) for (let yy = y + 1; yy < NY && !solid(x - dir * k, yy); yy++) put(x - dir * k, yy);
+        }
+        // 계단 더미: 단 n개, 끝에 가까울수록 높다
+        const n = Math.ceil(d / 8) - 1;
+        let xs = xn, good = true;
+        const plan = [];
+        for (let k = 1; k <= n && good; k++) {
+          const top = y + Math.round((k * d) / (n + 1)), w = R.int(4, 7);
+          for (let i = 0; i < w; i++) {
+            const xx = xs + dir * i;
+            // 아래 바닥이 같은 높이(±1)이고 위가 비어 있어야
+            let f = top;
+            while (f < NY && !solid(xx, f)) f++;
+            if (Math.abs(f - y2) > 1 || solid(xx, top - 4)) good = false;
+            plan.push([xx, top, f]);
+          }
+          xs += dir * w;
+        }
+        if (!good) continue;
+        for (const [xx, top, f] of plan) for (let yy = top; yy < f; yy++) put(xx, yy);
+        fixes++;
+      }
+    }
+  return fixes;
 }
 // 떠 있는 작은 바위 조각(벽·바닥과 이어지지 않은 것)과 1블록 돌기·홈을 없앤다 (keepRows 위 줄은 건드리지 않는다)
 function cleanCells(C, keepRows) {
@@ -1988,26 +2407,25 @@ function buildCave(P) {
   const { WP, R, arenaFrom, F } = P;
   const base = FLOOR * TS, bottom = (P.Ft - 5) * TS;
   F.d.fill(12);
-  const C = cellsOf(P), NX = C.NX;
-  const by = base / BLK, bot = Math.floor((bottom - 24) / BLK) & ~1;
-  const lim = Math.min(WP, arenaFrom);
-  const pre = [{ x0: 2, x1: 2, fy: by, h: 0, pt: 1 }];
-  if (arenaFrom < WP) {
-    // 보스 방: 넓은 홀 (바닥은 입구 줄)
-    pre.push({ x0: Math.floor(arenaFrom / BLK), x1: NX - 3, fy: by, h: 26, type: "hall", arena: 1 });
-  } else pre.push({ x0: NX - 3, x1: NX - 3, fy: by, h: 0, pt: 1 });
-  if (P.isZone && P.upX >= 0) {
-    const ux = Math.round(clamp(P.upX + R.range(-100, 100), 300, lim - 300) / BLK), fy = R.int(70, 130) & ~1;
-    pre.push({ x0: ux - 14, x1: ux + 14, fy, h: 11, type: "small" });
-    P.peak = { x: Math.round((ux * BLK - 8) / TS) * TS + 8, y: fy * BLK };
-  }
-  if (P.isZone && P.downX >= 0) {
-    const dx = Math.round(clamp(P.downX + R.range(-100, 100), 300, lim - 300) / BLK), fy = (bot - R.int(0, 40)) & ~1;
-    pre.push({ x0: dx - 14, x1: dx + 14, fy, h: 11, type: "small" });
-    P.deep = { x: Math.round((dx * BLK - 8) / TS) * TS + 8, y: fy * BLK };
-  }
+  const C = cellsOf(P);
+  const bot = Math.floor((bottom - 24) / BLK) & ~1, lim = Math.min(WP, arenaFrom);
   const NXl = Math.floor(lim / BLK) - 6;
-  roomCaves(P, C, { top: (x) => (x > NXl ? 1e9 : 12), bot, pre, target: Math.round((NXl * (bot - 12)) / 9000) });
+  caveWorld(P, C, {
+    y0: 14,
+    y1: bot,
+    anchor: base / BLK,
+    gap: [96, 124],
+    band: 0.4,
+    shafts: R.int(2, 3),
+    lim: NXl,
+    maxGrand: 4,
+    entries: true,
+    topAt: () => 14,
+    arena: arenaFrom < WP ? Math.floor(arenaFrom / BLK) : -1,
+    peakX: P.isZone && P.upX >= 0 ? Math.round(clamp(P.upX, 300, lim - 300) / BLK) : -1,
+    peakRow: R.int(260, 330),
+    deepX: P.isZone && P.downX >= 0 ? Math.round(clamp(P.downX, 300, lim - 300) / BLK) : -1,
+  });
   cleanCells(C, 0);
   writeCells(P, C);
   applySpecReq(P);
@@ -2140,10 +2558,1577 @@ function buildSky(P) {
     return yB;
   };
   const floorList = exitSegs.map(([a, b]) => ({ cx: (a + b) / 2, top: base - fl.amp, w: b - a, t: R.int(fl.t[0], fl.t[1]) * TS }));
-  skyLayers(P, groundAt, S.islands.style, { floor: floorList });
+  void floorList;
+  skyWorld(P, groundAt, S.islands.style, { sky: true, exits: exitSegs.map(([a, b]) => ({ x0: a, x1: b, t: 220 })) });
   P.ugTop = P.Ft + 20;
 }
 
+// ════════════════════════════════════════════════════════════════════
+// 지형 v2 — 구간으로 짠 지표 · 층으로 쌓인 동굴과 고대 유적 · 산만 한 하늘섬과 디딤돌 길
+// 방·섬마다 역할을 정한다 (쉼터·전투·보물·전망·성소) → roomTags로 적·상자를 놓는다
+// ════════════════════════════════════════════════════════════════════
+
+// 계단밭: 단 높이를 24~56px로 제각각 (8px 단위). skip[i]인 곳은 그대로
+function terraceVar(h, R, skip) {
+  const base = FLOOR * TS;
+  let lo = 1e9, hi = -1e9;
+  for (let i = 0; i < h.length; i++) ((lo = Math.min(lo, h[i])), (hi = Math.max(hi, h[i])));
+  const lv = [base];
+  for (let y = base; y > lo - 64; ) lv.unshift((y -= R.pick([24, 32, 40, 40, 48, 56])));
+  for (let y = base; y < hi + 64; ) lv.push((y += R.pick([24, 32, 40, 48])));
+  for (let i = 0; i < h.length; i++) {
+    if (skip && skip[i]) continue;
+    const v = h[i];
+    let k = 0;
+    while (k < lv.length - 2 && lv[k + 1] <= v) k++;
+    const a = lv[k], b = lv[k + 1], f = clamp((v - a) / (b - a), 0, 1);
+    h[i] = a + (b - a) * smooth(smooth(f));
+  }
+}
+
+// 지표: 입구 들판 → (언덕·골짜기(연못)·고원·풀밭(싱크홀)·사구) → 큰 산(가운데~오른쪽, ▲ 문 가까이) → … → 출구 들판
+// 같은 종류 구간은 이어서 오지 않는다. 굴 입구·연못·싱크홀 자리를 함께 정한다
+function sectionSurface(P) {
+  const { prof: S, LW, WP, N, arenaFrom } = P;
+  const R = rng(P.seed ^ 0x5ec7a1);
+  const base = FLOOR * TS, lim = Math.min(WP, arenaFrom);
+  const el = new Float64Array(LW);
+  const bump = (u) => (u <= -1 || u >= 1 ? 0 : (1 - u * u) * (1 - u * u));
+  const plat = (u, p) => {
+    const a = u < 0 ? -u : u;
+    if (a >= 1) return 0;
+    if (a <= p) return 1;
+    const s = (a - p) / (1 - p);
+    return 1 - s * s * (3 - 2 * s);
+  };
+  const addEl = (x0, x1, f) => {
+    for (let i = Math.max(0, Math.floor(x0 / Q)); i <= Math.min(LW - 1, Math.ceil(x1 / Q)); i++) el[i] += f(i * Q);
+  };
+  const E0 = R.range(560, 860), E1 = arenaFrom < WP ? arenaFrom - 80 : WP - R.range(560, 860);
+  P.sections = [];
+  P.ponds = [];
+  P.sinks = [];
+  P.mouthX = [];
+  // 큰 산 하나: 가운데~오른쪽 (입구 쪽 1000px+ 떨어져서)
+  const MS = S.massif;
+  const mH = clamp(MS ? R.range(MS.h[0], MS.h[1]) * 0.5 : R.range(420, 620), 380, 860);
+  const mW = R.range(2000, 2800), as = R.range(0.42, 0.58), wl = mW * as, wr = mW - wl;
+  let cm = P.upX >= 0 ? P.upX + R.range(-300, 300) : lim * R.range(0.5, 0.66);
+  cm = clamp(cm, Math.max(lim * 0.42, E0 + 1000 + wl), Math.min(lim * 0.74, E1 - 600 - wr));
+  {
+    const pTop = R.range(0.1, 0.16), shSide = R() < 0.5 ? -1 : 1, shAt = R.range(0.38, 0.55), shAmt = R.range(0.1, 0.18), so = R() * 99;
+    addEl(cm - wl, cm + wr, (x) => {
+      const t = (x - cm) / (x < cm ? wl : wr), a = t < 0 ? -t : t;
+      if (a >= 1) return 0;
+      const s = a <= pTop ? 0 : (a - pTop) / (1 - pTop);
+      let e = Math.pow(1 - s, 1.5);
+      if ((t < 0 ? -1 : 1) === shSide) e += shAmt * bump((s - shAt) / 0.18);
+      return mH * Math.min(1, e) * (0.95 + 0.05 * N.fbm1(x / 280 + so, 2));
+    });
+    P.mtn = { a: cm - wl, b: cm + wr, cx: cm, h: mH, pa: cm - wl * pTop, pb: cm + wr * pTop };
+    P.sections.push({ kind: "mountain", a: cm - wl, b: cm + wr });
+  }
+  const kinds = S.dunes ? ["dunes", "hills", "valley", "dunes", "mesa"] : ["hills", "valley", "mesa", "meadow", "hills", "valley"];
+  const need = S.dunes ? ["valley", "mesa", "dunes"] : ["valley", "mesa", "meadow"];
+  let last = "";
+  const span = (a, b) => {
+    for (let x = a; b - x >= 520; ) {
+      let w = Math.min(b - x, R.range(760, 1400));
+      if (b - x - w < 520) w = b - x;
+      let k = need.length && R() < 0.75 ? need[R.int(0, need.length - 1)] : R.pick(kinds);
+      for (let t = 0; t < 8 && k === last; t++) k = R.pick(kinds);
+      need.includes(k) && need.splice(need.indexOf(k), 1);
+      last = k;
+      const x0 = x, c = x + w / 2, hw = w / 2;
+      if (k === "hills") {
+        const n = w > 1100 ? R.int(2, 3) : R.int(1, 2);
+        for (let j = 0; j < n; j++) {
+          const cc = x0 + (w * (j + 0.5)) / n + R.range(-0.1, 0.1) * (w / n), hh = R.range(110, 300), ww = R.range(0.38, 0.55) * (w / n) + 120;
+          addEl(cc - ww, cc + ww, (xx) => hh * bump((xx - cc) / ww));
+        }
+        P.mouthX.push(c + R.range(-0.25, 0.25) * w);
+      } else if (k === "valley") {
+        const d = R.range(150, 260), ww = hw * R.range(0.72, 0.9), p = R.range(0.3, 0.42);
+        addEl(c - ww, c + ww, (xx) => -d * plat((xx - c) / ww, p));
+        P.ponds.push({ x: c, w: Math.min(ww * p * 1.5, R.range(150, 260)) });
+      } else if (k === "mesa") {
+        const hh = R.range(180, 320), ww = hw * R.range(0.66, 0.84), p = R.range(0.5, 0.64);
+        addEl(c - ww, c + ww, (xx) => hh * plat((xx - c) / ww, p));
+        P.mouthX.push(c + (R() < 0.5 ? -1 : 1) * ww * R.range(0.75, 0.95));
+      } else if (k === "meadow") {
+        const s2 = R() * 99;
+        addEl(x0, x0 + w, (xx) => 26 * (0.5 + 0.5 * N.fbm1(xx / 210 + s2, 2)) * bump((xx - c) / hw));
+        P.sinks.push(c + R.range(-0.2, 0.2) * w);
+      } else if (k === "dunes") {
+        const D = S.dunes, s2 = R() * 99;
+        addEl(x0, x0 + w, (xx) => {
+          const ph = (xx - x0) / (D.wl * 2.2) + 0.3 * N.fbm1(xx / 900 + s2, 2);
+          const t = ph - Math.floor(ph), aa = D.asym, p2 = t < aa ? smooth(t / aa) : 1 - smooth((t - aa) / (1 - aa));
+          return D.amp * 2.2 * p2 * bump((xx - c) / hw);
+        });
+      }
+      P.sections.push({ kind: k, a: x0, b: x0 + w });
+      x += w;
+    }
+  };
+  span(E0, cm - wl);
+  span(cm + wr, E1);
+  const s3 = R() * 99, h = new Float64Array(LW);
+  for (let i = 0; i < LW; i++) h[i] = base - el[i] - 6 * N.fbm1((i * Q) / 70 + s3, 2);
+  return h;
+}
+
+// ── 땅속 세계 (8px 블록 칸) ──────────────────────────
+// 층마다 동굴 방이 이어지고(가끔 끊겨 갈래가 된다), 층 사이는 비탈 굴·오르는 방으로 여러 곳을 잇는다. 맨 아래층엔 고대 유적
+// 방 모양은 처음부터 걷기 좋게: 바닥 단 차이 5칸(40px) 이하, 천장은 바닥 위 13칸(104px) 이상, 매달린 바위·기둥 아치 밑은 12칸 이상
+// o: { y0, y1 방을 놓을 위·아래 줄, gap [층 간격], topAt(cx) 이보다 위엔 못 놓음, lim 칸 끝, anchor 꼭 있어야 하는 층 바닥 줄,
+//      entries 동굴 구역 좌우 입구, arena 보스 방 시작 칸, mouths [{x,y}] 지표 굴 입구, sinks [{x,y}] 싱크홀, peakX/peakRow, deepX }
+function caveWorld(P, C, o) {
+  const R = rng(P.seed ^ 0xca7e51), N = P.N, { cell, NX, NY } = C;
+  const STEP = 8, lim = o.lim;
+  const setC = (x, y, v) => x >= 1 && y >= 1 && x < NX - 1 && y < NY - 1 && (cell[y * NX + x] = v);
+  const air = (x, y) => setC(x, y, -1), rock = (x, y) => setC(x, y, 1);
+  const rect = (x0, y0, x1, y1, v) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setC(x, y, v);
+  };
+  const walk = (n, lo, hi, d = 1, r0 = 3, r1 = 8) => {
+    const a = new Int16Array(Math.max(1, n));
+    let v = R.int(lo, hi), run = 0;
+    for (let i = 0; i < n; i++) {
+      if (run-- <= 0) ((v = clamp(v + R.int(-d, d), lo, hi)), (run = R.int(r0, r1)));
+      a[i] = v;
+    }
+    return a;
+  };
+  const later = [], rooms = [], boxes = [], tags = [];
+  // 이어짐 (0 = 바깥: 지표·입구)
+  const par = [0];
+  const find = (a) => (par[a] === a ? a : (par[a] = find(par[a])));
+  const uni = (a, b) => (par[find(a)] = find(b));
+  const newRoom = (r) => {
+    r.id = par.length;
+    par.push(r.id);
+    r.deg = 0;
+    rooms.push(r);
+    return r;
+  };
+  const linkR = (a, b) => (uni(a.id, b.id), a.deg++, b.deg++);
+  const free = (x0, x1, y0, y1, m = 6, ex = [], top = true) => {
+    if (x0 < 3 || x1 > lim - 3 || y1 > o.y1 + 4 || y0 < 2) return false;
+    if (top) for (let x = Math.max(0, x0); x <= x1; x += 2) if (y0 < o.topAt(x)) return false;
+    for (const b of boxes) if (!ex.includes(b.r) && x0 < b.x1 + m && x1 > b.x0 - m && y0 < b.y1 + m && y1 > b.y0 - m) return false;
+    return true;
+  };
+  const pathFree = (xa, xb, ya, yb, ex, top = true) => {
+    const x0 = Math.min(xa, xb), x1 = Math.max(xa, xb);
+    for (const b of boxes) if (!ex.includes(b.r) && x0 < b.x1 + 2 && x1 > b.x0 - 2 && Math.min(ya, yb) - 16 < b.y1 && Math.max(ya, yb) + 1 > b.y0) return false;
+    if (top) for (let x = x0; x <= x1; x += 2) if (Math.min(ya, yb) - 16 < o.topAt(x) && x > 4 && x < lim - 4) return false;
+    return true;
+  };
+
+  // ── 동굴 방 ──
+  // floor: flat | steps | mound | basin. 양 끝(문 쪽)은 바닥 줄 fy, 안쪽은 단 (한 단 5칸 이하)
+  const carveCavern = (r) => {
+    const { x0, x1, fy, h, kind } = r, w = x1 - x0;
+    const lv = new Int16Array(w);
+    const segs = [];
+    for (let x = R.int(6, 10); x < w - 6; ) {
+      const L = Math.min(w - 6 - x, R.int(10, 24));
+      if (L < 6) break;
+      segs.push([x, x + L]);
+      x += L;
+    }
+    let cur = 0;
+    for (let k = 0; k < segs.length; k++) {
+      const rem = segs.length - 1 - k, pat = r.floor;
+      let d = 0;
+      if (pat === "mound") d = k < segs.length / 2 ? R.int(2, 5) : -R.int(2, 5);
+      else if (pat === "basin") d = k < segs.length / 2 ? -R.int(2, 4) : R.int(2, 4);
+      else if (pat === "steps") d = R.int(2, 5) * (R() < 0.55 ? 1 : -1);
+      else d = R() < 0.25 ? R.int(-2, 2) : 0;
+      const cap = 5 * (rem + 1);
+      let t = clamp(cur + d, Math.max(-cap, pat === "basin" ? -10 : -3), Math.min(cap, 12));
+      t = clamp(t, cur - 5, cur + 5);
+      cur = t;
+      for (let i = segs[k][0]; i < segs[k][1]; i++) lv[i] = cur;
+    }
+    // ▲ 문 자리 등: 가운데 바닥은 평평하게
+    if (r.flatC != null) for (let i = Math.max(0, r.flatC - 9); i < Math.min(w, r.flatC + 9); i++) lv[i] = 0;
+    // 천장: 한쪽으로 치우친 둥근 지붕, 큼직한 잡음 (2~4칸씩 같은 높이)
+    const pk = R.range(0.25, 0.75), sq = R.range(0.35, 0.8), amp = R.range(0.1, 0.28), fq = R.range(14, 34), so = R() * 99;
+    // 천장 모양: 둥근 지붕 · 쌍봉 · 한쪽으로 기운 · 평평(끝만 둥글게)
+    const ct = r.ceil ?? R.pick(["dome", "dome", "double", "slant", "flat"]);
+    const p1 = R.range(0.18, 0.4), p2 = R.range(0.6, 0.82), s1 = R.range(0.16, 0.26), s2 = R.range(0.16, 0.26), sl = R() < 0.5;
+    const top = new Int32Array(w);
+    let hold = 0, run = 0;
+    for (let i = 0; i < w; i++) {
+      const u = (i + 0.5) / w, t = u < pk ? (u - pk) / pk : (u - pk) / (1 - pk);
+      const bl = (v) => Math.max(0, 1 - v * v);
+      const dome =
+        ct === "double" ? Math.max(bl((u - p1) / s1), bl((u - p2) / s2), 0.25 * bl(t)) : ct === "slant" ? Math.min(1, 4 * Math.min(u, 1 - u)) * (sl ? 0.3 + 0.7 * u : 1 - 0.7 * u) : ct === "flat" ? Math.min(1, 5 * Math.min(u, 1 - u)) * 0.82 : Math.pow(Math.max(0, 1 - t * t), sq);
+      if (run-- <= 0) ((hold = Math.round(h * (0.38 + 0.62 * dome) * (1 + amp * N.fbm1((x0 + i) / fq + so, 2)))), (run = R.int(2, 4)));
+      top[i] = Math.min(fy - lv[i] - 13, fy - Math.max(14, hold));
+    }
+    let tMin = fy;
+    for (let i = 0; i < w; i++) {
+      tMin = Math.min(tMin, top[i]);
+      for (let y = top[i]; y < fy - lv[i]; y++) air(x0 + i, y);
+    }
+    // 웅덩이: 문 높이보다 낮은 바닥에 물 (둑은 단이라 걸어서 나온다)
+    for (const [a, b] of segs) if (lv[a] < 0) P.specReq.push({ x0: x0 + a, y0: fy, x1: x0 + b, y1: fy - lv[a], k: "water" });
+    // 매달린 바위 (끝은 3칸 이상으로 굵게, 바닥 위 12칸 이상 띄운다)
+    const nh = kind === "grand" ? R.int(3, 6) : kind === "small" ? 0 : R.int(0, 3);
+    for (let k = 0; k < nh; k++) {
+      const i = R.int(10, w - 11);
+      let fMin = 1e9;
+      for (let j = Math.max(0, i - 7); j < Math.min(w, i + 8); j++) fMin = Math.min(fMin, fy - lv[j]);
+      const room2 = fMin - 13 - top[i];
+      if (room2 < 5) continue;
+      const len = R.int(4, room2), W0 = R.int(3, 8), lean = R.range(-0.35, 0.35);
+      for (let d = 0; d < len + 3; d++) {
+        const hw = Math.max(1, Math.round((W0 / 2) * (1 - Math.max(0, d - 3) / (len + 2)))), c = i + Math.round(lean * Math.max(0, d - 3));
+        for (let x = c - hw; x <= c + hw; x++) x >= 0 && x < w && rock(x0 + x, top[i] - 3 + d);
+      }
+    }
+    // 굵은 바위 기둥 (아래는 아치로 뚫려 지나간다)
+    const np = kind === "pillared" ? R.int(1, 2) : kind === "grand" ? R.int(0, 2) : 0;
+    for (let k = 0; k < np; k++) {
+      const pw = R.int(8, 14), i0 = R.int(16, Math.max(17, w - 16 - pw)), aH = R.int(12, 15);
+      for (let i = i0; i < i0 + pw && i < w; i++) {
+        const u = ((i - i0 + 0.5) / pw) * 2 - 1, b = fy - lv[i] - aH - Math.round(3 * Math.sqrt(Math.max(0, 1 - u * u)));
+        for (let y = top[i] - 2; y < b; y++) rock(x0 + i, y);
+      }
+    }
+    r.lv = lv;
+    r.tops = top;
+    r.top = tMin;
+    boxes.push({ r, x0, x1, y0: tMin - 2, y1: fy + 10 });
+  };
+
+  // ── 굴: A 문(xa, ya 바닥 줄) → B 문(xb, yb). 가로 길이 ≥ 높이 차 (비탈 45°). 평지·비탈이 섞이고 천장은 들쭉날쭉 ──
+  const tunnel = (xa, ya, xb, yb, h = R.int(10, 13)) => {
+    const dir = xb >= xa ? 1 : -1, dn = Math.sign(yb - ya);
+    let left = Math.abs(yb - ya), slack = Math.max(0, Math.abs(xb - xa) - left);
+    let x = xa, f = ya, jg = 0, run = 0;
+    const col = (fp) => {
+      if (run-- <= 0) ((jg = R.int(0, 3)), (run = R.int(3, 7)));
+      for (let y = Math.min(f, fp) - h - jg; y < f; y++) air(x, y);
+    };
+    col(f);
+    while (x !== xb) {
+      const sl = left > 0 && (slack <= 0 || R() < left / (left + slack));
+      const L = Math.max(1, Math.min(sl ? left : slack, R.int(3, 10), Math.abs(xb - x)));
+      for (let k = 0; k < L && x !== xb; k++) {
+        x += dir;
+        const fp = f;
+        sl && left > 0 ? ((f += dn), left--) : slack--;
+        col(fp);
+      }
+    }
+  };
+
+  // ── 오르는 방: 넓은 자연 굴뚝. 벽에서 번갈아 튀어나온 큰 바위 단 (위아래 STEP칸 이하, 마주 보는 단 끝 사이 4~5칸)
+  // 위 문은 upSide 쪽(바닥 줄 yU), 아래 문은 lowSide 쪽(바닥 줄 yD, 높이 8칸)
+  const climbRoom = (xl, xr, yU, yD, upSide, lowSide) => {
+    const n0 = yD - yU + 20, wl = walk(n0, 0, 3, 1, 3, 7), wr = walk(n0, 0, 3, 1, 3, 7);
+    const JMIN = Math.max(4, Math.floor((xr - xl - 5) / 2) - 2);
+    for (let y = yU - 14; y < yD; y++) {
+      const k = y - (yU - 14);
+      for (let x = xl - wl[k]; x < xr + wr[k]; x++) air(x, y);
+    }
+    later.push(() => {
+      const D = yD - yU, W = xr - xl;
+      if (D <= 12) return;
+      let n = Math.ceil(D / STEP);
+      // 맨 아래 칸은 아래 문 반대쪽만 튀어나오게 (문을 막지 않게)
+      const want = lowSide !== upSide ? 1 : 0;
+      if (n % 2 !== want) n++;
+      const oo = [R.int(JMIN, JMIN + 3), R.int(JMIN, JMIN + 3)], gap = R.int(2, 3);
+      let yb = yD, rem = D;
+      for (let k = 0; k < n; k++) {
+        const left = n - k, lo = Math.max(3, rem - STEP * (left - 1)), hi = Math.min(STEP, rem - 3 * (left - 1));
+        const hk = k === n - 1 ? rem : clamp(Math.round(rem / left) + R.int(-1, 1), lo, hi);
+        rem -= hk;
+        const S = (n - k - 1) % 2 === 0 ? upSide : 1 - upSide;
+        oo[S] = k === 0 ? R.int(JMIN, JMIN + 3) : clamp(W - gap - oo[1 - S], 3, W - 5);
+        const tp = yb - hk, tr = R.int(1, 2);
+        for (let y = tp; y < yb; y++) {
+          const fb = yb - 1 - y, wv = k === 0 ? oo[S] : Math.max(2, oo[S] - tr * Math.max(0, hk - 2 - fb)), kk = clamp(y - (yU - 14), 0, n0 - 1);
+          if (S === 0) for (let x = xl - wl[kk]; x < xl + wv; x++) rock(x, y);
+          else for (let x = xr - wv; x < xr + wr[kk]; x++) rock(x, y);
+        }
+        yb = tp;
+      }
+    });
+  };
+
+  // ── 고대 유적 (던전): 가운데 성소(두 층 높이, 좌우 대칭, 3단 제단 위에 ▼ 문) · 양쪽 계단실(넓은 돌계단) · 양쪽 회랑(기둥)
+  // 벽돌 건물을 세우고 방을 판다. 바깥 문은 위층 회랑 양 끝 (바닥 줄 fyT)
+  const ruinsAt = (cx, fyB) => {
+    const Hs = R.int(22, 25), slab = 2, wall = 2, door = 11;
+    const fyT = fyB - Hs - slab;
+    const sw = R.int(13, 17) * 4, stW = Hs + slab + R.int(8, 11);
+    const hw0 = R.int(32, 52), hw1 = R.int(32, 52), vault = R.int(3, 5) * 2;
+    const s0 = cx - (sw >> 1), s1 = s0 + sw;
+    const aL = s0 - wall - stW, bR = s1 + wall + stW;
+    const hL = aL - wall - hw0, hR = bR + wall + hw1;
+    const X0 = hL - wall, X1 = hR + wall;
+    const roof = fyB - 2 * Hs - slab - vault - wall;
+    if (X0 < 8 || X1 > lim - 8 || !free(X0 - 2, X1 + 2, roof - 2, fyB + wall + 2, 4)) return null;
+    rect(X0, roof, X1, fyB + wall, 1);
+    P.mats.push({ x0: X0 * BLK, y0: roof * BLK, x1: X1 * BLK, y1: (fyB + wall) * BLK, m: "brick" });
+    const back = (x0, y0, x1, y1, m) => P.walls.push({ x0: x0 * BLK, y0: y0 * BLK, x1: x1 * BLK, y1: y1 * BLK, m });
+    // 기둥 그림 먼저 (먼저 놓은 뒷벽이 이긴다)
+    const yS = fyB - 2 * Hs - slab;
+    for (const off of [sw / 2 - 7, sw / 2 - 17]) if (off > 10) for (const s of [-1, 1]) back(cx + s * off - 1, yS, cx + s * off + 2, fyB, "rock");
+    for (const [a, b] of [[hL, aL - wall], [bR + wall, hR]]) {
+      const st = R.int(8, 11);
+      for (let x = a + st - 1; x < b - 3; x += st) back(x, fyT - Hs + 3, x + 2, fyT, "rock");
+      back(a, fyT - Hs, b, fyT - Hs + 2, "rock");
+    }
+    // 성소: 두 층 높이 + 계단식 둥근 천장
+    for (let x = s0; x < s1; x++) {
+      const u = ((x - s0 + 0.5) / sw) * 2 - 1, v = Math.floor((vault * Math.sqrt(Math.max(0, 1 - u * u))) / 2) * 2;
+      for (let y = yS - v; y < fyB; y++) air(x, y);
+    }
+    // 제단 3단 (맨 위 단에 ▼ 문)
+    const t1 = Math.round(sw * 0.62) & ~1, t2 = Math.round(sw * 0.42) & ~1, t3 = Math.max(12, Math.round(sw * 0.24) & ~1);
+    rect(cx - t1 / 2, fyB - 2, cx + t1 / 2, fyB, 1);
+    rect(cx - t2 / 2, fyB - 4, cx + t2 / 2, fyB - 2, 1);
+    rect(cx - t3 / 2, fyB - 6, cx + t3 / 2, fyB - 4, 1);
+    P.deep = { x: Math.round((cx * BLK - 8) / TS) * TS + 8, y: (fyB - 6) * BLK };
+    // 계단실: 바깥쪽 위 계단참 → 성소 쪽 아래로 내려가는 넓은 돌계단 (한 칸에 한 줄 = 걸어서 오르내린다)
+    rect(aL, fyT - Hs, s0 - wall, fyB, -1);
+    rect(aL, fyT, aL + 6, fyB, 1);
+    for (let i = 0; i < fyB - fyT; i++) rect(aL + 6 + i, fyT + 1 + i, aL + 7 + i, fyB, 1);
+    rect(s1 + wall, fyT - Hs, bR, fyB, -1);
+    rect(bR - 6, fyT, bR, fyB, 1);
+    for (let i = 0; i < fyB - fyT; i++) rect(bR - 7 - i, fyT + 1 + i, bR - 6 - i, fyB, 1);
+    // 회랑 (위층)
+    rect(hL, fyT - Hs, aL - wall, fyT, -1);
+    rect(bR + wall, fyT - Hs, hR, fyT, -1);
+    // 문: 회랑↔계단실(위), 계단실↔성소(아래), 바깥(회랑 끝)
+    rect(aL - wall, fyT - door, aL, fyT, -1);
+    rect(bR, fyT - door, bR + wall, fyT, -1);
+    rect(s0 - wall, fyB - door, s0, fyB, -1);
+    rect(s1, fyB - door, s1 + wall, fyB, -1);
+    rect(X0, fyT - door, hL, fyT, -1);
+    rect(hR, fyT - door, X1, fyT, -1);
+    // 뒷벽
+    back(s0, yS - vault, s1, fyB, "brick");
+    back(aL, fyT - Hs, s0 - wall, fyB, "brick");
+    back(s1 + wall, fyT - Hs, bR, fyB, "brick");
+    back(hL, fyT - Hs, aL - wall, fyT, "brick");
+    back(bR + wall, fyT - Hs, hR, fyT, "brick");
+    tags.push({ x0: s0 * BLK, x1: s1 * BLK, y0: (yS - vault) * BLK, y1: fyB * BLK + 8, role: "sanctum" });
+    tags.push({ x0: hL * BLK, x1: (aL - wall) * BLK, y0: (fyT - Hs) * BLK, y1: fyT * BLK + 8, role: "arena" });
+    tags.push({ x0: (bR + wall) * BLK, x1: hR * BLK, y0: (fyT - Hs) * BLK, y1: fyT * BLK + 8, role: "arena" });
+    const r = newRoom({ x0: X0, x1: X1, fy: fyT, h: Hs, top: roof, kind: "ruins" });
+    boxes.push({ r, x0: X0, x1: X1, y0: roof - 2, y1: fyB + wall + 2 });
+    return r;
+  };
+
+  // ── 잇기: 굴은 단단한 바위만 뚫는다 (다른 방·굴을 가로지르면 그 바닥이 지워지므로) ──
+  const bandClear = (xa, ya, xb, yb, top = true, h = 16) => {
+    const dir = xb >= xa ? 1 : -1, n = Math.abs(xb - xa), ady = Math.abs(yb - ya), dn = Math.sign(yb - ya);
+    for (let k = 2; k <= n - 2; k++) {
+      const x = xa + dir * k, fe = ya + dn * Math.min(k, ady), fl = yb - dn * Math.min(n - k, ady);
+      const lo = Math.min(fe, fl) - h - 2, hi = Math.max(fe, fl) + 1;
+      if (x < 1 || x >= NX - 1) return false;
+      for (let y = lo; y <= hi; y++) {
+        if (y < 1 || y >= NY - 1) return false;
+        if (top ? y < o.topAt(x) : o.surfRow && y < o.surfRow(x) + 2) {
+          if (top) return false;
+          continue;
+        }
+        if (cell[y * NX + x] === -1) {
+          if ((k < 14 && Math.abs(y - ya) < h + 4) || (k > n - 14 && Math.abs(y - yb) < h + 4)) continue;
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+  const rectRock = (x0, y0, x1, y1) => {
+    if (x0 < 2 || y0 < 2 || x1 > NX - 2 || y1 > NY - 2) return false;
+    for (let y = y0; y < y1; y++) {
+      if (y < o.topAt(x0) || y < o.topAt(x1)) return false;
+      for (let x = x0; x < x1; x++) if (cell[y * NX + x] === -1) return false;
+    }
+    return true;
+  };
+  // ── 설계 모드: 설계도 방을 그대로 판다 ──
+  const byId = {};
+  if (o.design) {
+    for (const q of o.design.caves) {
+      const x0 = Math.round(q.x0 / BLK), x1 = Math.round(q.x1 / BLK), fy = Math.round(q.fy / BLK) & ~1;
+      const r = newRoom({ x0, x1, fy, h: Math.round(q.h / BLK), kind: q.kind, floor: q.floor, role: q.role, ceil: q.ceil, bpId: q.id });
+      if (q.deep && P.downX >= 0) r.flatC = Math.round(P.downX / BLK) - x0;
+      carveCavern(r);
+      byId[q.id] = r;
+      if (q.deep && P.downX >= 0) P.deep = { x: Math.round((P.downX - 8) / TS) * TS + 8, y: fy * BLK };
+    }
+  }
+  // 던전 서쪽 문: 연결용 점 (던전 안 무리마다 이어짐 노드, 정문과 이어진 무리는 바깥)
+  if (o.extern) {
+    const compNode = new Map();
+    for (const L of o.extern.links) {
+      if (!compNode.has(L.comp)) {
+        const id = par.length;
+        par.push(id);
+        compNode.set(L.comp, id);
+        L.comp === o.extern.rootComp && uni(id, 0);
+      }
+      const r = newRoom({ x0: L.x + 1, x1: L.x + 1, fy: L.y, h: 12, top: L.y - 12, kind: "door", door: 1, bpId: L.id });
+      uni(r.id, compNode.get(L.comp));
+      byId[L.id] = r;
+    }
+  }
+  // ── 미리 놓을 방: 고대 유적(맨 아래, ▼ 문) · ▲ 문 방 · 동굴 구역 좌우 입구 방(보스 방) ──
+  if (o.deepX >= 0) {
+    if (!ruinsAt(o.deepX, o.y1 - 2)) {
+      const w = 40, x0 = clamp(o.deepX - 20, 6, lim - 46), fy = o.y1 - 2;
+      const r = newRoom({ x0, x1: x0 + w, fy, h: 18, kind: "hall", floor: "flat", flatC: o.deepX - x0 });
+      carveCavern(r);
+      P.deep = { x: Math.round((o.deepX * BLK - 8) / TS) * TS + 8, y: fy * BLK };
+    }
+  }
+  if (o.peakX >= 0) {
+    const w = R.int(64, 90), x0 = clamp(o.peakX - (w >> 1), 6, lim - 6 - w), fy = o.peakRow & ~1;
+    const r = newRoom({ x0, x1: x0 + w, fy, h: R.int(22, 28), kind: "hall", floor: "flat", peak: 1, flatC: o.peakX - x0 });
+    carveCavern(r);
+    P.peak = { x: Math.round((o.peakX * BLK - 8) / TS) * TS + 8, y: fy * BLK };
+  }
+  if (o.entries) {
+    const A0 = o.anchor & ~1;
+    const wl = R.int(60, 100), eL = newRoom({ x0: R.int(16, 30), fy: A0, h: R.int(22, 30), kind: "hall", floor: "flat" });
+    eL.x1 = eL.x0 + wl;
+    carveCavern(eL);
+    tunnel(1, A0, eL.x0 - 1, A0);
+    uni(eL.id, 0);
+    let eR;
+    if (o.arena > 0) {
+      eR = newRoom({ x0: o.arena, x1: NX - 3, fy: A0, h: 26, kind: "hall", floor: "flat", boss: 1 });
+      carveCavern(eR);
+    } else {
+      const wr = R.int(60, 100);
+      eR = newRoom({ x0: lim - R.int(16, 30) - wr, fy: A0, h: R.int(22, 30), kind: "hall", floor: "flat" });
+      eR.x1 = eR.x0 + wr;
+      carveCavern(eR);
+    }
+    tunnel(eR.x1, A0, NX - 2, A0);
+  }
+
+  // ── 지표 굴 입구: 언덕 비탈에서 비스듬히 내려가 입구 동굴로 (서로 떨어진 2~3곳) ──
+  {
+    let made = 0;
+    const used = [];
+    for (const m of (o.mouths ?? []).slice().sort(() => R() - 0.5)) {
+      if (o.noGrotto || made >= 3 || used.some((x) => Math.abs(x - m.x) < 160)) continue;
+      for (const sd of R() < 0.5 ? [1, -1] : [-1, 1]) {
+        const w = R.int(50, 90), h = R.int(22, 30), fy = (m.y + R.int(34, 56)) & ~1, dx = fy - m.y + R.int(8, 24);
+        const x0 = sd > 0 ? m.x + dx + 1 : m.x - dx - w, x1 = x0 + w;
+        if (!free(x0, x1, fy - Math.ceil(h * 1.3) - 2, fy + 10, 8)) continue;
+        if (!bandClear(m.x, m.y, sd > 0 ? x0 - 1 : x1, fy, false)) continue;
+        const r = newRoom({ x0, x1, fy, h, kind: "hall", floor: R.pick(["flat", "steps"]), grotto: 1 });
+        carveCavern(r);
+        tunnel(m.x, m.y, sd > 0 ? x0 - 1 : x1, fy, R.int(9, 11));
+        uni(r.id, 0);
+        r.deg++;
+        used.push(m.x);
+        made++;
+        break;
+      }
+    }
+  }
+  // ── 협곡(수직 굴): 층 사이를 잇는 중심축. 방을 흩어 놓기 전에 자리를 잡는다 ──
+  const shafts = [];
+  const makeShaft = (xc, yTop, yBot, W0, force) => {
+    const W = W0 ?? R.int(34, 46), xl = xc - (W >> 1), xr = xl + W;
+    if (xl < 10 || xr > lim - 10 || yBot - yTop < 24) return null;
+    if (!force && !free(xl - 6, xr + 6, yTop - 18, yBot + 4, 4)) return null;
+    const segs = [], bnd = [], oo = [0, 0], gap = R.int(2, 3);
+    let y = yBot, side = R() < 0.5 ? 0 : 1;
+    for (let k = 0; y - yTop > 5; k++) {
+      const hk = Math.min(R.int(6, 8), y - yTop), S = side;
+      oo[S] = k === 0 ? R.int((W >> 1) - 4, W >> 1) : clamp(W - gap - oo[1 - S], 3, W - 5);
+      segs.push({ top: y - hk, bot: y, S, o: oo[S], k });
+      bnd.push({ y: y - hk, side: S });
+      y -= hk;
+      side ^= 1;
+    }
+    const sh = { xl, xr, yTop: y, yBot, segs, bnd, id: par.length, deg: 0 };
+    globalThis.__dbg2 && console.log("shaft", xl * 8, xr * 8, W, segs.filter((q) => q.top * 8 > 7380 && q.top * 8 < 7700).map((q) => [q.top * 8, q.S, q.o, q.k].join("/")).join(" "));
+    par.push(sh.id);
+    const y0 = y - 16, n0 = yBot - y0 + 4, wl = walk(n0, 0, 3, 1, 3, 7), wr = walk(n0, 0, 3, 1, 3, 7);
+    for (let yy = y0; yy < yBot; yy++) for (let x = xl - wl[yy - y0]; x < xr + wr[yy - y0]; x++) air(x, yy);
+    later.push(() => {
+      for (const sg of segs) {
+        const tr = R.int(1, 2), hk = sg.bot - sg.top;
+        for (let yy = sg.top; yy < sg.bot; yy++) {
+          const fb = sg.bot - 1 - yy, wv = sg.k === 0 ? sg.o : Math.max(2, sg.o - tr * Math.max(0, hk - 2 - fb)), kk = yy - y0;
+          if (sg.S === 0) for (let x = xl - wl[kk]; x < xl + wv; x++) rock(x, yy);
+          else for (let x = xr - wv; x < xr + wr[kk]; x++) rock(x, yy);
+        }
+      }
+    });
+    boxes.push({ r: null, x0: xl - 4, x1: xr + 4, y0: y0 - 2, y1: yBot + 2 });
+    shafts.push(sh);
+    return sh;
+  };
+  {
+    for (const q of o.design?.shafts ?? []) makeShaft(Math.round(q.x / BLK), Math.round(q.top / BLK), Math.round(q.bot / BLK), q.w ? Math.round(q.w / BLK) : undefined, 1) || globalThis.__dbg && console.log("design shaft failed", q.x);
+    const nS = o.shafts ?? 3;
+    for (let i = 0; i < nS; i++) {
+      for (let t = 0; t < 20; t++) {
+        const xc = Math.round(lim * ((i + 0.5) / nS + R.range(-0.12, 0.12)));
+        let tp = o.y0 + 6;
+        for (let x = xc - 24; x <= xc + 24; x += 4) tp = Math.max(tp, o.topAt(clamp(x, 0, NX - 1)) + 20);
+        const full = R() < 0.35, yb = o.y1 - 2 - R.int(0, 24);
+        const yT = full ? tp : R() < 0.5 ? tp : Math.round(lerp(tp, yb, R.range(0.25, 0.45)));
+        const yB = full ? yb : Math.round(lerp(yT, yb, R.range(0.45, 0.8)));
+        if (makeShaft(xc, yT, yB)) break;
+      }
+    }
+  }
+  if (o.surfRow)
+    for (const sh of shafts) {
+      for (const sd of R() < 0.5 ? [0, 1] : [1, 0]) {
+        const tb = sh.bnd.filter((b) => b.side === sd).sort((a, b) => a.y - b.y)[0];
+        if (!tb) continue;
+        const wx = sd === 0 ? sh.xl : sh.xr - 1;
+        let mx = wx, ok = false;
+        for (let t = 0; t < 4; t++) {
+          const dy = tb.y - o.surfRow(mx);
+          mx = wx + (sd === 0 ? -1 : 1) * (dy + R.int(10, 26));
+        }
+        const my = o.surfRow(mx);
+        if (mx > 40 && mx < lim - 40 && Math.abs(mx - wx) >= tb.y - my + 6 && bandClear(mx, my, sd === 0 ? wx - 5 : wx + 5, tb.y, false)) {
+          tunnel(mx, my, wx, tb.y, R.int(9, 11));
+          uni(sh.id, 0);
+          sh.deg++;
+          ok = true;
+        }
+        if (ok) break;
+      }
+    }
+  // 방 → 가까운 협곡: 같은 쪽 단 중 높이가 가까운 것으로 비탈 굴 (아래 바닥은 맨 아래 단 반대쪽이면)
+  const toShaft = (r, sh) => {
+    const sd = r.x1 <= sh.xl - 4 ? 0 : r.x0 >= sh.xr + 4 ? 1 : -1;
+    if (sd < 0) return false;
+    const xd = sd === 0 ? r.x1 : r.x0 - 1, wx = sd === 0 ? sh.xl : sh.xr - 1, dist = Math.abs(wx - xd);
+    if (dist > 150 || dist < 8) return false;
+    const opts = sh.bnd.filter((b) => b.side === sd).map((b) => b.y);
+    sh.segs[0].S !== sd && opts.push(sh.yBot);
+    opts.sort((a, b) => Math.abs(a - r.fy) - Math.abs(b - r.fy));
+    for (const yb of opts.slice(0, 3)) {
+      if (dist < Math.abs(yb - r.fy) + 6) continue;
+      if (!bandClear(xd, r.fy, sd === 0 ? wx - 5 : wx + 5, yb)) {
+        globalThis.__dbg && r.bpId && console.log("toShaft band fail", r.bpId, xd, r.fy, wx, yb);
+        continue;
+      }
+      tunnel(xd, r.fy, wx, yb);
+      uni(r.id, sh.id);
+      r.deg++;
+      sh.deg++;
+      return true;
+    }
+    return false;
+  };
+  // ── 방 흩어 놓기 (2D): 큰 것부터, 서로 10칸 이상 띄운다. 바닥 높이는 층 줄 근처를 조금 더 좋아한다 (층 느낌) ──
+  const SZ = {
+    grand: { w: [160, 260], h: [50, 76], k: ["grand"] },
+    tall: { w: [34, 60], h: [48, 84], k: ["tiered", "hall"] },
+    large: { w: [90, 160], h: [30, 48], k: ["pillared", "tiered", "lake", "hall"] },
+    medium: { w: [50, 100], h: [22, 34], k: ["hall", "tiered", "lake", "hall"] },
+    small: { w: [30, 50], h: [16, 22], k: ["small"] },
+  };
+  const FL = { hall: ["flat", "steps", "mound"], grand: ["steps", "basin", "mound"], lake: ["basin"], tiered: ["steps"], pillared: ["flat", "mound", "steps"], small: ["flat", "steps"] };
+  const area = lim * (o.y1 - o.y0);
+  let cov = rooms.reduce((s, r) => s + (r.x1 - r.x0) * (r.h ?? 20), 0);
+  const lines = [];
+  for (let y = o.y1 - 2; y > o.y0 + 20; y -= R.int(o.gap[0], o.gap[1])) lines.push(y);
+  const place = (cls, n, covMax) => {
+    for (let k = 0, t = 0; k < n && t < Math.min(n, 60) * 140 && cov < covMax * area; t++) {
+      const S2 = SZ[cls], w = R.int(S2.w[0], S2.w[1]), h = R.int(S2.h[0], S2.h[1]);
+      const x0 = R.int(6, Math.max(7, lim - 6 - w)), hiY = o.y0 + Math.ceil(h * 1.3) + 4;
+      if (hiY >= o.y1 - 2) continue;
+      let fy = R() < (o.band ?? 0.6) ? R.pick(lines) + R.int(-6, 6) : R.int(hiY, o.y1 - 2);
+      fy = clamp(fy, hiY, o.y1 - 2) & ~1;
+      if (!free(x0, x0 + w, fy - Math.ceil(h * 1.3) - 2, fy + 10, 12)) continue;
+      if (o.design && !rectRock(x0 - 8, fy - Math.ceil(h * 1.3) - 10, x0 + w + 8, fy + 12)) continue;
+      const kind = R.pick(S2.k);
+      const r = newRoom({ x0, x1: x0 + w, fy, h, kind, floor: R.pick(FL[kind]), cls });
+      carveCavern(r);
+      cov += w * h;
+      k++;
+    }
+  };
+  if (o.extern) {
+    let dx0 = 1e9;
+    for (const L of o.extern.links) dx0 = Math.min(dx0, L.x + 3);
+    dx0 < 1e9 && boxes.push({ r: null, x0: dx0, x1: lim + 8, y0: 0, y1: NY });
+  }
+  if (!o.design) place("grand", o.maxGrand ?? 2, 0.06);
+  if (!o.design) {
+    place("tall", R.int(2, 4), 0.09);
+    place("large", 999, 0.14);
+    place("medium", 999, 0.2);
+    place("small", 999, 0.23);
+  }
+
+  const cands = [];
+  // 이을 후보 (isNew가 있으면 새 방이 낀 짝만)
+  const addCands = (isNew) => {
+    const nw = (a, b) => !isNew || isNew(a) || (b && isNew(b));
+    for (const A of rooms)
+      for (const B of rooms) {
+        if (A === B || A.x1 > B.x0 || !nw(A, B)) continue;
+        const dx = B.x0 - 1 - A.x1, dy = B.fy - A.fy;
+        if (dx < 6 || dx > 220 || Math.abs(dy) > 140) continue;
+        if (dx >= Math.abs(dy) + 6) cands.push({ a: A, b: B, t: "slope", c: (dx + Math.abs(dy) + (Math.abs(dy) < 8 ? 30 : 0)) * R.range(0.7, 1.3) });
+        else if (dx >= 34 && Math.abs(dy) <= 110) cands.push({ a: A, b: B, t: "climbMid", c: dx + 2 * Math.abs(dy) + 30 });
+      }
+    for (const A of rooms)
+      for (const B of rooms) {
+        if (A === B || A.fy >= B.fy || A.x1 <= B.x0 || B.x1 <= A.x0 || !nw(A, B)) continue;
+        const dy = B.fy - A.fy;
+        if (dy >= 16 && dy <= 110) cands.push({ a: A, b: B, t: "climbSide", c: 2 * dy + 60 });
+      }
+    for (const sh of shafts)
+      for (const r of rooms) {
+        if (!nw(r)) continue;
+        const sd = r.x1 <= sh.xl - 4 ? 0 : r.x0 >= sh.xr + 4 ? 1 : -1;
+        if (sd < 0) continue;
+        const dist = sd === 0 ? sh.xl - r.x1 : r.x0 - sh.xr;
+        if (dist >= 8 && dist <= 150) cands.push({ a: r, sh, t: "shaft", c: dist * 0.8 + R.range(0, 24) });
+      }
+    cands.sort((p, q) => p.c - q.c);
+  };
+  addCands(null);
+  const bId = (e) => (e.sh ? e.sh.id : e.b.id);
+  // 지표 입구: 비탈 굴이 안 되면 구덩이 + 바위 단(오르는 방)으로
+  const mouthClimb = (m) => {
+    for (const r of rooms.slice().sort((a, b) => Math.abs((a.x0 + a.x1) / 2 - m.x) - Math.abs((b.x0 + b.x1) / 2 - m.x)).slice(0, 6)) {
+      if (r.kind === "ruins" || r.peak || r.fy - m.y < 20 || r.fy - m.y > 110) continue;
+      const W = R.int(18, 24), s2 = r.x0 > m.x ? 1 : -1, xl = m.x - (W >> 1), xd = s2 > 0 ? r.x0 - 1 : r.x1, wd = s2 > 0 ? xl + W - 1 : xl;
+      if ((xd - wd) * s2 < 4 || (xd - wd) * s2 > 90) continue;
+      if (!rectRock(xl - 3, m.y + 3, xl + W + 3, r.fy + 2) || !bandClear(xd, r.fy, wd, r.fy)) continue;
+      climbRoom(xl, xl + W, m.y, r.fy, s2 > 0 ? 0 : 1, s2 > 0 ? 1 : 0);
+      tunnel(wd, r.fy, xd, r.fy);
+      uni(r.id, 0);
+      r.deg++;
+      return true;
+    }
+    return false;
+  };
+  const build = (e) => {
+    if (e.t === "shaft") return toShaft(e.a, e.sh);
+    const A = e.a, B = e.b;
+    if (e.t === "slope") {
+      if (!bandClear(A.x1, A.fy, B.x0 - 1, B.fy)) return false;
+      tunnel(A.x1, A.fy, B.x0 - 1, B.fy);
+      linkR(A, B);
+      return true;
+    }
+    const [u, d] = A.fy < B.fy ? [A, B] : [B, A];
+    const W = R.int(20, 26);
+    const tryRoom = (xl, upSide, lowSide, xu, xd) => {
+      if (xl < 4 || xl + W > lim - 4 || !rectRock(xl - 4, u.fy - 19, xl + W + 4, d.fy + 2)) return false;
+      const wu = upSide === 0 ? xl : xl + W - 1, wd = lowSide === 0 ? xl : xl + W - 1;
+      if (!bandClear(xu, u.fy, wu, u.fy) || !bandClear(xd, d.fy, wd, d.fy)) return false;
+      climbRoom(xl, xl + W, u.fy, d.fy, upSide, lowSide);
+      tunnel(xu, u.fy, wu, u.fy);
+      tunnel(xd, d.fy, wd, d.fy);
+      boxes.push({ r: null, x0: xl - 4, x1: xl + W + 4, y0: u.fy - 18, y1: d.fy + 2 });
+      linkR(u, d);
+      return true;
+    };
+    if (e.t === "climbMid") {
+      const xl = Math.round((A.x1 + B.x0) / 2) - (W >> 1);
+      if (xl < A.x1 + 5 || xl + W > B.x0 - 5) return false;
+      return tryRoom(xl, u === A ? 0 : 1, d === A ? 0 : 1, u === A ? A.x1 : B.x0 - 1, d === A ? A.x1 : B.x0 - 1);
+    }
+    for (const s of R() < 0.5 ? [1, -1] : [-1, 1]) {
+      const xl = s > 0 ? Math.max(u.x1, d.x1) + R.int(6, 14) : Math.min(u.x0, d.x0) - R.int(6, 14) - W;
+      if (tryRoom(xl, s > 0 ? 0 : 1, s > 0 ? 0 : 1, s > 0 ? u.x1 : u.x0 - 1, s > 0 ? d.x1 : d.x0 - 1)) return true;
+    }
+    return false;
+  };
+  // 지표 굴 입구 먼저 (서로 떨어진 2~3곳)
+  {
+    const mk = [];
+    for (const m of o.mouths ?? [])
+      for (const r of rooms)
+        for (const sd of [1, -1]) {
+          if (r.kind === "ruins" || r.peak || r.door || (m.to && r.bpId !== m.to)) continue;
+          const xb = sd > 0 ? r.x0 - 1 : r.x1, dx = (xb - m.x) * sd, dy = r.fy - m.y;
+          if (dy > 6 && dx >= dy + 6 && dx < dy + 240) mk.push({ m, r, xb, c: dx + dy });
+        }
+    mk.sort((p, q) => p.c - q.c);
+    const done = [];
+    for (const e of mk) {
+      if (done.length >= 3 || done.some((q) => Math.abs(q.m.x - e.m.x) < 90 || q.r === e.r)) continue;
+      if (!bandClear(e.m.x, e.m.y, e.xb, e.r.fy, false)) continue;
+      tunnel(e.m.x, e.m.y, e.xb, e.r.fy, R.int(9, 11));
+      uni(e.r.id, 0);
+      e.r.deg++;
+      done.push(e);
+    }
+
+  }
+  // 설계도 길 (이미 이어졌어도 고리로 짓는다)
+  const designLinks = () => {
+    for (const [a, b] of o.design?.links ?? []) {
+      const A = byId[a], B = byId[b];
+      if (!A || !B) continue;
+      let ok = false;
+      for (const e of cands) if (!e.sh && ((e.a === A && e.b === B) || (e.a === B && e.b === A)) && !ok && (e.used || build(e))) ((e.used = 1), (ok = true));
+      !ok && globalThis.__dbg && console.log("design link failed", a, b);
+    }
+  };
+  if (o.design) {
+    for (const e of cands) e.sh && find(e.a.id) !== find(bId(e)) && build(e) && (e.used = 1);
+    designLinks();
+    for (const [a, b] of o.design.drops ?? []) {
+      const u = byId[a], d = byId[b];
+      let ok = false;
+      for (let t = 0; u && d && u.lv && d.tops && t < 30 && !ok; t++) {
+        const lo = Math.max(u.x0, d.x0) + 10, hi = Math.min(u.x1, d.x1) - 10;
+        if (hi - lo < 4) break;
+        const x = R.int(lo, hi), hw = 2, fu = u.fy - u.lv[x - u.x0], td = d.tops[x - d.x0];
+        if (td - fu < 6 || td - fu > 80 || !rectRock(x - hw - 3, fu + 1, x + hw + 4, td - 1)) continue;
+        const n = td - fu + 4, jl = walk(n, 0, 2, 1, 2, 5), jr = walk(n, 0, 2, 1, 2, 5), dr = walk(n, -3, 3, 1, 4, 8);
+        if (!rectRock(x - hw - 7, fu + 4, x + hw + 8, td - 1)) continue;
+        for (let y = fu - 1; y <= td; y++) {
+          const i = y - fu + 1, top = i < 5 || y > td - 3, c = x + (top ? 0 : Math.round(dr[i] * Math.max(0, Math.min(1, (i - 4) / 6, (td - 3 - y) / 6))));
+          for (let xx = x - hw; xx <= x + hw; xx++) air(xx, y);
+          for (let xx = c - hw - (top ? 0 : jl[i]); xx <= c + hw + (top ? 0 : jr[i]); xx++) air(xx, y);
+        }
+        uni(u.id, d.id);
+        ok = true;
+      }
+      !ok && globalThis.__dbg && console.log("design drop failed", a, b);
+    }
+  }
+  // 최소로 다 잇기 (싼 길부터, 방-방·방-협곡) — 설계 모드에서는 설계도 길로 못 이은 것만
+  for (const e of cands) find(e.a.id) !== find(bId(e)) && build(e) && (e.used = 1);
+  if (!o.design) designLinks();
+  // 고리 몇 개 (되돌아가지 않아도 되게)
+  if (!o.design) for (const e of cands) if (!e.used && R() < 0.22 && e.a.deg < 4 && (e.sh ? e.sh.deg < 8 : e.b.deg < 4) && e.c < 160) build(e) && (e.used = 1);
+  // 설계 모드: 설계 길을 다 판 뒤 빈 바위에 방을 더 흩어 놓고 (구조가 얽히게), 그 방들을 이을 후보를 더한다
+  if (o.design && o.fill) {
+    const n0 = rooms.length;
+    place("large", o.fill[0], 0.2);
+    place("medium", o.fill[1], 0.26);
+    place("small", o.fill[2], 0.3);
+    const fresh = new Set(rooms.slice(n0));
+    const nc = cands.length;
+    addCands((r) => fresh.has(r));
+    for (let i = cands.length - 1; i >= 0; i--) if (cands[i].t === "shaft" && (fresh.has(cands[i].a) || fresh.has(cands[i].b))) cands.splice(i, 1);
+    let climbs = 0;
+    for (const pass of ["slope", "climb"])
+      for (let it = 0, ok = true; ok && it < 20; it++) {
+        ok = false;
+        const root = find(0);
+        for (const e of cands) {
+          if (e.used || !(fresh.has(e.a) || fresh.has(e.b)) || (pass === "slope") !== (e.t === "slope")) continue;
+          if (pass === "climb" && climbs >= 4) break;
+          const ra = find(e.a.id) === root, rb = find(bId(e)) === root;
+          if (ra === rb) continue;
+          if (build(e)) ((e.used = 1), (ok = true), pass === "climb" && climbs++);
+        }
+      }
+    // 못 붙은 채움 방은 바위로 되돌리고 목록에서 뺀다
+    const root = find(0);
+    for (const r of [...fresh]) {
+      if (find(r.id) === root) continue;
+      const ya = r.fy - Math.ceil(r.h * 1.4) - 6, yb = r.fy + 6;
+      rect(r.x0 - 3, ya, r.x1 + 3, yb, 1);
+      P.specReq = P.specReq.filter((q) => !(q.x0 >= r.x0 - 3 && q.x1 <= r.x1 + 3 && q.y0 >= ya && q.y1 <= yb));
+      rooms.splice(rooms.indexOf(r), 1);
+      for (let i = boxes.length - 1; i >= 0; i--) boxes[i].r === r && boxes.splice(i, 1);
+      for (let i = cands.length - 1; i >= 0; i--) (cands[i].a === r || cands[i].b === r) && cands.splice(i, 1);
+      globalThis.__dbg && console.log("fill removed", r.kind, r.x0 * 8, r.fy * 8);
+    }
+  }
+  // 지름길: 위 방 바닥 구멍으로 아래 방에 떨어진다 (한쪽 길)
+  for (let k = o.design ? 3 : 0, t = 0; k < 3 && t < 40; t++) {
+    const u = R.pick(rooms), d = R.pick(rooms);
+    if (u === d || !u.lv || !d.tops || u.fy >= d.top) continue;
+    const a = Math.max(u.x0, d.x0) + 10, b = Math.min(u.x1, d.x1) - 10;
+    if (b - a < 12) continue;
+    const x = R.int(a, b), hw = R.int(3, 4), fu = u.fy - u.lv[x - u.x0], td = d.tops[x - d.x0];
+    if (td - fu < 6 || td - fu > 70 || !rectRock(x - hw - 1, fu + 1, x + hw + 2, td - 1)) continue;
+    for (let y = fu; y <= td; y++) for (let xx = x - hw; xx <= x + hw; xx++) air(xx, y);
+    k++;
+  }
+  // 싱크홀: 풀밭 구멍 → 아래 방 (빛 구멍, 떨어지는 지름길)
+  for (const s of o.sinks ?? []) {
+    const r = rooms.find((q) => q.tops && s.x > q.x0 + 12 && s.x < q.x1 - 12 && q.top - s.y < 70);
+    if (!r) continue;
+    const yTop = s.y - 2, yBot = r.tops[s.x - r.x0] + 1, hw = R.int(3, 4);
+    if (yBot <= yTop || !rectRock(s.x - hw - 2, s.y + 1, s.x + hw + 3, yBot - 1)) continue;
+    const jl = walk(yBot - yTop + 4, 0, 1, 1, 3, 6), jr = walk(yBot - yTop + 4, 0, 1, 1, 3, 6);
+    for (let y = yTop; y < yBot; y++) for (let x = s.x - hw - jl[y - yTop]; x <= s.x + hw + jr[y - yTop]; x++) air(x, y);
+  }
+  // 아직 끊긴 무리: 붙을 수 있는 길을 다시 찾아 (바깥과 이어진 무리에)
+  for (let it = 0; it < 30; it++) {
+    const root = find(0);
+    let ok = false;
+    for (const e of cands) {
+      if (e.used) continue;
+      const fa = find(e.a.id), fb = find(bId(e));
+      if (fa === fb || (fa !== root && fb !== root)) continue;
+      if (build(e)) {
+        e.used = 1;
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) break;
+  }
+
+  if (globalThis.__dbg) {
+    const comps = new Map();
+    for (const r of rooms) comps.set(find(r.id), (comps.get(find(r.id)) ?? 0) + 1);
+    const byT = {};
+    for (const e of cands) if (e.used) byT[e.t] = (byT[e.t] ?? 0) + 1;
+    console.log("loose", rooms.filter((r) => find(r.id) !== find(0)).map((r) => r.kind + "@" + r.x0 * 8 + "," + r.fy * 8).join(" "));
+    console.log("shafts", shafts.length, shafts.map((q) => q.deg).join(","), "cave rooms", rooms.length, "comps", comps.size, "rootSize", comps.get(find(0)) ?? 0, "cands", cands.length, JSON.stringify(byT));
+  }
+  for (let it = 0; it < 24; it++) {
+    const root = find(0), loose = rooms.filter((r) => find(r.id) !== root);
+    if (!loose.length) break;
+    let ok = false;
+    for (const a of loose.sort(() => R() - 0.5).slice(0, 6)) {
+      const bs = rooms.filter((r) => find(r.id) === root && Math.abs(r.fy - a.fy) >= 18 && Math.abs(r.fy - a.fy) <= 160 && Math.abs((r.x0 + r.x1) / 2 - (a.x0 + a.x1) / 2) < 420);
+      bs.sort((p, q) => Math.abs((p.x0 + p.x1) / 2 - (a.x0 + a.x1) / 2) - Math.abs((q.x0 + q.x1) / 2 - (a.x0 + a.x1) / 2));
+      for (const b of bs.slice(0, 4)) {
+        const [u, d] = a.fy < b.fy ? [a, b] : [b, a];
+        for (let t = 0; t < 10 && !ok; t++) {
+          const lo = Math.min(a.x0, b.x0) - 120, hi = Math.max(a.x1, b.x1) + 120, xc = R.int(Math.max(30, lo), Math.min(lim - 30, hi));
+          const snap = cell.slice(), nb = boxes.length, nl = later.length, np = par.length, ns = shafts.length;
+          const sh = makeShaft(xc, u.fy - 1, d.fy + 1);
+          if (sh && toShaft(u, sh) && toShaft(d, sh)) ok = true;
+          else {
+            cell.set(snap);
+            boxes.length = nb;
+            later.length = nl;
+            par.length = np;
+            shafts.length = ns;
+          }
+        }
+        if (ok) break;
+      }
+      if (ok) break;
+    }
+    if (!ok) break;
+  }
+  for (const fn of later) fn();
+  later.length = 0;
+
+  // ── 방 역할 ──
+  let nT = 0;
+  const order = rooms.slice().sort(() => R() - 0.5);
+  for (const r of order) {
+    if (r.kind === "ruins" || r.door) continue;
+    if (r.role) {
+      tags.push({ x0: r.x0 * BLK, x1: r.x1 * BLK, y0: (r.top ?? r.fy - r.h) * BLK, y1: r.fy * BLK + 8, role: r.role });
+      continue;
+    }
+    let role = "arena";
+    if (r.peak || r.kind === "lake") role = "rest";
+    else if (r.kind === "grand") role = "vista";
+    else if (r.boss) role = "boss";
+    else if (r.deg <= 1 && nT < 4 && r.kind !== "grand") ((role = "treasure"), nT++);
+    else if (r.kind === "small" || R() < 0.3) role = "rest";
+    tags.push({ x0: r.x0 * BLK, x1: r.x1 * BLK, y0: (r.top ?? r.fy - r.h) * BLK, y1: r.fy * BLK + 8, role });
+  }
+  P.roomTags = (P.roomTags ?? []).concat(tags);
+  P.rooms = rooms;
+  // 고치기에서 쓴다: 끊긴 두 곳 사이에 굴(또는 오르는 방)을 하나 더
+  P.caveRoute = (xa, ya, xb, yb) => {
+    const [x1, y1, x2, y2] = ya <= yb ? [xa, ya, xb, yb] : [xb, yb, xa, ya];
+    if (Math.abs(x2 - x1) >= y2 - y1 + 4) tunnel(x1, y1, x2, y2);
+    else {
+      const sd = x2 >= x1 ? 1 : -1, W = 16;
+      const xl = sd > 0 ? x1 + 4 : x1 - 4 - W, xr = xl + W;
+      climbRoom(xl, xr, y1, y2, sd > 0 ? 0 : 1, (sd > 0 ? x2 >= xr : x2 > xl) ? (sd > 0 ? 1 : 0) : sd > 0 ? 0 : 1);
+      tunnel(x1, y1, sd > 0 ? xl : xr - 1, y1);
+      tunnel(x2 >= xr ? xr : xl - 1, y2, x2, y2);
+      for (const fn of later) fn();
+      later.length = 0;
+    }
+  };
+}
+
+// ── 하늘 ─────────────────────────────────────────────
+// 산만 한 하늘섬(▲ 문): 꼭대기가 산 모양 — 양쪽 어깨(평평)에서 계단식으로 올라 정상 평지의 문. 밑은 거꾸로 선 산
+// 큰 섬(쉼터·보물·전망)과 디딤돌 길: 돌·구름을 섞어 2~4개씩, 한쪽으로 비스듬히 오른다 (사다리처럼 쌓지 않는다)
+// 길은 검사기와 같은 점프 크기로 놓는다: 한 번에 오름 ≤ 74px, 틈 44~92px, 뛰는 길(머리 자리)에 다른 것이 없게
+// o: { sky: 하늘 구역, exits: [{x0, x1, t}] 하늘 구역 출입 섬 }
+function skyWorld(P, groundAt, style, o = {}) {
+  const R = rng(P.seed ^ 0x51ca7e), { WP, arenaFrom } = P;
+  const lim = Math.min(WP, arenaFrom) - 40;
+  const sn = (v) => Math.round(v / BLK) * BLK;
+  const st2 = style === "spire" ? "rock" : style;
+  const objs = [], plats = [], tags = [];
+  const hitB = (x0, x1, y0, y1, ex, cors = true) => {
+    for (const b of objs) {
+      if (ex && (ex.includes(b) || (b.of && ex.includes(b.of)))) continue;
+      if (!cors && b.cor) continue;
+      if (x0 < b.x1 && x1 > b.x0 && y0 < b.y1 && y1 > b.y0) return true;
+    }
+    return false;
+  };
+  const gAt = (x) => groundAt(clamp(x, 0, WP - 1));
+  const gHit = (x0, x1, y1) => {
+    for (let x = x0; x < x1; x += 16) if (gAt(x) < y1) return true;
+    return gAt(x1) < y1;
+  };
+  const edge = (A, s) => (A.edgeAt ? A.edgeAt(s) : { x: s > 0 ? A.x1 - 8 : A.x0 + 8, y: A.top + (A.rim ?? 16) });
+  // total을 m개로 (각 lo~hi)
+  const part = (total, m, lo, hi) => {
+    if (m <= 0) return [];
+    if (total < lo * m - 0.5 || total > hi * m + 0.5) return null;
+    const v = Array.from({ length: m }, () => R.range(lo, hi));
+    for (let it = 0; it < 24; it++) {
+      const diff = total - v.reduce((p, q) => p + q, 0);
+      if (Math.abs(diff) < 0.5) break;
+      for (let i = 0; i < m; i++) v[i] = clamp(v[i] + diff / m, lo, hi);
+    }
+    return Math.abs(total - v.reduce((p, q) => p + q, 0)) < 2 ? v : null;
+  };
+  // 디딤돌 길 계획: A 가장자리(d 쪽) → B 가장자리(-d 쪽)
+  const HR = o.design ? 92 : 72, HA = o.design ? 80 : 70;
+  const stonePlan = (A, B, d, maxN = 4) => {
+    const a = edge(A, d), b = edge(B, -d), ends = [A.obj, B.obj];
+    const span = (b.x - a.x) * d, rise = a.y - b.y;
+    if (span < 44) return null;
+    for (let n = Math.max(0, Math.ceil(Math.abs(rise) / HA) - 1); n <= maxN; n++) {
+      // 돌 폭 w(52~116) 중 발 디딜 거리 w-8, 틈 g(44~92): span = Σg + Σ(w-8)
+      const loW = Math.max(44 * n, span - 92 * (n + 1)), hiW = Math.min(108 * n, span - 44 * (n + 1));
+      if (n === 0 ? span > 92 || Math.abs(rise) > HR : loW > hiW) continue;
+      for (let tr = 0; tr < 8; tr++) {
+        const ws = n ? part(R.range(loW, hiW), n, 44, 108) : [];
+        if (!ws) continue;
+        const gs = part(span - ws.reduce((p, q) => p + q, 0), n + 1, 44, 92);
+        if (!gs) continue;
+        const rs = Array.from({ length: n + 1 }, () => rise / (n + 1));
+        for (let i = 0; i < n; i++) {
+          const j = R.range(-12, 12);
+          rs[i] += j;
+          rs[i + 1] -= j;
+        }
+        if (rs.some((v) => v > HR || v < -HR)) continue;
+        const st = [], cors = [];
+        let ex = a.x, ey = a.y, bad = false, nCloud = 0;
+        for (let i = 0; i <= n && !bad; i++) {
+          const lx = ex + d * gs[i], ly = i < n ? sn(ey - rs[i]) : b.y;
+          if (Math.abs(ey - ly) > HR + 4) bad = true;
+          const cor = { x0: Math.min(ex, lx) + 2, x1: Math.max(ex, lx) - 2, y0: Math.min(ey, ly) - 100, y1: Math.max(ey, ly) - 4, cor: 1 };
+          const W = globalThis.__why;
+          if (bad || hitB(cor.x0, cor.x1, cor.y0, cor.y1, ends, false)) ((bad = true), W && (W.cor = (W.cor ?? 0) + 1));
+          else if (!(i === 0 && A.ground) && !(i === n && B.ground) && gHit(cor.x0, cor.x1, cor.y1 + 8)) ((bad = true), W && (W.corG = (W.corG ?? 0) + 1));
+          if (bad) break;
+          cors.push(cor);
+          if (i < n) {
+            const low = gAt(lx) - (ey - rs[i]) < 110, w = ws[i] + 8, cloud = low || (nCloud < 2 && R() < 0.3);
+            nCloud = cloud ? nCloud + 1 : 0;
+            const t = cloud ? 16 : 32, dep = cloud ? 16 : o.design ? 56 : 40;
+            const s = { x0: d > 0 ? lx : lx - w, x1: d > 0 ? lx + w : lx, y: ly, t, cloud, dep };
+            let lowStep = false;
+            if (o.design) {
+              let gmin = 1e9, gmax = -1e9;
+              for (let xx = s.x0 - 40; xx <= s.x1 + 40; xx += 8) {
+                const g = gAt(xx);
+                g < gmin && (gmin = g);
+                g > gmax && (gmax = g);
+              }
+              lowStep = gmax - gmin > 20 && gmax - (s.y + dep) < 108;
+            }
+            if (lowStep || hitB(s.x0 - 6, s.x1 + 6, s.y - 4, s.y + dep, ends) || gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30)) {
+              const W = globalThis.__why;
+              W && (W[lowStep ? "low" : gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30) ? "stG" : "st"] = (W[lowStep ? "low" : gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30) ? "stG" : "st"] ?? 0) + 1);
+              bad = true;
+              break;
+            }
+            st.push(s);
+            ex = d > 0 ? s.x1 - 8 : s.x0 + 8;
+            ey = ly;
+          }
+        }
+        if (!bad) return { st, cors, hops: cors.map((c, i) => ({ i, from: i === 0 ? a : { x: d > 0 ? st[i - 1].x1 - 8 : st[i - 1].x0 + 8, y: st[i - 1].y }, to: i < st.length ? { x: d > 0 ? st[i].x0 + 8 : st[i].x1 - 8, y: st[i].y } : b })) };
+      }
+    }
+    return null;
+  };
+  const commit = (pl) => {
+    (P.skyHops ??= []).push(...(pl.hops ?? []));
+    for (const s of pl.st) {
+      if (s.cloud) spec(P, s.x0, s.y, s.x1, s.y + 16, "cloud");
+      else {
+        // 바위 디딤돌: 윗면 두 블록 두께 판 + 아래 작은 덩이 (블록 맞추기에서 사라지지 않게)
+        const sx0 = Math.round(s.x0 / BLK) * BLK, sx1 = Math.round(s.x1 / BLK) * BLK, y0 = s.y;
+        const box = (a, b, c, d) => addShape(P, a - 4, b - 4, c + 4, d + 4, (px, py) => Math.min(px - a, c - px, py - b, d - py) + 0.5);
+        box(sx0, y0, sx1, y0 + 16);
+        if (o.design) {
+          const lump = R.range(16, 34), mid = (sx0 + sx1) / 2 + R.range(-0.15, 0.15) * (sx1 - sx0), hw = (sx1 - sx0) / 2;
+          addShape(P, sx0 - 4, y0, sx1 + 4, y0 + 20 + lump, (px, py) => {
+            const u = (px - mid) / hw, e = 1 - u * u;
+            return Math.min(px - sx0, sx1 - px, py - y0, y0 + 16 + (e > 0 ? lump * Math.pow(e, 0.8) : 0) - py) + 0.5;
+          });
+        } else {
+          const q = Math.round(((sx1 - sx0) * R.range(0.18, 0.32)) / BLK) * BLK;
+          sx1 - sx0 - 2 * q >= 16 && box(sx0 + q, y0 + 16, sx1 - q, y0 + 24 + (R() < 0.5 ? 8 : 0));
+        }
+      }
+      objs.push({ x0: s.x0 - 4, x1: s.x1 + 4, y0: s.y - 2, y1: s.y + s.dep });
+    }
+    for (const c of pl.cors) objs.push(c);
+  };
+  const reach = (A, B, maxN = 4) => {
+    const ds = [];
+    edge(A, 1).x + 40 < edge(B, -1).x && ds.push(1);
+    edge(A, -1).x - 40 > edge(B, 1).x && ds.push(-1);
+    for (const d of ds) {
+      const pl = stonePlan(A, B, d, maxN);
+      if (pl) return pl;
+    }
+    return null;
+  };
+  // 큰 섬 (윗면은 평평하거나 한 단 솟은 곳이 있다)
+  const isle = (cx, top, w, t, role, shape) => {
+    const tiers = w > 520 && R() < 0.6 ? [(() => { const a = R.range(-0.6, 0.2); return { u0: a, u1: a + R.range(0.25, 0.45), off: -R.pick([24, 32, 40]) }; })()] : null;
+    island(P, cx, top, w, t, st2, { sub: R() < 0.5, lobes: clamp(Math.round(w / 220), 1, 5), shape: shape ?? R.pick(["plateau", "plateau", "mesa", "twin"]), tiers });
+    const I = { x0: cx - w / 2, x1: cx + w / 2, top, rim: 16, t };
+    I.obj = { x0: I.x0 - 8, x1: I.x1 + 8, y0: top - 48, y1: top + t * 1.3 + 40 };
+    objs.push(I.obj);
+    plats.push(I);
+    role && tags.push({ x0: I.x0 + 40, x1: I.x1 - 40, y0: top - 160, y1: top + 24, role });
+    return I;
+  };
+  const isleBox = (cx, top, w, t, m = 30) => {
+    const x0 = cx - w / 2, x1 = cx + w / 2, y1 = top + t * 1.3 + 40;
+    return { ok: x0 > 120 && x1 < lim - 40 && !hitB(x0 - m, x1 + m, top - 140, y1 + m) && !gHit(x0 - m, x1 + m, y1 + 60), x0, x1, y1 };
+  };
+  // 땅 발판 (평평한 곳에서만 출발)
+  const groundPlat = (x, w = 120) => {
+    if (x - w / 2 < 80 || x + w / 2 > lim - 40) return null;
+    const y = gAt(x);
+    for (const dx of [-w / 2, -w / 4, w / 4, w / 2]) if (Math.abs(gAt(x + dx) - y) > 10) return null;
+    return { x0: x - w / 2, x1: x + w / 2, top: y, ground: 1, obj: null, edgeAt: (s) => { const xx = s > 0 ? x + w / 2 - 8 : x - w / 2 + 8; return { x: xx, y: gAt(xx) }; } };
+  };
+
+  // 하늘 구역: 출입 섬
+  const ex = (o.exits ?? []).map((E) => {
+    const top = gAt((E.x0 + E.x1) / 2);
+    const I = { x0: E.x0, x1: E.x1, top, rim: 0, edgeAt: (s) => { const xx = s > 0 ? E.x1 - 10 : E.x0 + 10; return { x: xx, y: gAt(xx) + 8 }; } };
+    I.obj = { x0: E.x0 - 8, x1: E.x1 + 8, y0: top - 40, y1: top + (E.t ?? 200) * 1.4 + 60 };
+    objs.push(I.obj);
+    plats.push(I);
+    return I;
+  });
+
+  // ── ▲ 문: 산만 한 하늘섬 ──
+  let G = null;
+  if (P.isZone && P.upX >= 0) {
+    const peakY = sn(o.design?.peakY ?? (o.sky ? R.range(2100, 2450) : R.range(2250, 2550)));
+    const gw = sn(o.design?.gate?.w ?? R.range(1700, 2300));
+    const cx = clamp(o.design?.gate?.cx ?? P.upX + R.range(-220, 220), gw / 2 + 160, lim - gw / 2 - 120);
+    const dX = clamp(P.upX, cx - gw * 0.22, cx + gw * 0.22);
+    const xa = cx - gw / 2, xb = cx + gw / 2;
+    const pl = R.range(96, 150), shH = o.design?.gate?.sh ?? R.range(220, 330), shW = R.range(170, 260), tS = o.design?.gate?.tS ?? R.range(620, 860);
+    const lv = [peakY];
+    for (let y = peakY; y < peakY + shH + 80; ) lv.push((y += R.pick([24, 32, 40, 48])));
+    const quant = (v) => {
+      let k = 0;
+      while (k < lv.length - 2 && lv[k + 1] <= v) k++;
+      const a2 = lv[k], b2 = lv[k + 1], f = clamp((v - a2) / (b2 - a2), 0, 1);
+      return a2 + (b2 - a2) * smooth(smooth(f));
+    };
+    const topFn = (x) => {
+      const L = x < dX ? dX - xa : xb - dX, dd = Math.abs(x - dX);
+      if (dd <= pl) return peakY;
+      return quant(peakY + shH * Math.pow(clamp((dd - pl) / Math.max(40, L - pl - shW), 0, 1), 0.9));
+    };
+    const lobes = Array.from({ length: R.int(2, 4) }, () => ({ u: R.range(-0.55, 0.55), s: R.range(0.12, 0.26), d: R.range(90, 240) }));
+    const so = R() * 99;
+    const botFn = (x) => {
+      const u = (x - cx) / (gw / 2);
+      if (u <= -1 || u >= 1) return topFn(x) + 8;
+      const e = 1 - u * u;
+      let dep = 40 + (tS - 40) * Math.pow(e, 1.6);
+      for (const Lb of lobes) {
+        const v = (u - Lb.u) / Lb.s, q = 1 - v * v;
+        if (q > 0) dep += Lb.d * q * q * e;
+      }
+      return topFn(x) + dep * (0.88 + 0.24 * (0.5 + 0.5 * P.N.fbm1(x / 60 + so, 3)));
+    };
+    island(P, cx, peakY, gw, tS, st2, { topFn, botFn, sub: false, lobes: 0 });
+    G = { x0: xa, x1: xb, top: peakY, rim: 0, gate: 1 };
+    G.edgeAt = (s) => {
+      const x = s > 0 ? xb - 12 : xa + 12;
+      return { x, y: topFn(x) };
+    };
+    G.obj = { x0: xa - 8, x1: xb + 8, y0: peakY - 8, y1: peakY + shH + 60 };
+    objs.push(G.obj);
+    for (let x = xa; x < xb; x += 96) {
+      let yb = 0;
+      for (let xx = x; xx <= Math.min(xb, x + 96); xx += 8) yb = Math.max(yb, botFn(xx));
+      objs.push({ x0: x - 4, x1: Math.min(xb, x + 96) + 4, y0: peakY, y1: yb + 24, of: G.obj });
+    }
+    plats.push(G);
+    P.peak = { x: Math.round((dX - 8) / TS) * TS + 8, y: peakY };
+    tags.push({ x0: dX - pl, x1: dX + pl, y0: peakY - 200, y1: peakY + 8, role: "rest" });
+  }
+
+  // 아래 발판 A에서 위 발판 B로: 바로 못 가면 큰 섬을 하나씩 놓으며 오른다 (B 바깥쪽으로 다가간다)
+  const ascend = (A, B, maxSteps = 9) => {
+    let cur = A;
+    // 다가갈 쪽은 처음에 정한다 (이리저리 떠돌지 않게)
+    const mid = (B.x0 + B.x1) / 2, toR = (A.x0 + A.x1) / 2 > mid;
+    const tx = toR ? B.x1 + R.range(260, 520) : B.x0 - R.range(260, 520);
+    for (let step = 0; step < maxSteps; step++) {
+      const dpl = reach(cur, B, 6);
+      if (dpl) return commit(dpl), true;
+      const ccx = (cur.x0 + cur.x1) / 2, near = cur.top - edge(B, toR ? 1 : -1).y < 460;
+      let best = null, bs = -1e9;
+      const why = { y: 0, dir: 0, box: 0, reach: 0 };
+      for (let t = 0; t < 90; t++) {
+        const ey = edge(B, toR ? 1 : -1).y;
+        const yW = sn(cur.top - ey > 380 ? cur.top - R.range(200, 340) : Math.min(cur.top + 60, ey + R.range(60, 260)));
+        if (yW <= ey + 40) {
+          why.y++;
+          continue;
+        }
+        const w = sn(R.range(320, 700)), tt = R.range(90, 200), d = R() < 0.5 ? 1 : -1, sp = R.range(160, 760);
+        const e = edge(cur, d), nearX = e.x + d * sp, cx = d > 0 ? nearX + w / 2 - 8 : nearX - w / 2 + 8;
+        if (Math.abs(cx - tx) > Math.max(Math.abs(ccx - tx) + 150, 700) || (yW > cur.top - 70 && Math.abs(cx - tx) > Math.abs(ccx - tx) - 120)) {
+          why.dir++;
+          continue;
+        }
+        const bx = isleBox(cx, yW, w, tt);
+        if (!bx.ok) {
+          why.box++;
+          continue;
+        }
+        const W = { x0: bx.x0, x1: bx.x1, top: yW, rim: 16, t: tt };
+        W.obj = { x0: W.x0 - 8, x1: W.x1 + 8, y0: yW - 48, y1: bx.y1 };
+        objs.push(W.obj);
+        const pl = reach(cur, W, 4);
+        objs.pop();
+        if (!pl) {
+          why.reach++;
+          continue;
+        }
+        const sc = cur.top - yW - Math.abs(cx - tx) * (near ? 1.6 : 0.7) + R() * 60;
+        if (sc > bs) ((bs = sc), (best = { W, pl }));
+      }
+      if (!best) {
+        globalThis.__sky && console.log("ascend stuck at", Math.round((cur.x0 + cur.x1) / 2), Math.round(cur.top), "step", step, JSON.stringify(why), "tx", Math.round(tx));
+        return false;
+      }
+      commit(best.pl);
+      cur = isle((best.W.x0 + best.W.x1) / 2, best.W.top, best.W.x1 - best.W.x0, best.W.t, R() < 0.5 ? "rest" : "arena");
+      cur.linked = 1;
+      globalThis.__sky && console.log("  waypoint", Math.round((cur.x0 + cur.x1) / 2), Math.round(cur.top));
+    }
+    return false;
+  };
+
+  // 하늘 구역: 왼쪽 출입 섬 → 오른쪽 출입 섬 (큰 섬을 건너며)
+  if (o.sky && ex.length >= 2) {
+    let cur = ex[0];
+    const goal = ex[ex.length - 1];
+    for (let step = 0; step < 14; step++) {
+      const dpl = reach(cur, goal, 5);
+      if (dpl) {
+        commit(dpl);
+        break;
+      }
+      let best = null, bs = -1e9;
+      for (let t = 0; t < 90; t++) {
+        const w = sn(R.range(420, 980)), tt = R.range(140, 300), sp = R.range(380, 760);
+        const yW = sn(clamp(cur.top + R.range(-200, 160), 4150, 4950));
+        const e = edge(cur, 1), cx = e.x + sp + w / 2 - 8;
+        if (cx + w / 2 > edge(goal, -1).x - 60) continue;
+        const bx = isleBox(cx, yW, w, tt);
+        if (!bx.ok) continue;
+        const W = { x0: bx.x0, x1: bx.x1, top: yW, rim: 16, t: tt };
+        W.obj = { x0: W.x0 - 8, x1: W.x1 + 8, y0: yW - 48, y1: bx.y1 };
+        objs.push(W.obj);
+        const pl = reach(cur, W, 5);
+        objs.pop();
+        if (!pl) continue;
+        const sc = cx + R() * 200;
+        if (sc > bs) ((bs = sc), (best = { W, pl }));
+      }
+      if (!best) break;
+      commit(best.pl);
+      cur = isle((best.W.x0 + best.W.x1) / 2, best.W.top, best.W.x1 - best.W.x0, best.W.t, step % 2 ? "arena" : "rest");
+    }
+  }
+
+  // 설계 섬: 정한 자리·모양·역할. 길은 설계도 links 순서대로 (디딤돌은 모든 섬을 먼저 놓은 뒤에 — 섬을 피해 놓인다)
+  //   턱 섬(step): 한쪽이 dy 높다. 낮은 쪽 끝으로 들어와 턱을 올라, 높은 쪽 끝(턱 위)에서 낮은 쪽 위로 디딤돌을 띄워 되돌아 오른다
+  if (o.design) {
+    const D = o.design, byId = new Map(), log = (...a) => globalThis.__sky && console.log(...a);
+    const shapeDep = (q, x0, w, t) => {
+      const sh = q.shape ?? "chunk", so = R() * 99, hw = w / 2, cx = x0 + hw;
+      const lobes = [];
+      if (sh === "twin") for (const u of [-0.42, 0.42]) lobes.push({ u: u + R.range(-0.06, 0.06), s: R.range(0.26, 0.34), d: t * R.range(0.55, 0.7) });
+      else if (sh === "lumpy") for (const u of [-0.55, -0.1, 0.4].map((v) => v + R.range(-0.08, 0.08))) lobes.push({ u, s: R.range(0.14, 0.22), d: t * R.range(0.35, 0.6) });
+      else for (let k = 0, n = sh === "spire" ? 1 : R.int(1, 2); k < n; k++) lobes.push({ u: R.range(-0.4, 0.4), s: R.range(0.2, 0.34), d: t * (sh === "spire" ? R.range(0.06, 0.12) : R.range(0.12, 0.24)) });
+      return (x) => {
+        const u = (x - cx) / hw;
+        if (u <= -1 || u >= 1) return 8;
+        const e = 1 - u * u;
+        let dep = sh === "spire" ? t * (0.16 + 0.84 * Math.pow(e, 2.2)) : sh === "slab" ? t * (0.34 + 0.4 * Math.pow(e, 0.45)) : sh === "lumpy" ? t * (0.2 + 0.3 * e) : sh === "tower" ? t * (0.42 + 0.58 * Math.pow(e, 0.5)) : sh === "twin" ? t * (0.2 + 0.22 * e) : t * (0.22 + 0.62 * Math.pow(e, 0.8));
+        for (const L of lobes) {
+          const v = (u - L.u) / L.s, qq = 1 - v * v;
+          if (qq > 0) dep += L.d * qq * qq * Math.sqrt(e);
+        }
+        return dep * (0.92 + 0.16 * (0.5 + 0.5 * P.N.fbm1(x / 46 + so, 3))) + 3 * P.N.n1(x / 7 + so);
+      };
+    };
+    // 섬 하나: 낮은 쪽(lo)·높은 쪽(hi) 발판, 충돌 상자는 48px 조각마다 실제 밑면까지
+    for (const q of D.isles) {
+      const w = q.w, t = q.t, x0 = q.cx - w / 2, x1 = q.cx + w / 2, top = sn(q.top);
+      const st = q.step, rz = st ? sn(x0 + w * st.at) : null, hiTop = st ? top - st.dy : top;
+      const ur = st ? (rz - q.cx) / (w / 2) : 0;
+      const tiers = st ? [st.hi === "R" ? { u0: ur, u1: 2, off: -st.dy } : { u0: -2, u1: ur, off: -st.dy }] : null;
+      const dep = shapeDep(q, x0, w, t);
+      const bx = isleBox(q.cx, hiTop, w, t, 20);
+      bx.ok || log("isle box warn", q.id, Math.round(q.cx), top);
+      island(P, q.cx, top, w, t, st2, { sub: false, lobes: 0, tiers, botFn: (x) => top + dep(x) });
+      const head = { x0: 0, x1: 0, y0: -9, y1: -9 };
+      objs.push(head);
+      const topAt = (x) => (st && (st.hi === "R" ? x >= rz : x < rz) ? hiTop : top);
+      for (let x = x0; x < x1; x += 48) {
+        const xb = Math.min(x1, x + 48);
+        let yb = 0;
+        for (let xx = x; xx <= xb; xx += 8) yb = Math.max(yb, top + dep(Math.min(xx, x1 - 1)));
+        objs.push({ x0: x - (x === x0 ? 8 : 0), x1: xb + (xb === x1 ? 8 : 0), y0: Math.min(topAt(x), topAt(xb - 1)) - 48, y1: yb + 16, of: head });
+      }
+      const part = (a, b, tp, outerL, outerR) => {
+        const I = { x0: a, x1: b, top: tp, rim: 16, t, obj: head, bpId: q.id };
+        I.edgeAt = (sd) => (sd > 0 ? (outerR ? { x: b - 8, y: tp + 16 } : { x: b - 8, y: tp }) : outerL ? { x: a + 8, y: tp + 16 } : { x: a + 8, y: tp });
+        return I;
+      };
+      let lo, hi = null;
+      if (!st) lo = part(x0, x1, top, true, true);
+      else if (st.hi === "R") ((lo = part(x0, rz, top, true, false)), (hi = part(rz, x1, hiTop, false, true)));
+      else ((hi = part(x0, rz, hiTop, true, false)), (lo = part(rz, x1, top, false, true)));
+      plats.push(lo);
+      byId.set(q.id, lo);
+      hi && (plats.push(hi), byId.set(q.id + "^", hi));
+      q.role && tags.push({ x0: x0 + 32, x1: x1 - 32, y0: hiTop - 160, y1: top + 24, role: q.role });
+      P.islands.length && (P.islands[P.islands.length - 1].bp = q.id);
+    }
+    G && byId.set("G", G);
+    const port = (k) => {
+      if (!k.startsWith("g:")) return byId.get(k);
+      const g = groundPlat(Number(k.slice(2)), 80);
+      g && (g.obj = { x0: 0, x1: 0, y0: -9, y1: -9 });
+      return g;
+    };
+    for (const [a, b, maxN = 4] of D.links) {
+      const A = port(a), B = port(b);
+      if (!A || !B) {
+        log("link missing", a, b);
+        continue;
+      }
+      let pl = null;
+      globalThis.__sky && (globalThis.__why = {});
+      for (let t = 0; t < 8 && !pl; t++) pl = reach(A, B, maxN);
+      if (pl) {
+        commit(pl);
+        B.linked = 1;
+        log("link", a, "→", b, "stones", pl.st.length);
+      } else {
+        const d = (A.x0 + A.x1) / 2 < (B.x0 + B.x1) / 2 ? 1 : -1, ea = edge(A, d), eb = edge(B, -d);
+        log("link FAIL", JSON.stringify(globalThis.__why), a, "→", b, "span", Math.round((eb.x - ea.x) * d), "rise", Math.round(ea.y - eb.y), "from", Math.round(ea.x), Math.round(ea.y), "to", Math.round(eb.x), Math.round(eb.y));
+      }
+    }
+    G && (G.done = 1);
+  }
+  // ▲ 문까지 오르는 길: 출발점(산 정상 평지 → 높은 땅 → 하늘 구역은 큰 섬)마다 해 본다
+  if (G && !G.done) {
+    const starts = [];
+    if (o.sky || o.design) for (const I of plats) I !== G && I.linked !== 0 && starts.push(I);
+    if (!o.sky) {
+      if (P.mtn) {
+        const mx = (P.mtn.pa + P.mtn.pb) / 2, g = groundPlat(mx, clamp(P.mtn.pb - P.mtn.pa - 40, 80, 320));
+        g && starts.push(g);
+      }
+      for (let x = 300; x < lim - 300; x += 160) {
+        const g = groundPlat(x);
+        g && starts.push(g);
+      }
+    }
+    const gx = (G.x0 + G.x1) / 2;
+    starts.sort((a, b) => a.top - b.top + (Math.abs((a.x0 + a.x1) / 2 - gx) - Math.abs((b.x0 + b.x1) / 2 - gx)) * 0.3);
+    globalThis.__sky && console.log("G", Math.round(G.x0), Math.round(G.x1), Math.round(G.top), "edges", JSON.stringify(G.edgeAt(-1)), JSON.stringify(G.edgeAt(1)), "starts", starts.length, starts.slice(0, 8).map((q) => Math.round((q.x0 + q.x1) / 2) + "," + Math.round(q.top)).join(" "));
+    for (const s of starts.slice(0, 8)) if (ascend(s, G)) break;
+  }
+
+  // 덤 섬: 보물·전망·쉼터 (아래쪽 땅·섬에서 디딤돌로 잇는다)
+  const extra = (n, yLo, yHi) => {
+    for (let k = 0, t = 0; k < n && t < n * 60; t++) {
+      const w = sn(R.range(360, 980)), tt = R.range(140, 320), cx = R.range(w / 2 + 140, lim - w / 2 - 60), top = sn(R.range(yLo, yHi));
+      const bx = isleBox(cx, top, w, tt, 80);
+      if (!bx.ok) continue;
+      const I = { x0: bx.x0, x1: bx.x1, top, rim: 16, t: tt };
+      I.obj = { x0: I.x0 - 8, x1: I.x1 + 8, y0: top - 48, y1: bx.y1 };
+      objs.push(I.obj);
+      const lows = plats.filter((A) => A.top > top + 60 && A.top < top + 380 && (A.x1 < I.x0 ? I.x0 - A.x1 : A.x0 - I.x1) < 1100);
+      for (const gx of [I.x0 - R.range(220, 520), I.x1 + R.range(220, 520)]) {
+        const g = !o.sky && gAt(gx) > top + 60 && gAt(gx) < top + 380 ? groundPlat(gx) : null;
+        g && lows.push(g);
+      }
+      let pl = null;
+      for (const A of lows.sort(() => R() - 0.5)) if ((pl = reach(A, I, 4))) break;
+      objs.pop();
+      if (!pl) continue;
+      commit(pl);
+      isle((I.x0 + I.x1) / 2, top, I.x1 - I.x0, tt, k === 0 ? "treasure" : R() < 0.5 ? "vista" : "rest");
+      k++;
+    }
+  };
+  const bands = o.design ? [] : o.sky ? [[4000, 4700, 3], [3300, 4000, 3], [2600, 3300, 2]] : [[4050, 4500, 2], [3450, 4050, 2], [2800, 3450, 2]];
+  for (const [a, b, n] of bands) extra(n, a, b);
+  P.roomTags = (P.roomTags ?? []).concat(tags);
+}
+
+
+// ── 던전 (설계도): 격자 칸 64×48블록(512×384px). 직사각형 방 + 수평 문 + 탑 방(두 층 높이). 경사 없음 ──
+// 방 종류: guard 경비실(엄폐 블록·초소) · colonnade 회랑(천장 받침·뒤 기둥) · arena 투기장(발코니 2단·가운데 단) ·
+//          trap 함정 복도(낮은 천장·가시) · vault 보물실(받침대) · shrine 쉼터(샘) · sanctum 성소(3단 제단·발코니)
+// 탑(towers): 한 열 × 두 층 높이 방. 윗층 바닥 높이에 착지대(문 쪽), 그 아래 발판 넷 (짜임 zig·float·ring·pillar — 탑마다 다르게)
+// 벽돌은 방·탑·문 둘레 3칸 껍데기만 (그 바깥은 바위)
+// 돌려준다: { links: [{id, x, y, comp}] 서쪽 벽 동굴 길 문(칸), rootComp: 정문과 이어진 무리, find }
+function dungeonWorld(P, C, D) {
+  const R = rng(P.seed ^ 0xd0d0e), { cell, NX, NY } = C;
+  const setC = (x, y, v) => x >= 1 && y >= 1 && x < NX - 1 && y < NY - 1 && (cell[y * NX + x] = v);
+  const rect = (x0, y0, x1, y1, v) => {
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setC(x, y, v);
+  };
+  const back = (x0, y0, x1, y1, m) => P.walls.push({ x0: x0 * BLK, y0: y0 * BLK, x1: x1 * BLK, y1: y1 * BLK, m });
+  const brick = (x0, y0, x1, y1, m = 3) => P.mats.push({ x0: (x0 - m) * BLK, y0: (y0 - m) * BLK, x1: (x1 + m) * BLK, y1: (y1 + m) * BLK, m: "brick" });
+  const tag = (x0, y0, x1, y1, role) => (P.roomTags ??= []).push({ x0: x0 * BLK, x1: x1 * BLK, y0: y0 * BLK, y1: y1 * BLK + 8, role });
+  const MW = 64, MH = 48, GX = Math.round(D.x0 / BLK), GY = Math.round(D.y0 / BLK);
+  const colX = (c) => GX + c * MW, stY = (s) => GY + s * MH, floorR = (s) => stY(s + 1) - 4;
+  // 이어짐 (방·탑 무리)
+  const par = new Map(), find = (a) => (par.get(a) === a ? a : (par.set(a, find(par.get(a))), par.get(a)));
+  const node = (k) => (par.has(k) || par.set(k, k), k), uni = (a, b) => par.set(find(node(a)), find(node(b)));
+  const rooms = D.rooms.map((r) => ({ ...r })), towers = (D.towers ?? []).map((t) => ({ ...t }));
+  const at = (s, c) => rooms.find((r) => r.s === s && c >= r.c0 && c <= r.c1) ?? towers.find((t) => t.col === c && (t.s === s || t.s + 1 === s));
+  // 판: 윗면 2칸 + 아래로 좁아지는 받침 (side 0 서벽에 붙음 · 1 동벽에 붙음 · -1 떠 있음), br 받침 줄 수
+  const ledge = (a, b, row, side, br = 2) => {
+    rect(a, row, b, row + 2, 1);
+    for (let k = 0; k < br; k++) {
+      const c = 3 * (k + 1);
+      if (side === 0) rect(a, row + 2 + k, b - c, row + 3 + k, 1);
+      else if (side === 1) rect(a + c, row + 2 + k, b, row + 3 + k, 1);
+      else k === 0 && rect(a + 2, row + 2, b - 2, row + 3, 1);
+    }
+  };
+  // 문: 두 방 사이 벽을 12칸 높이로 뚫는다
+  const door = (xa, xb, F) => (rect(xa, F - 12, xb, F, -1), brick(xa, F - 12, xb, F));
+  // ── 방 ──
+  for (const r of rooms) {
+    node(r.id);
+    const x0 = colX(r.c0) + 2, x1 = colX(r.c1 + 1) - 2, F = floorR(r.s), w = x1 - x0, cx = (x0 + x1) >> 1;
+    const H = { guard: 30, colonnade: 38, arena: 42, trap: 16, vault: 22, shrine: 30, sanctum: 44 }[r.type] ?? 32;
+    const top = F - H;
+    Object.assign(r, { x0, x1, F, top });
+    // 뒤 기둥 (먼저 놓은 뒷벽이 이긴다)
+    if (r.type === "colonnade" || r.type === "sanctum" || r.type === "guard") {
+      const st = r.type === "guard" ? 16 : 12, m = r.type === "guard" ? "rock" : "stem";
+      for (let x = x0 + st - 1; x < x1 - 3; x += st) (back(x, top + 5, x + 2, F, m), back(x - 1, top + 4, x + 3, top + 5, m), back(x - 1, F - 1, x + 3, F, m));
+    }
+    if (r.type === "shrine") (back(cx - 11, top + 7, cx - 8, F, "stem"), back(cx + 8, top + 7, cx + 11, F, "stem"), back(cx - 13, top + 5, cx + 13, top + 7, "stem"));
+    if (r.type === "arena") {
+      for (let x = x0 + 20; x < x1 - 18; x += 22) back(x, top + 6, x + 3, F - 1, "stem");
+      back(x0, top + 4, x1, top + 6, "stem");
+    }
+    rect(x0, top, x1, F, -1);
+    back(x0, top, x1, F, r.type === "vault" ? "wood" : "brick");
+    brick(x0, top, x1, F);
+    // 천장 받침돌 (회랑·성소): 기둥 위마다 거꾸로 선 계단 모양
+    if (r.type === "colonnade" || r.type === "sanctum")
+      for (let x = x0 + 11; x < x1 - 4; x += 12) (rect(x - 3, top, x + 5, top + 2, 1), rect(x - 2, top + 2, x + 4, top + 3, 1), rect(x - 1, top + 3, x + 3, top + 4, 1));
+    if (r.type === "arena" || r.type === "sanctum") {
+      // 발코니: 바닥 위 7칸 (양쪽), 그 위 10칸에 좁은 회랑 (위아래로 싸운다)
+      const bw = Math.min(16, Math.floor(w / 5));
+      ledge(x0, x0 + bw, F - 7, 0, 1);
+      ledge(x1 - bw, x1, F - 7, 1, 1);
+      if (H >= 40) (ledge(x0, x0 + 8, F - 16, 0, 1), ledge(x1 - 8, x1, F - 16, 1, 1));
+      if (r.type === "arena" && w > 90) {
+        const dw = Math.min(30, Math.floor(w / 4));
+        rect(cx - (dw >> 1), F - 3, cx + (dw >> 1), F, 1);
+      }
+    }
+    if (r.type === "sanctum") {
+      rect(cx - 22, F - 2, cx + 22, F, 1);
+      rect(cx - 14, F - 4, cx + 14, F - 2, 1);
+      rect(cx - 7, F - 6, cx + 7, F - 4, 1);
+      tag(cx - 7, F - 30, cx + 7, F - 6, "treasure");
+      P.roomTags[P.roomTags.length - 1].big = 1;
+    }
+    if (r.type === "guard") {
+      // 엄폐 블록 둘 + 한쪽 끝 초소 (판)
+      for (const u of [0.3, 0.62]) {
+        const bx = x0 + Math.round(w * u) + R.int(-2, 2);
+        rect(bx, F - 3, bx + 5, F, 1);
+      }
+      R() < 0.5 ? ledge(x1 - 12, x1, F - 8, 1, 1) : ledge(x0, x0 + 12, F - 8, 0, 1);
+    }
+    if (r.type === "vault") for (const u of w > 70 ? [0.25, 0.5, 0.75] : [0.5]) {
+      const px = x0 + Math.round(w * u);
+      rect(px - 5, F - 2, px + 5, F, 1);
+    }
+    if (r.type === "shrine") {
+      // 샘: 바닥을 2칸 판 물
+      rect(cx - 6, F, cx + 6, F + 2, -1);
+      P.specReq.push({ x0: cx - 6, y0: F, x1: cx + 6, y1: F + 2, k: "water" });
+    }
+    if (r.type === "trap") for (let x = x0 + 12; x + 8 < x1 - 10; x += 22) (P.pads ??= []).push({ xa: x * BLK, xb: (x + 8) * BLK, y: F * BLK, dungeon: 1 });
+    tag(x0, top, x1, F, r.role);
+  }
+  // 같은 층 이웃 방 사이 문
+  for (const a of rooms) for (const b of rooms) if (a.s === b.s && a.c1 + 1 === b.c0) (door(a.x1, b.x0, a.F), uni(a.id, b.id));
+  // ── 탑: 두 층 높이 방. 정규형(착지대 서쪽, 폭 60칸) 발판을 짜임마다 놓고, 착지대가 동쪽이면 거울 ──
+  const mkTower = (t, x0, x1, F0, F1, head) => {
+    node(t.id);
+    const W = x1 - x0, top = F0 - head, sc = W / 60, X = (a) => Math.round(a * sc);
+    Object.assign(t, { x0, x1, F: F1, F0, top });
+    back(x0 + X(16), top + 2, x0 + X(16) + 2, F1, "rock");
+    back(x1 - X(16) - 2, top + 2, x1 - X(16), F1, "rock");
+    rect(x0, top, x1, F1, -1);
+    back(x0, top, x1, F1, "brick");
+    brick(x0, top, x1, F1);
+    const both = t.up.includes("W") && t.up.includes("E"), M = !both && t.up.includes("E");
+    const put = (a, b, row, side, br = 2) => {
+      let p = X(a), q = X(b), sd = side;
+      if (M) ((p = W - X(b)), (q = W - X(a)), (sd = side < 0 ? -1 : 1 - side));
+      ledge(x0 + p, x0 + q, row, sd, br);
+    };
+    const n = Math.max(2, Math.round((F1 - F0) / 9.6)), lv = (k) => F1 - Math.round(((F1 - F0) * k) / n);
+    // 착지대 (윗층 문 높이)
+    put(0, 18, F0, 0);
+    both && put(42, 60, F0, 1);
+    const jit = () => R.int(-2, 2);
+    const pat = t.pat ?? "zig";
+    if (pat === "float" && n === 5) {
+      for (const [k, a, b] of [[1, 30, 44], [2, 10, 24], [3, 34, 48], [4, 20, 32]]) {
+        const j = jit();
+        put(a + j, b + j, lv(k), -1);
+      }
+    } else if (pat === "pillar" && n === 5) {
+      // 가운데 굵은 기둥 (윗면이 둘째 발판), 양쪽 벽 발판에서 오른다
+      put(0, 14, lv(1), 0);
+      put(46, 60, lv(1), 1);
+      const [p, q] = M ? [W - X(36), W - X(24)] : [X(24), X(36)];
+      rect(x0 + p, lv(2), x0 + q, F1, 1);
+      back(x0 + p, top + 2, x0 + q, lv(2), "rock");
+      R() < 0.5 ? put(46, 60, lv(3), 1) : put(0, 14, lv(3), 0);
+      put(22, 38, lv(4), -1);
+    } else
+      for (let k = n - 1; k >= 1; k--) {
+        const j = n - 1 - k;
+        if (j % 2 === 0) {
+          const q = jit();
+          put(22 + q, 38 + q, lv(k), -1);
+        } else if (pat === "ring") (put(0, 14, lv(k), 0), put(46, 60, lv(k), 1));
+        else j % 4 === 1 ? put(44 + jit(), 60, lv(k), 1) : put(0, 16 + jit(), lv(k), 0);
+      }
+    // 문: 윗층(착지대 높이)·아랫층(바닥)
+    for (const [d, F, s] of [[t.up, F0, t.s], [t.down, F1, t.s + 1]]) {
+      if (t.s < 0 && s < 0) continue;
+      for (const sd of ["W", "E"]) {
+        if (!d.includes(sd)) continue;
+        const nb = at(s, sd === "W" ? t.col - 1 : t.col + 1);
+        if (!nb && !(sd === "W" && t.col === 0 && t.cave)) continue;
+        sd === "W" ? door(nb ? nb.x1 ?? colX(t.col) - 2 : colX(t.col) - 2, x0, F) : door(x1, nb ? nb.x0 ?? colX(t.col + 1) + 2 : colX(t.col + 1) + 2, F);
+        nb && uni(t.id, nb.id);
+      }
+    }
+    t.role && tag(x0, top, x1, F1, t.role);
+  };
+  for (const t of towers) mkTower(t, colX(t.col) + 2, colX(t.col + 1) - 2, floorR(t.s), floorR(t.s + 1), 40);
+  // ── 정문: 고원 동쪽 비탈 문 → 짧은 복도 → 정문 탑(VG, 지표 높이 → 1층) ──
+  if (D.gate) {
+    const surfRow = (FLOOR * TS) / BLK, col = D.gate.col, g = { id: "VG", col, s: -1, up: "E", down: "W", pat: "zig", role: "rest" };
+    towers.push(g);
+    mkTower(g, colX(col) + 12, colX(col) + 52, surfRow, floorR(0), 13);
+    const dx = Math.round(D.gate.door / BLK);
+    rect(g.x1, surfRow - 12, dx + 2, surfRow, -1);
+    back(g.x1, surfRow - 12, dx, surfRow, "brick");
+    brick(g.x1, surfRow - 12, dx, surfRow);
+    uni("VG", "@root");
+  }
+  // 서쪽 벽 동굴 길 (방·탑)
+  const links = [];
+  const caveDoor = (id, x0, F, of = id) => {
+    rect(colX(0) - 3, F - 12, x0, F, -1);
+    brick(colX(0) - 3, F - 12, x0, F);
+    links.push({ id, x: colX(0) - 3, y: F, comp: null, of });
+  };
+  for (const r of rooms) r.cave && r.c0 === 0 && caveDoor(r.id, r.x0, r.F);
+  for (const t of towers)
+    if (t.cave && t.col === 0) {
+      t.cave !== "down" && caveDoor(t.id, t.x0, t.F0);
+      t.cave !== "up" && caveDoor(t.cave === "both" ? t.id + "_d" : t.id, t.x0, t.F, t.id);
+    }
+  for (const L of links) L.comp = find(L.of);
+  const rootComp = par.has("@root") ? find("@root") : null;
+  return { links, rootComp, find };
+}
+
+// 설계도 지표: 구간마다 정한 모양 (언덕 혹·골짜기·고원·큰 산)
+function bpSurface(P, bp) {
+  const { LW, N } = P, base = FLOOR * TS, el = new Float64Array(LW);
+  const bump = (u) => (u <= -1 || u >= 1 ? 0 : (1 - u * u) * (1 - u * u));
+  const plat = (u, p) => {
+    const a = u < 0 ? -u : u;
+    if (a >= 1) return 0;
+    if (a <= p) return 1;
+    const t = (a - p) / (1 - p);
+    return 1 - t * t * (3 - 2 * t);
+  };
+  const addEl = (x0, x1, fn) => {
+    for (let i = Math.max(0, Math.floor(x0 / Q)); i <= Math.min(LW - 1, Math.ceil(x1 / Q)); i++) el[i] += fn(i * Q);
+  };
+  P.ponds = [];
+  P.sinks = [];
+  P.mouthX = [];
+  P.sections = bp.surface;
+  for (const q of bp.surface) {
+    if (q.kind === "hills") for (const b of q.bumps) addEl(b.c - b.w, b.c + b.w, (x) => b.h * bump((x - b.c) / b.w));
+    else if (q.kind === "valley") {
+      addEl(q.c - q.w, q.c + q.w, (x) => -q.d * plat((x - q.c) / q.w, q.p));
+      q.pond && P.ponds.push({ x: q.c, w: q.pond });
+    } else if (q.kind === "mesa") addEl(q.c - q.w, q.c + q.w, (x) => q.h * plat((x - q.c) / q.w, q.p));
+    else if (q.kind === "mountain") {
+      const so = 17.3, sh = q.shoulder;
+      addEl(q.c - q.wl, q.c + q.wr, (x) => {
+        const t = (x - q.c) / (x < q.c ? q.wl : q.wr), a = t < 0 ? -t : t;
+        if (a >= 1) return 0;
+        const u = a <= q.top ? 0 : (a - q.top) / (1 - q.top);
+        let e = Math.pow(1 - u, 1.5);
+        if (sh && (t < 0 ? -1 : 1) === (sh.side ? 1 : -1)) e += sh.amt * bump((u - sh.at) / 0.18);
+        return q.h * Math.min(1, e) * (0.96 + 0.04 * N.fbm1(x / 280 + so, 2));
+      });
+      P.mtn = { a: q.c - q.wl, b: q.c + q.wr, cx: q.c, h: q.h, pa: q.c - q.wl * q.top, pb: q.c + q.wr * q.top };
+    }
+  }
+  const h = new Float64Array(LW);
+  for (let i = 0; i < LW; i++) h[i] = base - el[i] - 4 * N.fbm1((i * Q) / 70 + 3.1, 2);
+  return h;
+}
 // ── 길찾기 검사 ──────────────────────────────────────
 // 8px마다 세로줄을 재서 바위 구간을 정확히 구하고(쌍선형 장은 세로로 선형이라 0이 되는 곳을 바로 계산),
 // 바닥(머리 위 28px 이상 빈 곳)마다 걷기·점프·떨어지기로 갈 수 있는 곳을 잇는다.
@@ -2228,7 +4213,16 @@ export function analyze(P) {
     return true;
   };
   // 발이 y에 있을 때 몸이 들어갈 자리 (아래 모서리 6px은 비탈에 걸쳐도 된다 — 충돌 모양과 같다)
-  const bodyAir = (c, y) => airD(c, y - BODY, y - 9) && airC(c, y - BODY, y - 1);
+  // 몸 자리 검사는 같은 (기둥, 높이)를 수없이 다시 묻는다 → 기억해 둔다 (0 모름, 1 빔, 2 막힘)
+  const HY = Math.ceil(P.HP) + 64, BA = scratch("BA", Uint8Array, NC * HY).fill(0);
+  const bodyAir = (c, y) => {
+    if (c < 0 || c >= NC || y < 0 || y >= HY) return airD(c, y - BODY, y - 9) && airC(c, y - BODY, y - 1);
+    const k = c * HY + y, v = BA[k];
+    if (v) return v === 1;
+    const r = airD(c, y - BODY, y - 9) && airC(c, y - BODY, y - 1);
+    BA[k] = r ? 1 : 2;
+    return r;
+  };
   const air = airD;
   // 바닥 마디 (16px마다; 장애물은 8px마다·몸 너비로 검사)
   const nC = [], nY = [], colN = new Int32Array(NC + 1);
@@ -2407,6 +4401,8 @@ export function analyze(P) {
 function repair(P, A) {
   const { nC, nY, NN, reach, co, out } = A;
   const X = (n) => nC[n] * CW + 4;
+  // 땅속 마디 (지표보다 64px 넘게 아래)
+  const ugN = (n) => P.kind === "cave" || (P.h && nY[n] > P.h[Math.min(P.h.length - 1, Math.round(X(n) / Q))] + 64);
   const pairs = [];
   // 가장 가까운 짝 (위로 가는 길은 조금 더 비싸게)
   const closest = (src, dst) => {
@@ -2427,7 +4423,7 @@ function repair(P, A) {
     }
     // 바깥(지상·하늘)에서는 산을 뚫는 굴로 잇지 않는다: 사이가 거의 비어 있는 짝을 고른다
     for (const [, a, b] of top) {
-      if (P.kind === "cave") return [a, b];
+      if (P.kind === "cave" || (ugN(a) && ugN(b))) return [a, b];
       let rock = 0;
       for (let t = 0.2; t <= 0.8; t += 0.15) P.F.v(lerp(X(a), X(b), t), lerp(nY[a], nY[b], t) - 14) > 0 && rock++;
       if (rock <= 1) return [a, b];
@@ -2486,6 +4482,15 @@ function repair(P, A) {
   for (const [a, b] of pairs) {
     const key = `${X(a)},${nY[a]},${X(b)},${nY[b]}`, cnt = (tried.get(key) ?? 0) + 1;
     tried.set(key, cnt);
+    // 땅속: 돌 발판 대신 굴을 하나 더 판다 (동굴과 같은 모양 — 평평한 통로·계단·굴뚝)
+    if (P.caveRoute && ugN(a) && ugN(b)) {
+      if (cnt > 2) continue;
+      const C = cellsOf(P);
+      P.caveRoute(nC[a], Math.round(nY[a] / BLK), nC[b], Math.round(nY[b] / BLK));
+      writeCells(P, C);
+      did = !0;
+      continue;
+    }
     if (cnt === 1) (bridge(P, X(a), nY[a], X(b), nY[b]), (did = !0));
     else if (cnt === 2) {
       // 그래도 안 되면 사이에 디딤 바위를 하나 더 (높이를 반씩 나눈다)
@@ -2622,7 +4627,7 @@ function finishMeta(P, A) {
   }
   P.spots = spots;
   // 함정 자리: 지상의 평평한 자리(분지는 웅덩이·늪)
-  P.hzSpots = P.pads.map((p) => ({ x0: p.xa / TS, x1: p.xb / TS, y: p.y, basin: p.basin }));
+  P.hzSpots = P.pads.map((p) => ({ x0: p.xa / TS, x1: p.xb / TS, y: p.y, basin: p.basin, dungeon: p.dungeon }));
 }
 
 // ── 조각 그리기 (엔진에 넘길 칸 격자·높이·물건) ─────────
@@ -2690,7 +4695,10 @@ export function drawChunk(P, z, S, r, l, s, o) {
   // 적·보물 자리
   if (!o.arena) {
     const near = (g, p) => g && Math.abs(g.x - p.x) < 5 && Math.abs(g.row - p.row) < 3;
-    const spots = P.spots.filter((p) => inC(p.x) && (P.kind !== "ground" || Math.abs(p.y - P.gy[Math.floor(p.x / TS)]) > 20));
+    // 방 역할: 쉼터·성소엔 적이 없고, 전투 방엔 하나 더, 보물 방·보물 섬엔 상자
+    const tags = P.roomTags ?? [];
+    const tagOf = (p) => tags.find((t) => p.x >= t.x0 && p.x < t.x1 && p.y >= t.y0 && p.y <= t.y1);
+    const spots = P.spots.filter((p) => inC(p.x) && (P.kind !== "ground" || Math.abs(p.y - P.gy[Math.floor(p.x / TS)]) > 20) && !["rest", "sanctum"].includes(tagOf(p)?.role));
     const pick = () => spots.splice(Math.floor(R() * spots.length), 1)[0];
     const mk = (p) => ({ x: Math.floor((p.x - x0) / TS), row: Math.floor((p.y - 1) / TS), py: p.y });
     for (let k = 0, n = P.kind === "ground" ? 2 : 4; k < n && spots.length; k++) {
@@ -2699,7 +4707,20 @@ export function drawChunk(P, z, S, r, l, s, o) {
     }
     for (let k = 0; k < 2 && spots.length; k++) {
       const p = mk(pick());
-      p && !near(out.peak, p) && !near(out.deep, p) && R() < 0.3 && out.chests.push({ ...p, tier: R() < 0.12 ? 2 : R() < 0.45 ? 1 : 0 });
+      p && !near(out.peak, p) && !near(out.deep, p) && R() < 0.12 && out.chests.push({ ...p, tier: R() < 0.12 ? 2 : R() < 0.45 ? 1 : 0 });
+    }
+    for (const t of tags) {
+      if (t.role === "arena" && t.x1 > x0 && t.x0 < x0 + vt * TS) {
+        const c = spots.filter((p) => tagOf(p) === t);
+        if (c.length) {
+          const p = mk(c[Math.floor(R() * c.length)]);
+          !near(out.peak, p) && !near(out.deep, p) && out.spawns.push(p);
+        }
+      }
+      const cx = (t.x0 + t.x1) / 2;
+      if (t.role !== "treasure" || t.x1 <= x0 - 600 || t.x0 >= x0 + vt * TS + 600) continue;
+      const c = P.spots.filter((p) => p.x >= t.x0 && p.x < t.x1 && p.y >= t.y0 && p.y <= t.y1).sort((a, b) => Math.abs(a.x - cx) - Math.abs(b.x - cx))[0];
+      c && inC(c.x) && out.chests.push({ ...mk(c), tier: t.big ? 2 : R() < 0.4 ? 2 : 1 });
     }
     P.kind === "sky" && R() < 0.7 && out.spawns.push({ x: 4 + Math.floor(R() * 24), row: 50 + Math.floor(R() * 40), fly: 1 });
     // 지상 함정: 평평한 자리에만 (분지는 웅덩이·늪, 언덕 위는 가시·불기둥·얼음)
@@ -2707,6 +4728,10 @@ export function drawChunk(P, z, S, r, l, s, o) {
       const pool = Object.entries(o.patterns).filter(([k]) => HZ[k]);
       for (const hz of P.hzSpots) {
         const a = Math.max(hz.x0, base), b = Math.min(hz.x1, base + vt);
+        if (hz.dungeon) {
+          if (b - a >= 2) out.hazards.push({ type: "spikes", x: a - base, row: hz.y / TS, py: hz.y, w: b - a, natural: 1 });
+          continue;
+        }
         if (b - a < 2 || !pool.length) continue;
         let tot = pool.reduce((s2, [, w]) => s2 + w, 0) * R();
         let pickK = pool[0][0];

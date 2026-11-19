@@ -1,17 +1,33 @@
 // natpaint.mjs를 여러 프로세스로 나눠 그린다 (조각마다 따로) — 구역 전체 그림을 빨리
 //   node tools/natpaintp.mjs <구역id> <시드> <출력.png> [x0 y0 w h]   (NOREP·DOWN·MARK 그대로, JOBS=프로세스 수)
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { savePNG } from "./png.mjs";
-import { ZONES } from "../src/forge/zones.js";
+import { ZONES, upChunk, downChunk } from "../src/forge/zones.js";
+import { planOf, packPlan } from "../src/forge/natgen.js";
+import v8 from "node:v8";
 const [id = "g1_0", seed = "1", out = "paint.png", ...crop] = process.argv.slice(2);
 const z = ZONES.find((q) => q.id === id);
 const n = Number(process.env.JOBS || Math.min(6, Math.max(2, os.cpus().length >> 1)));
 const t0 = performance.now();
 const tmp = path.join(os.tmpdir(), `natp_${process.pid}`);
-const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+// 설계는 한 번만 (natpaint.mjs와 같은 설정)
+{
+  const o = { seed: Number(seed), Ft: 528, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, fe: 1, ze: 0, biome: null, noRepair: !!process.env.NOREP };
+  const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "lush" : Math.abs(x) % 2 ? "geode" : "drip");
+  const GROUND_BIO = { "-3": "drip", "-2": "deep", "-1": "lush", 1: "drip", 2: "geode", 3: "magma" };
+  o.biome = z.y > 0 ? CAVE_BIO(z.x, z.y) : GROUND_BIO[z.x] ?? "drip";
+  o.patterns = z.y === 0 ? z.reg?.patterns : null;
+  const t = performance.now();
+  const P = planOf(z, o);
+  console.log("plan", Math.round(performance.now() - t) + "ms", JSON.stringify(P.check));
+  fs.writeFileSync(tmp + ".plan", v8.serialize(packPlan(P).data));
+  process.env.PLANFILE = tmp + ".plan";
+}
+const here = path.dirname(fileURLToPath(import.meta.url));
 await Promise.all(
   Array.from({ length: n }, (_, k) =>
     new Promise((res, rej) => {
