@@ -7,7 +7,7 @@ import { planOf, FLOOR } from "../src/forge/natgen.js";
 import { installFinePhysics } from "../src/forge/finephys.js";
 
 class World {}
-installFinePhysics(World.prototype, { gt: 16, vt: 32, Oe: 2816, fe: 1, ze: 0, plat: 2, SKY_EDGE, Ft: 176 });
+installFinePhysics(World.prototype, { gt: 16, vt: 32, Oe: 8448, fe: 1, ze: 0, plat: 2, SKY_EDGE, Ft: 528 });
 function worldOf(P, z) {
   const W = new World();
   W.originChunk = z.c0;
@@ -99,7 +99,7 @@ const bad = [];
 for (const seed of seeds)
   for (const z of ZONES) {
     if (only && !only.includes(z.id)) continue;
-    const o = { seed, Ft: 176, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1 };
+    const o = { seed, Ft: 528, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1 };
     const P = planOf(z, o), A = P.A, W = worldOf(P, z);
     // 입구에서 각 목표까지 너비 우선 길 (부모 기록)
     const par = new Int32Array(A.NN).fill(-2);

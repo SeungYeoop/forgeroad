@@ -4,7 +4,8 @@
 // - 덩어리 안쪽으로 갈수록 어두워진다 (공기와의 거리)
 // - 지하는 생물군계(이끼·종유석·자수정·심층암·용암)마다 재질과 장식이 다르다
 import { H, sh, mix, pack, unpack, CAP, ramp, BIOMES, lvq } from "./terrpal.js";
-import { pixFine, fineSlice } from "./terrfine.js";
+import { pixFine, fineSlice, cropBand, BANDH } from "./terrfine.js";
+export { BANDH };
 export { BIOMES };
 const T = 16, COLS = 32, PW = COLS * T;
 // 그림판 하나 (전체 그림 + 밟을 수 있는 것만 담은 그림)
@@ -70,7 +71,7 @@ function worker() {
       WK_JOBS.delete(d.id);
       if (!j) return;
       if (j.dead) return void FREE.push(j.S);
-      if (d.error) return void (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region), (j.wait = !1));
+      if (d.error) return void (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region, j.band), (j.wait = !1));
       const img = new ImageData(new Uint8ClampedArray(d.img), PW, d.h);
       j.gen = (function* () {
         finishPut(j.S, img, new Uint8ClampedArray(d.front), new Uint8ClampedArray(d.wall));
@@ -84,7 +85,7 @@ function worker() {
     };
     WK.onerror = () => {
       WK = !1;
-      for (const j of WK_JOBS.values()) (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region)), (j.wait = !1);
+      for (const j of WK_JOBS.values()) (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region, j.band)), (j.wait = !1);
       WK_JOBS.clear();
     };
   } catch (e) {
@@ -92,14 +93,17 @@ function worker() {
   }
   return WK;
 }
-export function prepaint(scene, ch, base, raw, region) {
+// 띠(band) 높이: 맨 아래 띠는 짧을 수 있다
+const bandH = (ch, band) => Math.min(BANDH, Math.round(ch.grid.length / COLS) * T - band * BANDH);
+export function prepaint(scene, ch, base, raw, region, band = 0) {
   for (const [b, j] of PRE) j.scene !== scene && (PRE.delete(b), (j.dead = !0), j.wait || FREE.push(j.S));
-  if (PRE.has(base) || PRE.size >= 2) return;
-  const PH = Math.round(ch.grid.length / COLS) * T;
+  const pk = base + ":" + band;
+  if (PRE.has(pk) || PRE.size >= 4) return;
+  const PH = bandH(ch, band);
   let S = FREE.pop();
   (!S || S.scene !== scene || S.cv.height !== PH) && (S = makeEntry(scene, PH));
-  const j = { scene, S, ch, base, raw, region, gen: null, done: !1, wait: !1 };
-  PRE.set(base, j);
+  const j = { scene, S, ch, base, raw, region, band, gen: null, done: !1, wait: !1 };
+  PRE.set(pk, j);
   const W = worker();
   if (W) {
     const id = ++WK_N;
@@ -108,18 +112,18 @@ export function prepaint(scene, ch, base, raw, region) {
     WK_JOBS.set(id, j);
     if (ch.fine) {
       // 자연 지형: 칸 대신 밀도장 조각(좌우 여유 포함)을 보낸다 — 옆 구역을 만들지 않는다
-      const fine = fineSlice(ch);
-      W.postMessage({ id, fine, base, ch: { n: ch.grid.length, ug: ch.ug }, region: { pal: region.pal, theme: region.theme } }, [fine.d.buffer]);
+      const fine = fineSlice(ch, band);
+      W.postMessage({ id, fine, base, band, ch: { n: ch.grid.length, ug: ch.ug }, region: { pal: region.pal, theme: region.theme } }, [fine.d.buffer]);
       return;
     }
-    const ROWS = PH / T, CW = COLS + MARGIN * 2;
+    const ROWS = Math.round(ch.grid.length / COLS), CW = COLS + MARGIN * 2;
     const codes = new Uint8Array(CW * ROWS);
     for (let c = 0; c < CW; c++) {
       const wc = base + c - MARGIN;
       for (let r = 0; r < ROWS; r++) codes[r * CW + c] = wc < 0 ? 1 : raw(wc, r);
     }
-    W.postMessage({ id, codes, CW, ROWS, margin: MARGIN, base, ch: { n: ch.grid.length, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, region: { pal: region.pal, theme: region.theme } }, [codes.buffer]);
-  } else j.gen = paintSteps(scene, S, ch, base, raw, region);
+    W.postMessage({ id, codes, CW, ROWS, margin: MARGIN, base, band, bandTop: band * BANDH, bandH: PH, ch: { n: ch.grid.length, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, region: { pal: region.pal, theme: region.theme } }, [codes.buffer]);
+  } else j.gen = paintSteps(scene, S, ch, base, raw, region, band);
 }
 export function prepaintStep(ms = 5) {
   const t0 = performance.now();
@@ -129,12 +133,13 @@ export function prepaintStep(ms = 5) {
     if (performance.now() - t0 >= ms) return;
   }
 }
-export function paintChunk(scene, rt, ch, base, raw, region) {
-  const PH = Math.round(ch.grid.length / COLS) * T;
+export function paintChunk(scene, rt, ch, base, raw, region, band = 0) {
+  const PH = bandH(ch, band);
   const pool = (scene._frTerr = scene._frTerr ?? new Map());
-  const pre = PRE.get(base);
+  const pk = base + ":" + band;
+  const pre = PRE.get(pk);
   if (pre) {
-    PRE.delete(base);
+    PRE.delete(pk);
     if (pre.scene === scene && pre.ch === ch && pre.S.cv.height === PH && !pre.wait) {
       // 남은 단계가 있으면 마저 그린다
       if (!pre.done) for (;;) if (pre.gen.next().done) break;
@@ -149,12 +154,21 @@ export function paintChunk(scene, rt, ch, base, raw, region) {
   }
   let S = pool.get(rt);
   (!S || S.cv.height !== PH) && ((S = makeEntry(scene, PH)), pool.set(rt, S));
-  const g = paintSteps(scene, S, ch, base, raw, region);
+  const g = paintSteps(scene, S, ch, base, raw, region, band);
   while (!g.next().done);
   rt.draw(S.key, 0, 0);
 }
-function* paintSteps(scene, S, ch, base, raw, region) {
-  const { img, front, wall } = ch.fine ? yield* pixFine(ch, base, region, fineSlice(ch)) : yield* pixSteps(ch, base, raw, region);
+// 띠 하나 그리기: 자연 지형은 띠(+여유)만 계산, 칸 지형은 전체를 계산해 띠만 잘라 쓴다
+export function* bandPixels(ch, base, raw, region, band) {
+  if (ch.fine) {
+    const sl = fineSlice(ch, band);
+    return cropBand(yield* pixFine(ch, base, region, sl), sl.cropTop, sl.cropH);
+  }
+  const H2 = bandH(ch, band);
+  return cropBand(yield* pixSteps(ch, base, raw, region), band * BANDH, H2);
+}
+function* paintSteps(scene, S, ch, base, raw, region, band = 0) {
+  const { img, front, wall } = yield* bandPixels(ch, base, raw, region, band);
   yield;
   finishPut(S, img, front, wall);
   yield;
@@ -580,8 +594,11 @@ export function paintPreview(scene, name, grid, region) {
   const ROWS = Math.round(grid.length / COLS);
   const S = makeEntry(scene, ROWS * T);
   const raw = (c, r) => (c >= COLS ? grid[r * COLS + COLS - 1] : grid[r * COLS + c]);
-  const g = paintSteps(scene, S, { grid, ug: { top: ROWS + 40, biome: null } }, 0, raw, region);
-  while (!g.next().done);
+  const g0 = pixSteps({ grid, ug: { top: ROWS + 40, biome: null } }, 0, raw, region);
+  let st;
+  do st = g0.next(); while (!st.done);
+  finishPut(S, st.value.img, st.value.front, st.value.wall);
+  scene.textures.get(S.key).refresh();
   PREVIEW.set(name, S.key);
   return S.key;
 }

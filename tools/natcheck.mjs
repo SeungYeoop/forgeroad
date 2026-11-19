@@ -76,7 +76,7 @@ try {
         b.vy = Math.min(720, b.vy + 1500 * dt * (b.vy > 0 ? 1.15 : 1));
         W.move(b, dt);
         if (W.overlapAt(b, b.x, b.y)) overlaps++;
-        if (b.y > 2816 + 60) { falls++; b.x = maxX - 40; const gy = sc.surfaceYAt(b.x); b.y = gy > 0 ? gy - 1 : 1600; b.vy = 0; }
+        if (b.y > 8448 + 60) { falls++; b.x = maxX - 40; const gy = sc.surfaceYAt(b.x); b.y = gy > 0 ? gy - 1 : 4800; b.vy = 0; }
         if (b.x > maxX + 1) ((maxX = b.x), (lastProg = t), (stuckT = 0));
         else stuckT = t - lastProg;
         // 오래 막히면 잠깐 뒤로 갔다 다시 (막다른 굴에서 빠져나오는 사람처럼)

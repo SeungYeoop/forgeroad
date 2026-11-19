@@ -124,8 +124,10 @@ export function update(sc) {
   const caveStyle = CAVE_STYLES[biome] ?? CAVE_STYLES.drip;
   // 1) 지형 돌출
   const live = new Set();
-  for (const ch of sc.world.loaded.values()) {
-    const rt = ch.rt;
+  // 조각마다 여러 띠(세로로 나눈 그림판)
+  const rts = [];
+  for (const ch of sc.world.loaded.values()) for (const B of ch.bands?.values() ?? []) rts.push(B.rt);
+  for (const rt of rts) {
     const key = sc._frTerr?.get(rt)?.keyF;
     if (!rt || !rt.visible || !key) continue;
     live.add(rt);

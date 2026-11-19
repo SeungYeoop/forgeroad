@@ -14,19 +14,40 @@ export const FMARG = 8; // 좌우 여유 (격자 칸) = 32px
 const MP = FMARG * 4;
 
 // 조각 하나의 격자(좌우 여유 포함)를 잘라 낸다 — 작업 스레드로 보낸다
-export function fineSlice(ch) {
-  const f = ch.fine, F = f.F, LW = F.LW, LH = F.LH;
+// band: 세로 띠 번호 (BANDH px씩). 위아래 BMARG px 여유를 붙여 잘라 낸다 (그늘·테두리가 띠 경계에서 끊기지 않게)
+export const BANDH = 768, BMARG = 64;
+export function fineSlice(ch, band = -1) {
+  const f = ch.fine, F = f.F, LW = F.LW, LHf = F.LH, HPf = (LHf - 1) * 4;
   const n = PW / 4 + 2 * FMARG + 1, i0 = f.x0 / 4 - FMARG;
+  let y0 = 0, y1 = HPf, cropTop = 0, cropH = HPf;
+  if (band >= 0) {
+    const a = band * BANDH, b = Math.min(HPf, a + BANDH);
+    y0 = Math.max(0, a - BMARG);
+    y1 = Math.min(HPf, b + BMARG);
+    cropTop = a - y0;
+    cropH = b - a;
+  }
+  const j0 = y0 / 4, LH = (y1 - y0) / 4 + 1;
   const d = new Float32Array(n * LH);
   for (let j = 0; j < LH; j++) {
-    const o = j * LW, p = j * n;
+    const o = (j0 + j) * LW, p = j * n;
     for (let k = 0; k < n; k++) {
       let i = i0 + k;
       i = i < 0 ? 0 : i > LW - 1 ? LW - 1 : i;
       d[p + k] = F.d[o + i];
     }
   }
-  return { d, LW: n, LH, render: f.render, kind: f.kind, pkey: f.pkey };
+  return { d, LW: n, LH, y0, cropTop, cropH, render: f.render, kind: f.kind, pkey: f.pkey, mats: f.mats, walls: f.walls, spec: f.spec, ox: f.ox };
+}
+// 그린 결과에서 띠 부분만 (여유 줄 빼기)
+export function cropBand(res, top, h) {
+  const { img, front, wall } = res;
+  const W = img.width;
+  if (top === 0 && h === img.height) return res;
+  const o = top * W * 4, m = h * W * 4;
+  const im = mkImage(W, h);
+  im.data.set(img.data.subarray(o, o + m));
+  return { img: im, front: front.slice(o, o + m), wall: wall.slice(o, o + m) };
 }
 
 const mkImage = (w, h) => (typeof ImageData !== "undefined" ? new ImageData(w, h) : { data: new Uint8ClampedArray(w * h * 4), width: w, height: h });
@@ -46,6 +67,7 @@ export function* pixFine(ch, base, region, S) {
   const put = (x, y, c) => x >= 0 && y >= 0 && x < PW && y < PH && (buf[y * PW + x] = pack(c));
   const empty = (x, y) => x >= 0 && y >= 0 && x < PW && y < PH && buf[y * PW + x] === 0;
   const X0 = base * T; // 조각 왼쪽 끝의 세계 x
+  const OY = S.y0 ?? 0; // 이 조각(띠) 맨 위의 세계 y
 
   // ── 1) 바위/공기 (충돌과 같은 식) ──
   const M = new Uint8Array(EW * PH);
@@ -180,7 +202,7 @@ export function* pixFine(ch, base, region, S) {
     const base0 = SP ? Math.max(ugTopPx - 40, surfAt(x) + 88) : ugTopPx;
     matY[x + 16] = base0 + (vn1(wx / 70, 61) - 0.5) * 48 + (vn1(wx / 17, 62) - 0.5) * 12;
   }
-  const isUGp = (x, y) => (ug.top <= 0 ? !0 : ug.top * T >= PH ? !1 : y >= matY[Math.max(0, Math.min(PW + 31, x + 16))]);
+  const isUGp = (x, y) => (ug.top <= 0 ? !0 : ug.top * T >= OY + PH ? !1 : y + OY >= matY[Math.max(0, Math.min(PW + 31, x + 16))]);
   // 지층 띠 (세계 좌표, 완만하게 휜다)
   const bandWarp = (wx) => (vn1(wx / 64, 77) * 14 + vn1(wx / 256, 78) * 10);
   const BH = 22;
@@ -193,6 +215,69 @@ export function* pixFine(ch, base, region, S) {
     let L = lvq(wx * sx + (Gs * 97) % 1000, y, Gs);
     if (L === 5 && H(wx >> 2, y >> 2, 95) < 0.3) L = 4;
     return L;
+  };
+
+  // ── 재질 구역 (나무줄기·잎·벽돌·버섯): 세계 좌표 사각형 → 이 조각의 픽셀 지도 ──
+  const MATC = { wood: 1, leaf: 2, brick: 3, stem: 4, cap: 5, rock: 6, ice: 7, jelly: 8 };
+  let MM = null;
+  const MX = S.ox ?? X0; // 재질·뒷벽 사각형은 구역 기준 좌표
+  if (S.mats && S.mats.length) {
+    MM = new Uint8Array(PW * PH);
+    for (const r of S.mats) {
+      const c = MATC[r.m] ?? 0;
+      const x0 = Math.max(0, Math.floor(r.x0 - MX)), x1 = Math.min(PW, Math.ceil(r.x1 - MX));
+      const y0 = Math.max(0, Math.floor(r.y0 - OY)), y1 = Math.min(PH, Math.ceil(r.y1 - OY));
+      for (let y = y0; y < y1; y++) MM.fill(c, y * PW + x0, Math.max(y * PW + x0, y * PW + x1));
+    }
+  }
+  const BARK = rampOf(mix(0x6e4628, P.soil, 0.25)), LEAF = rampOf(mix(P.top, 0x2e6a30, 0.3)), BRICK = rampOf(mix(P.rock, 0xc0b098, 0.45));
+  const STEM = rampOf(0xe0d4b8), CAPR = rampOf(mix(P.accent ?? 0xd04040, 0xc83838, 0.55));
+  const ICE = rampOf(0xa8dcf4), JELLY = rampOf(0xe070c0);
+  const matCol = (m, x, y, wx, yw, dd, ex) => {
+    let L, R6;
+    if (m === 1) {
+      // 나무껍질: 세로 결 + 옹이
+      R6 = BARK;
+      const g = (wx + Math.floor(vn1(yw / 19, 41) * 5)) % 7;
+      L = g < 1 ? 3 : g < 3 ? 2 : 1;
+      if (H(wx >> 3, yw >> 4, 42) > 0.93) L = 4;
+    } else if (m === 2) {
+      // 잎: 뭉친 덩어리 (돌 무늬를 잎 크기로)
+      R6 = LEAF;
+      L = lvq(wx + 500, yw, 9);
+      L = L === 5 ? 3 : L;
+      if (H(wx, yw, 43) > 0.95) L = 0;
+    } else if (m === 3) {
+      R6 = BRICK;
+      const row = Math.floor(yw / 8), off = row & 1 ? 8 : 0;
+      L = yw % 8 === 7 || (wx + off) % 16 === 15 ? 4 : H((wx + off) >> 4, row, 44) > 0.7 ? 2 : 1;
+      if (H(wx >> 1, yw >> 1, 45) > 0.96) L = 3;
+    } else if (m === 4) {
+      R6 = STEM;
+      L = (wx % 5 === 0 ? 2 : 1) + (H(wx, yw >> 2, 46) > 0.9 ? 1 : 0);
+    } else if (m === 5) {
+      R6 = CAPR;
+      L = H(wx >> 3, yw >> 3, 47) > 0.9 && (wx & 7) > 1 && (yw & 7) > 1 ? -1 : 1 + ((wx >> 2) % 3 === 0 ? 1 : 0);
+      if (L < 0) return 0xfff4e0;
+    } else if (m === 7) {
+      // 얼음: 밝은 하늘색, 비스듬한 반짝임 줄
+      R6 = ICE;
+      L = (wx - yw * 2) % 23 === 0 || (wx - yw * 2) % 23 === 1 ? 0 : H(wx >> 2, yw >> 2, 48) > 0.8 ? 2 : 1;
+    } else if (m === 8) {
+      // 튕김 버섯(젤리): 분홍, 점무늬, 윗줄 밝게
+      R6 = JELLY;
+      L = H(wx >> 2, yw >> 2, 49) > 0.82 ? 0 : (yw & 7) < 2 ? 1 : 2;
+    } else return null;
+    // 테두리·빛
+    if (dd <= 3) L = 5;
+    else if (dd <= 7) {
+      const n = normal(ex, y);
+      if (n) {
+        const lit = n[0] * -0.6 + n[1] * -0.8;
+        lit > 0.4 ? (L = Math.max(0, L - 1)) : lit < -0.3 && (L = Math.min(4, L + 1));
+      }
+    }
+    return R6[L];
   };
 
   // ── 4) 바위 칠하기 ──
@@ -216,13 +301,21 @@ export function* pixFine(ch, base, region, S) {
       const cHi = capT === "moss" ? BI.cap[1] : capT === "snow" ? 0xffffff : capT === "sand" ? 0xfff6d0 : P.topHi;
       const CR = rampOf(cTop);
       const soft = capT === "grass" || capT === "moss" || capT === "snow" || capT === "sand";
-      const capN = soft ? (capT === "snow" ? 6 : capT === "sand" ? 4 : 5) + Math.floor(H(wx >> 1, s, 11) * 3) - (up < 0.75 ? 1 : 0) : 3;
-      const drip = soft ? Math.floor(H(wx >> 1, s >> 2, 12) * 3) + (H(wx >> 2, s >> 2, 13) > 0.82 ? 3 : 0) : 0;
+      const sw = s + OY;
+      const capN = soft ? (capT === "snow" ? 6 : capT === "sand" ? 4 : 5) + Math.floor(H(wx >> 1, sw, 11) * 3) - (up < 0.75 ? 1 : 0) : 3;
+      const drip = soft ? Math.floor(H(wx >> 1, sw >> 2, 12) * 3) + (H(wx >> 2, sw >> 2, 13) > 0.82 ? 3 : 0) : 0;
       const hasCap = realTop && up > (soft ? 0.5 : 0.42);
       const soilN = hasCap && soft && !ugTop && soilT > 0 ? soilT + Math.floor((vn1(wx / 40, 14) - 0.5) * 10) : 0;
       const RT = rampOf(ugTop ? ugBase : regionBase);
       for (let y = s; y < e; y++) {
-        const k = y * EW + ex, dd = D[k];
+        const k = y * EW + ex, dd = D[k], yw = y + OY;
+        if (MM && MM[y * PW + x]) {
+          const mc = matCol(MM[y * PW + x], x, y, wx, yw, dd, ex);
+          if (mc !== null) {
+            put(x, y, mc);
+            continue;
+          }
+        }
         const ugc = isUGp(x, y);
         const R5 = ugc ? rampOf(ugBase) : rampOf(regionBase);
         const dt = realTop ? y - s : 9999;
@@ -232,7 +325,7 @@ export function* pixFine(ch, base, region, S) {
           if (soft) {
             if (dt === 0) col = CR[5];
             else if (dt === 1) col = cHi;
-            else if (dt < 3) col = (wx + y) % 3 === 0 && H(wx, y, 15) > 0.5 ? cHi : mix(cHi, cTop, 0.45);
+            else if (dt < 3) col = (wx + yw) % 3 === 0 && H(wx, yw, 15) > 0.5 ? cHi : mix(cHi, cTop, 0.45);
             else if (dt < capN - 1) col = cTop;
             else if (dt < capN) col = CR[3];
             else col = dt === capN + drip - 1 ? CR[5] : CR[4];
@@ -246,16 +339,16 @@ export function* pixFine(ch, base, region, S) {
         if (hasCap && dt < capN + drip + soilN) {
           // 흙층: 작은 자갈, 위쪽은 풀뿌리 그늘
           ramp5 = SOIL;
-          L = lvq(wx * 1.3 + 900, y * 1.3, 6);
-          L = L === 5 ? (H(wx, y, 96) < 0.5 ? 4 : 5) : Math.min(4, L + 1);
+          L = lvq(wx * 1.3 + 900, yw * 1.3, 6);
+          L = L === 5 ? (H(wx, yw, 96) < 0.5 ? 4 : 5) : Math.min(4, L + 1);
           dt < capN + drip + 2 && (L = Math.min(4, L + 1));
         } else {
           // 바위: 지층 지역은 결 따라 납작해지고 층 사이 금이 간다
           const layered = strata > 0 && !(ugc && BI);
-          L = stoneL(wx, y, ugc, layered && H(Math.floor((y + bw) / BH), 91) < strata * 0.55);
+          L = stoneL(wx, yw, ugc, layered && H(Math.floor((yw + bw) / BH), 91) < strata * 0.55);
           if (layered && L < 5) {
             // 층 사이 금은 군데군데 끊기고, 띠 밝기는 일부만 다르다 (벽돌 줄처럼 보이지 않게)
-            const f = (y + bw) / BH, band = Math.floor(f), fr = f - band;
+            const f = (yw + bw) / BH, band = Math.floor(f), fr = f - band;
             if (fr < 1 / BH && H(wx >> 3, band, 92) < strata * 0.6) L = Math.min(4, L + 2);
             else if (H(band, 93) < strata * 0.35) L = Math.max(0, L - 1);
           }
@@ -263,7 +356,7 @@ export function* pixFine(ch, base, region, S) {
         // 안쪽일수록 어둡게 (띠가 생기지 않게 점점이 섞이며 넘어간다)
         const dpx = dd / 3;
         if (L < 5 && dpx > 10) {
-          const t = (dpx - 10) / 30, hv = H(wx, y, 97);
+          const t = (dpx - 10) / 30, hv = H(wx, yw, 97);
           L = Math.min(4, L + (hv < t ? 1 : 0) + (hv < t - 0.55 ? 1 : 0));
         }
         // 테두리 + 바깥 방향에 따른 빛(왼쪽 위)과 그늘
@@ -281,7 +374,7 @@ export function* pixFine(ch, base, region, S) {
         }
         col = ramp5[L];
         // 용암 지대: 틈새가 빛난다
-        if (BI && ugc && ug.biome === "magma" && L === 5 && dd > 3 && H(wx >> 3, y >> 3, 51) > 0.7) col = mix(0xff6a20, 0xffd060, H(wx, y, 52) * 0.5);
+        if (BI && ugc && ug.biome === "magma" && L === 5 && dd > 3 && H(wx >> 3, yw >> 3, 51) > 0.7) col = mix(0xff6a20, 0xffd060, H(wx, yw, 52) * 0.5);
         put(x, y, col);
       }
     }
@@ -293,11 +386,13 @@ export function* pixFine(ch, base, region, S) {
     for (let q = runOff[ex]; q < runOff[ex + 1]; q += 2) {
       const e = RUN[q + 1];
       if (e >= PH) continue;
-      const r = e >> 4, ugc = isUGp(x, e);
+      // 재질 구역(나무·벽돌 등) 밑면엔 돌 고드름이 없다
+      if (MM && x >= 0 && x < PW && e > 0 && MM[(e - 1) * PW + x]) continue;
+      const ew = e + OY, r = ew >> 4, ugc = isUGp(x, e);
       const R5 = ugc ? rampOf(ugBase) : rampOf(regionBase);
-      const hv = H(wx >> 2, e >> 2, 9);
+      const hv = H(wx >> 2, ew >> 2, 9);
       if (hv > 0.62) {
-        const L = Math.floor(H(wx >> 2, e >> 2, 10) * 6) + 2 - Math.abs((wx & 3) - 1.5) * 1.6;
+        const L = Math.floor(H(wx >> 2, ew >> 2, 10) * 6) + 2 - Math.abs((wx & 3) - 1.5) * 1.6;
         for (let k = 0; k < L; k++) {
           if (!empty(x, e + k)) break;
           const edge = k >= Math.floor(L) - 1 || (wx & 3) === 0;
@@ -323,30 +418,67 @@ export function* pixFine(ch, base, region, S) {
       }
     }
   }
+  // ── 5b) 특수 블럭: 나무판·구름(한쪽만 막는 발판), 물(반투명) ──
+  if (S.spec && S.spec.length) {
+    const MX2 = S.ox ?? X0;
+    const PL = rampOf(mix(0xa07040, P.soil, 0.2)), CL = rampOf(0xf4f8ff), WA = mix(0x3a8ad8, P.sky ? P.sky[0] ?? 0x3a8ad8 : 0x3a8ad8, 0.25);
+    for (const r of S.spec) {
+      const x0 = Math.max(0, Math.floor(r.x0 - MX2)), x1 = Math.min(PW, Math.ceil(r.x1 - MX2));
+      const y0 = Math.max(0, Math.floor(r.y0 - OY) - (r.t === 2 ? 6 : 0)), y1 = Math.min(PH, Math.ceil(r.y1 - OY));
+      if (x0 >= x1 || y0 >= y1) continue;
+      for (let x = x0; x < x1; x++) {
+        const wx = MX2 + x;
+        for (let y = y0; y < y1; y++) {
+          const yw = OY + y, dy = yw - r.y0, dx = wx - r.x0, dr = r.x1 - 1 - wx;
+          if (r.t === 1) {
+            // 나무판: 윗줄 밝게, 판 이음매, 아랫줄 그늘
+            const seam = (wx - r.x0) % 24 === 23;
+            const L = dy === 0 ? 0 : dy === r.y1 - r.y0 - 1 || dx === 0 || dr === 0 ? 5 : seam ? 4 : dy % 8 === 4 ? 3 : (wx >> 3) % 2 ? 1 : 2;
+            put(x, y, PL[L]);
+          } else if (r.t === 2) {
+            // 구름: 위로 볼록한 뭉게 (8px마다 높이가 다른 혹), 아래는 평평
+            const bump = 2 + Math.floor(H(wx >> 3, r.y0, 71) * 5);
+            if (dy < -bump) continue;
+            const edge = dy === -bump || dx === 0 || dr === 0 || dy === r.y1 - r.y0 - 1;
+            const L = edge ? 3 : dy < -bump + 3 ? 0 : dy > 10 ? 2 : 1;
+            put(x, y, CL[L]);
+          } else if (r.t === 3) {
+            // 물: 반투명 파랑, 수면은 밝은 줄
+            const k = y * PW + x;
+            if (buf[k] && dy > 0) continue;
+            const c = dy < 2 ? mix(WA, 0xffffff, 0.55) : dy < 4 ? mix(WA, 0xffffff, 0.25) : H(wx >> 2, yw >> 1, 72) > 0.97 ? mix(WA, 0xffffff, 0.3) : WA;
+            const al = dy < 2 ? 230 : 150;
+            buf[k] = ((al << 24) | ((c & 255) << 16) | (c & 0xff00) | ((c >> 16) & 255)) >>> 0;
+          }
+        }
+      }
+    }
+  }
   // 입체 레이어용: 밟을 수 있는 것만 담은 그림
   const front = new Uint8ClampedArray(img.data);
   const wall = new Uint8ClampedArray(img.data.length);
   const wallBuf = new Uint32Array(wall.buffer);
   yield;
   // ── 6) 지하 뒷벽: 지표 아래, 위가 바위로 덮인 공기에만 (바위 가까이는 더 어둡게) ──
-  if (ug.top * T < PH) {
+  if (ug.top * T < OY + PH) {
     const wallBase = BI ? BI.wall : mix(regionBase, 0x0e0a14, 0.7);
     const WR = rampOf(sh(wallBase, 0.08));
     for (let x = 0; x < PW; x++) {
       if ((x & 31) === 0) yield;
       const ex = x + MP, wx = X0 + x;
-      const wallTop = SP ? surfAt(x) + 2 : -1;
+      const wallTop = SP ? surfAt(x) + 2 - OY : -1;
       // 지표에서 이만큼 아래는 땅속 (굴 입구처럼 위가 뚫려 있어도 뒷벽이 보인다)
-      const deep = SP ? surfAt(x) + 26 : -1;
+      const deep = SP ? surfAt(x) + 26 - OY : -1;
       let prevEnd = -1;
       const n = runOff[ex + 1];
       for (let q = runOff[ex]; q <= n; q += 2) {
         const a = prevEnd, b = q < n ? RUN[q] : PH;
         // 공기 구간 [a, b): 위가 바위로 덮였거나 지표보다 충분히 깊은 곳만 (하늘이 뚫린 곳은 배경이 보인다)
-        const y0 = a > 0 ? Math.max(a, Math.ceil(wallTop)) : SP ? Math.max(0, Math.ceil(deep)) : PH;
+        // 띠 맨 위부터 공기인 동굴(지표 없음)은 위가 바위로 덮여 있다고 본다
+        const y0 = a > 0 ? Math.max(a, Math.ceil(wallTop)) : SP ? Math.max(0, Math.ceil(deep)) : OY > 0 && ug.top <= 0 ? 0 : PH;
         if (y0 < b)
           for (let y = y0; y < b && (a <= 0 || y - a < 960); y++) {
-            const L0 = lvq(wx * 0.8 + 3000, y * 0.8, 18);
+            const L0 = lvq(wx * 0.8 + 3000, (y + OY) * 0.8, 18);
             let L = L0 >= 5 ? 5 : L0 >= 3 ? 4 : 3;
             const da = DA[y * EW + ex];
             da <= 9 ? (L = 5) : da <= 18 && (L = Math.min(5, L + 1));
@@ -354,6 +486,37 @@ export function* pixFine(ch, base, region, S) {
           }
         prevEnd = q < n ? RUN[q + 1] : PH;
       }
+    }
+  }
+  // ── 6b) 정해진 뒷벽 구역: 공기에만 ──
+  if (S.walls && S.walls.length) {
+    const WC = {
+      wood: rampOf(mix(0x3a2416, P.soil, 0.2)),
+      brick: rampOf(mix(mix(P.rock, 0xc0b098, 0.45), 0x1a1420, 0.6)),
+      rock: rampOf(mix(regionBase, 0x2a2430, 0.45)),
+      stem: rampOf(0xd8ccb0),
+    };
+    for (const r of S.walls) {
+      const R6 = WC[r.m] ?? WC.rock;
+      const x0 = Math.max(0, Math.floor(r.x0 - MX)), x1 = Math.min(PW, Math.ceil(r.x1 - MX));
+      const y0 = Math.max(0, Math.floor(r.y0 - OY)), y1 = Math.min(PH, Math.ceil(r.y1 - OY));
+      for (let y = y0; y < y1; y++)
+        for (let x = x0; x < x1; x++) {
+          const ex = x + MP;
+          if (M[y * EW + ex] || wallBuf[y * PW + x]) continue;
+          const wx = X0 + x, yw = y + OY;
+          let L;
+          if (r.m === "stem") L = (wx % 5 === 0 ? 2 : 1);
+          else if (r.m === "wood") L = (wx + Math.floor(vn1(yw / 19, 41) * 5)) % 7 < 2 ? 4 : 3;
+          else if (r.m === "brick") L = yw % 8 === 7 || (wx + (Math.floor(yw / 8) & 1 ? 8 : 0)) % 16 === 15 ? 5 : 3;
+          else {
+            const L0 = lvq(wx * 0.8 + 3000, yw * 0.8, 18);
+            L = L0 >= 5 ? 4 : L0 >= 3 ? 3 : 2;
+          }
+          const da = DA[y * EW + ex];
+          da <= 9 && (L = Math.min(5, L + 1));
+          wallBuf[y * PW + x] = pack(R6[L]);
+        }
     }
   }
   // ── 7) 장식 (실제 윤곽에) ──
@@ -471,9 +634,9 @@ export function* pixFine(ch, base, region, S) {
         const l = topNear(ex - 3, s), r = topNear(ex + 3, s);
         const sl = l >= 0 && r >= 0 ? (r - l) / 6 : 9;
         // 완만한 윗면에만 (가파른 비탈·벼랑 끝엔 안 자란다)
-        Math.abs(sl) < 1.1 && decoFloor(x, s, wx, s >> 4);
+        Math.abs(sl) < 1.1 && decoFloor(x, s, wx, (s + OY) >> 4);
       }
-      e < PH && decoCeil(x, e, wx, e >> 4);
+      e < PH && decoCeil(x, e, wx, (e + OY) >> 4);
     }
   }
   return { img, front, wall };

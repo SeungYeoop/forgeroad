@@ -4,11 +4,12 @@ import { ZONES, upChunk, downChunk, FR_WORLD } from "../src/forge/zones.js";
 import { planOf, drawChunk } from "../src/forge/natgen.js";
 import { pixFine, fineSlice } from "../src/forge/terrfine.js";
 import { savePNG } from "./png.mjs";
+import { paintDeco } from "../src/forge/natdeco.js";
 
 const [id = "g1_0", seedS = "1", out = "paint.png", ...crop] = process.argv.slice(2);
 const z = ZONES.find((q) => q.id === id);
 const seed = Number(seedS);
-const o = { seed, Ft: 176, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, fe: 1, ze: 0, biome: null, noRepair: !!process.env.NOREP };
+const o = { seed, Ft: 528, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, fe: 1, ze: 0, biome: null, noRepair: !!process.env.NOREP };
 const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "lush" : Math.abs(x) % 2 ? "geode" : "drip");
 const GROUND_BIO = { "-3": "drip", "-2": "deep", "-1": "lush", 1: "drip", 2: "geode", 3: "magma" };
 o.biome = z.y > 0 ? CAVE_BIO(z.x, z.y) : GROUND_BIO[z.x] ?? "drip";
@@ -26,12 +27,27 @@ for (let y = 0; y < Hh; y++)
     img[k + 2] = 230;
     img[k + 3] = 255;
   }
+// 나무·폐허 (지형 뒤)
+const DC = new Map();
+for (const T of P.trees ?? []) {
+  let D = DC.get(T.key);
+  D || DC.set(T.key, (D = paintDeco(T.key)));
+  const ox = T.x - D.w / 2 - cx, oy = T.y - D.h + 1 - cy;
+  for (let y = 0; y < D.h; y++)
+    for (let x = 0; x < D.w; x++) {
+      const q = (y * D.w + x) * 4, X = ox + x, Y = oy + y;
+      if (!D.data[q + 3] || X < 0 || Y < 0 || X >= W || Y >= Hh) continue;
+      const k = (Y * W + X) * 4;
+      img[k] = D.data[q]; img[k + 1] = D.data[q + 1]; img[k + 2] = D.data[q + 2];
+    }
+}
+console.log("trees", (P.trees ?? []).length);
 const t0 = performance.now();
 let painted = 0;
 for (let S = z.c0; S < z.c1; S++) {
   const sx = (S - z.c0) * 512;
   if (sx + 512 <= cx || sx >= cx + W) continue;
-  const r = new Uint8Array(32 * 176), l = new Array(32), s = new Array(32);
+  const r = new Uint8Array(32 * 528), l = new Array(32), s = new Array(32);
   const ch = drawChunk(P, z, S, r, l, s, { ...o, arena: false });
   const g = pixFine({ ug: ch.ug }, S * 32, region, fineSlice(ch));
   let st;
@@ -48,9 +64,10 @@ for (let S = z.c0; S < z.c1; S++) {
       const q = (yy * 512 + xx) * 4, k = (y * W + x) * 4;
       const src = A[q + 3] ? A : Wl[q + 3] ? Wl : null;
       if (!src) continue;
-      img[k] = src[q];
-      img[k + 1] = src[q + 1];
-      img[k + 2] = src[q + 2];
+      const al = src[q + 3] / 255;
+      img[k] = img[k] * (1 - al) + src[q] * al;
+      img[k + 1] = img[k + 1] * (1 - al) + src[q + 1] * al;
+      img[k + 2] = img[k + 2] * (1 - al) + src[q + 2] * al;
     }
   }
 }
@@ -81,7 +98,7 @@ if (process.env.MARK) {
       for (let y = y0; y < y0 + h; y++) (put(x0 + t, y, c), put(x0 + w - 1 - t, y, c));
     }
   };
-  const base = 100 * 16;
+  const base = 300 * 16;
   fig(60, base);
   rect(0, base - 230, 640, 360, [255, 255, 255]);
   P.peak && fig(P.peak.x + 20, P.peak.y);
@@ -89,4 +106,16 @@ if (process.env.MARK) {
   for (const s of P.spots.filter((_, k) => k % 60 === 0)) fig(s.x, s.y);
 }
 console.log(`${id} seed ${seed}: ${painted} chunks painted in ${Math.round(performance.now() - t0)}ms (${Math.round((performance.now() - t0) / painted)}ms/chunk)`);
-savePNG(out, W, Hh, img);
+// DOWN=n: n×n 픽셀을 하나로 (큰 구역 전체를 한 장에)
+const DN = Number(process.env.DOWN || 1);
+if (DN > 1) {
+  const w2 = Math.floor(W / DN), h2 = Math.floor(Hh / DN), o2 = new Uint8Array(w2 * h2 * 4);
+  for (let y = 0; y < h2; y++)
+    for (let x = 0; x < w2; x++) {
+      let r = 0, g = 0, b = 0;
+      for (let j = 0; j < DN; j++) for (let i = 0; i < DN; i++) { const k = ((y * DN + j) * W + x * DN + i) * 4; r += img[k]; g += img[k + 1]; b += img[k + 2]; }
+      const k = (y * w2 + x) * 4, n = DN * DN;
+      o2[k] = r / n; o2[k + 1] = g / n; o2[k + 2] = b / n; o2[k + 3] = 255;
+    }
+  savePNG(out, w2, h2, o2);
+} else savePNG(out, W, Hh, img);

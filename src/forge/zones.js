@@ -6,7 +6,7 @@
 // 난이도는 줄 위치가 아니라 거점에서 떨어진 칸 수(고리)로 정한다 (diffDist).
 import { FR_REGIONS } from "./world.js";
 
-const VT = 32, ME = 6, POCKET = 5, ZLEN = 8, N = 3;
+const VT = 32, ME = 6, POCKET = 5, ZLEN = 16, N = 3;
 // 원래 지역(그림 재료) 번호
 const ART = { ash: 0, mist: 1, mine: 2, marsh: 3, fort: 4, frost: 5, glass: 6, spire: 7, crystal: 8, sky: 9, shadow: 10, core: 11 };
 // 지상 줄: x → [그림, 이름, 형용사]
@@ -151,16 +151,16 @@ export function diffDist(A) {
 // ── 문 ──────────────────────────────────────────────
 // 위·아래 문은 구역 3분의 1, 3분의 2 지점 조각에
 // 하늘로 오르는 섬들이 넓게 퍼지도록 구역 가운데에
-export const upChunk = (z) => z.c0 + 4;
+export const upChunk = (z) => z.c0 + 8;
 // 보스 방 근처(뒤 4조각)에는 지하가 없으므로 앞쪽에
-export const downChunk = (z) => z.c0 + 3;
+export const downChunk = (z) => z.c0 + 6;
 // 이번 탐험의 무작위 내용물
 let RUN_SEED = 0;
 export const setRunSeed = (s) => (RUN_SEED = s >>> 0);
 // 숨은 던전: 바깥 고리일수록 잘 나온다
 export const hasDungeon = (z) => z.kind === "zone" && roll(RUN_SEED, "dg", z.id) < 0.12 + z.ring * 0.06;
 // 숨은 던전 입구는 위·아래 문 사이 조각에
-export const dungeonChunk = (z) => z.c0 + 5;
+export const dungeonChunk = (z) => z.c0 + 10;
 export const packChunk = (z) => (z.kind === "zone" && roll(RUN_SEED, "pk", z.id) < 0.35 ? z.c0 + 1 + (hash(RUN_SEED, "pkc", z.id) % (ZLEN - 3)) : -1);
 export const waystoneOk = (z) => z?.kind === "zone" && z.ring >= 2 && roll(RUN_SEED, "ws", z.id) < 0.5;
 export function chestRoll(c, k, tier) {

@@ -30,13 +30,30 @@ export function installFinePhysics(proto, K) {
     }
     return false;
   };
-  // 한쪽만 막는 발판 (예전 칸 지형의 나무판·무너지는 판): 그 칸 윗줄
+  // 자연 지형의 특수 블럭 (구역 좌표 사각형): 1 나무판 2 구름 3 물 4 얼음 5 튕김 버섯
+  proto.fspec = function (gx, py) {
+    const tx = Math.floor(gx / gt);
+    if (tx < 0) return 0;
+    const C = Math.floor(tx / vt), f = this.gen.get(C).fine;
+    if (!f || !f.spec || !f.spec.length) return 0;
+    const zx = f.x0 + (gx - C * CPX);
+    for (const r of f.spec) if (zx >= r.x0 && zx < r.x1 && py >= r.y0 && py < r.y1) return r.t;
+    return 0;
+  };
+  // 한쪽만 막는 발판 (예전 칸 지형의 나무판·무너지는 판 / 자연 지형의 나무판·구름): 윗줄
   proto.fplat = function (gx, py) {
-    if (py < 0 || py >= Oe || py % gt) return 0;
+    if (py < 0 || py >= Oe) return 0;
     const tx = Math.floor(gx / gt);
     if (tx < 0) return 0;
     const C = Math.floor(tx / vt);
-    if (this.gen.get(C).fine) return 0;
+    const f = this.gen.get(C).fine;
+    if (f) {
+      if (!f.spec) return 0;
+      const zx = f.x0 + (gx - C * CPX);
+      for (const r of f.spec) if (r.t <= 2 && py === r.y0 && zx >= r.x0 && zx < r.x1) return r.t === 2 ? 20 : plat;
+      return 0;
+    }
+    if (py % gt) return 0;
     const v = this.code(tx, py / gt);
     return v === plat || v === 3 || v === 6 ? v : 0;
   };
@@ -97,6 +114,8 @@ export function installFinePhysics(proto, K) {
       h = T / R;
     S._g = S.onGround;
     S.onGround = !1;
+    // 물 속인가 (몸 가운데)
+    S.inWater = this.fspec(Math.floor(S.x + this.originChunk * CPX), Math.floor(S.y - (S.h ?? 16) / 2)) === 3;
     for (let m = 0; m < R; m++) {
       this.moveX(S, S.vx * h);
       this.moveY(S, S.vy * h);
@@ -117,6 +136,15 @@ export function installFinePhysics(proto, K) {
     S.dropThrough > 0 && (S.dropThrough -= T);
   };
   proto.land = function (S, x, y, code = fe) {
+    const gx = Math.floor(x + this.originChunk * CPX);
+    const sp = code === fe ? this.fspec(gx, Math.floor(y) + 1) : 0;
+    // 튕김 버섯: 떨어지며 닿으면 높이 튕겨 오른다
+    if (sp === 5 && S.vy > 160) {
+      S.vy = -Math.max(700, S.vy * 0.95);
+      S.bounced = 0.3;
+      return;
+    }
+    S.groundSpec = sp;
     S.onGround = !0;
     S.vy > 0 && (S.vy = 0);
     S.groundCode = code;

@@ -20,8 +20,8 @@ const zt = Phaser,
   gt = 16,
   vt = 32,
   Vi = vt * gt,
-  TOPR = 50,
-  UGR = 70,
+  TOPR = 250,
+  UGR = 222,
   Ft = 56 + TOPR + UGR,
   Oe = Ft * gt,
   OREF = (56 + TOPR) * gt,
@@ -9250,6 +9250,8 @@ class Xn {
         const t = p[k], a = gy[t.x - 1] ?? -1, b = gy[t.x + 1] ?? -1, c0 = gy[t.x];
         c0 < 0 || a < 0 || b < 0 || Math.abs(a - b) > 8 ? p.splice(k, 1) : (t.py = c0);
       }
+    // 자연 지형: 생성기가 고른 나무·폐허 그림 (실제 지면 높이에 선다)
+    zg?.trees && p.push(...zg.trees);
     const g = [];
     for (let y = 0; y < vt; y++) {
       const x = S * vt + y - me;
@@ -10137,44 +10139,72 @@ class zn {
             this.scene.tweens.add({ targets: E.sprite, alpha: 1, duration: 300 })));
       }
   }
+  // 지형은 조각(가로 512px) × 띠(세로 BANDH px)로 나눠 그린다: 화면 가까운 띠만 그림판을 만든다
+  // (지도가 매우 높아서 조각 하나를 통째로 그리면 그림판이 너무 크다)
+  bandRange() {
+    const cam = this.scene.cameras.main, BH = FG.BANDH;
+    const y0 = cam.scrollY - 220, y1 = cam.scrollY + xt + 220;
+    return [Math.max(0, Math.floor(y0 / BH)), Math.min(Math.ceil(Oe / BH) - 1, Math.floor(y1 / BH))];
+  }
   update(S) {
     const T = this.chunkOfLocal(S);
     // 구역 밖 조각은 불러오지 않는다 (벽 너머는 비어 있다)
     for (let C = Math.max(0, T - 2); C <= T + 3; C++) this.loaded.has(C) || !FG.chunkSameZone(C, T) || this.loadChunk(C);
     for (const [C, E] of this.loaded) (C < T - 3 || C > T + 4 || !FG.chunkSameZone(C, T)) && this.unloadChunk(C, E);
-    // 다음에 불러올 구역(앞뒤)을 미리 조금씩 그려 둔다
-    if (FG.prepaint)
-      for (const C of [T + 4, T - 3])
-        if (C >= 0 && !this.loaded.has(C) && FG.chunkSameZone(C, T)) {
-          const d = this.gen.get(C);
-          FG.prepaint(this.scene, d, C * vt, (a, v) => this.rawCode(a, v), d.region);
-        }
+    // 화면 높이 가까운 띠만
+    const [b0, b1] = this.bandRange();
+    for (const [C, E] of this.loaded) {
+      for (let b = b0; b <= b1; b++) E.bands.has(b) || this.loadBand(C, E, b);
+      for (const [b, B] of E.bands) (b < b0 - 1 || b > b1 + 1) && this.unloadBand(E, b, B);
+    }
+    // 곧 보일 띠(위아래 한 칸, 앞뒤 조각)를 미리 조금씩 그려 둔다
+    if (FG.prepaint) {
+      const pre = (C, b) => {
+        if (b < 0 || b * FG.BANDH >= Oe) return;
+        const d = this.gen.get(C);
+        FG.prepaint(this.scene, d, C * vt, (a, v) => this.rawCode(a, v), d.region, b);
+      };
+      for (const [C, E] of this.loaded) for (const b of [b0 - 1, b1 + 1]) E.bands.has(b) || pre(C, b);
+      for (const C of [T + 4, T - 3]) if (C >= 0 && !this.loaded.has(C) && FG.chunkSameZone(C, T)) for (let b = b0; b <= b1; b++) pre(C, b);
+    }
     FG.prepaintStep && FG.prepaintStep(5);
     this.gen.trim(T, 14);
   }
   loadChunk(S) {
-    const T = this.gen.get(S),
-      C = es(this.scene, T.region);
+    const T = this.gen.get(S);
     // 옆 구역은 벽 너머라 미리 만들 필요가 없다 (구역 하나를 통째로 설계하므로 비싸다)
     FG.chunkSameZone(S, S + 1) && this.gen.get(S + 1);
+    const m = { data: T, bands: new Map() };
+    (this.loaded.set(S, m), this.onLoad(T));
+  }
+  loadBand(S, M, b) {
+    const T = M.data,
+      C = es(this.scene, T.region),
+      BH = FG.BANDH,
+      Y0 = b * BH,
+      bh = Math.min(BH, Oe - Y0);
     let E = this.rtPool.pop();
-    (E || (E = this.scene.add.renderTexture(0, 0, Vi, Oe).setOrigin(0, 0)),
+    (E || (E = this.scene.add.renderTexture(0, 0, Vi, BH).setOrigin(0, 0)),
       E.setVisible(!0).setActive(!0),
       E.clear(),
-      E.setPosition(this.lx(S * vt), 0).setDepth(0));
+      E.setPosition(this.lx(S * vt), Y0).setDepth(0));
     const R = [];
     E.beginDraw();
     for (const t of T.decor) {
+      t.nat && FG.natDecorTex && FG.natDecorTex(this.scene, t.key);
       const a = this.scene.textures.get(t.key);
       if (!a || a.key === "__MISSING") continue;
-      const v = a.getSourceImage();
-      E.batchDraw(t.key, t.x * gt + 8 - v.width / 2, (t.py ?? t.row * gt) - v.height + 1);
+      const v = a.getSourceImage(), y = (t.py ?? t.row * gt) - v.height + 1;
+      y + v.height > Y0 && y < Y0 + bh && E.batchDraw(t.key, t.x * gt + 8 - v.width / 2, y - Y0);
     }
-    for (const t of T.signs) E.batchDraw("milestone_post", t.x * gt + 2, (t.py ?? t.row * gt) - 28);
-    const h = S * vt;
+    for (const t of T.signs) {
+      const y = (t.py ?? t.row * gt) - 28;
+      y + 30 > Y0 && y < Y0 + bh && E.batchDraw("milestone_post", t.x * gt + 2, y - Y0);
+    }
+    const h = S * vt, r0 = Math.floor(Y0 / gt), r1 = Math.min(Ft, Math.ceil((Y0 + bh) / gt));
     for (let t = 0; t < vt; t++) {
       const a = h + t;
-      for (let v = 0; v < Ft; v++) {
+      for (let v = r0; v < r1; v++) {
         const o = T.grid[v * vt + t];
         if (o === ze) continue;
         let n;
@@ -10210,21 +10240,31 @@ class zn {
           ((e.sprite = i), this.crumbles.set(`${a},${v}`, e), e.state === "gone" && i.setAlpha(0), R.push(i));
           continue;
         }
-        E.batchDrawFrame(C, n, t * gt, v * gt);
+        E.batchDrawFrame(C, n, t * gt, v * gt - Y0);
       }
     }
     E.endDraw();
-    FG.paintChunk && FG.paintChunk(this.scene, E, T, h, (a, v) => this.rawCode(a, v), T.region);
+    FG.paintChunk && FG.paintChunk(this.scene, E, T, h, (a, v) => this.rawCode(a, v), T.region, b);
     for (const t of T.signs) {
+      const y = (t.py ?? t.row * gt) - 27;
+      if (!(y + 12 > Y0 && y < Y0 + bh)) continue;
       const a = this.scene.add.text(0, 0, `${t.dist}`, { fontFamily: Di, fontSize: "8px", color: "#3a2a1a" });
-      (E.draw(a, t.x * gt + 2 + 6 - a.width / 2, (t.py ?? t.row * gt) - 27), a.destroy());
+      (E.draw(a, t.x * gt + 2 + 6 - a.width / 2, y - Y0), a.destroy());
     }
-    const m = { data: T, rt: E, crumbleSprites: R };
-    (this.loaded.set(S, m), this.onLoad(T));
+    M.bands.set(b, { rt: E, crumbleSprites: R });
+  }
+  unloadBand(M, b, B) {
+    (B.rt.setVisible(!1).setActive(!1), this.rtPool.push(B.rt));
+    for (const E of B.crumbleSprites) (this.scene.tweens.killTweensOf(E), E.destroy());
+    M.bands.delete(b);
+  }
+  // 조각을 옮긴 뒤(기준 조각이 바뀜) 띠 그림판 자리 다시 맞추기
+  placeBands() {
+    for (const [a, v] of this.loaded) for (const B of v.bands.values()) B.rt.x = this.lx(a * vt);
   }
   unloadChunk(S, T) {
-    (this.onUnload(T.data), T.rt.setVisible(!1).setActive(!1), this.rtPool.push(T.rt));
-    for (const E of T.crumbleSprites) (this.scene.tweens.killTweensOf(E), E.destroy());
+    this.onUnload(T.data);
+    for (const [b, B] of T.bands) this.unloadBand(T, b, B);
     const C = S * vt;
     for (const [E, R] of this.crumbles) {
       const h = Number(E.split(",")[0]);
@@ -10238,10 +10278,11 @@ class zn {
     if (this.originChunk + C < 0) return 0;
     this.originChunk += C;
     const E = C * Vi;
-    for (const [R, h] of this.loaded) {
-      h.rt.x = this.lx(R * vt);
-      for (const m of h.crumbleSprites) ((m.x -= E), m.setData("bx", m.getData("bx") - E));
-    }
+    for (const [R, h] of this.loaded)
+      for (const B of h.bands.values()) {
+        B.rt.x = this.lx(R * vt);
+        for (const m of B.crumbleSprites) ((m.x -= E), m.setData("bx", m.getData("bx") - E));
+      }
     return E;
   }
   destroy() {
@@ -12491,7 +12532,7 @@ class Ws {
         this.dashT <= 0 && (C.vx = this.dashDir * this.moveSpeed() * 0.8));
     else if (!this.weapons.overrideMovement(S)) {
       const a = this.moveSpeed() * this.weapons.moveMult(),
-        v = this.surface.ice && C.onGround;
+        v = (this.surface.ice || C.groundSpec === 4) && C.onGround;
       if (h !== 0) {
         const o = C.onGround ? (v ? 320 : Vt.accelGround) : Vt.accelAir;
         ((C.vx = Xt(C.vx, h * a, o * S)), this.weapons.attacking() || (this.facing = h));
@@ -12500,9 +12541,9 @@ class Ws {
         C.vx = Xt(C.vx, 0, o * S);
       }
       (R && this.jumpBuf > 0 && (C.onGround || this.coyote > 0)
-        ? T.down && C.onGround && (C.groundCode === 2 || C.groundCode === 3)
+        ? T.down && C.onGround && (C.groundCode === 2 || C.groundCode === 3 || C.groundCode === 20)
           ? ((C.dropThrough = 0.25), (C.y += 2), (this.jumpBuf = 0))
-          : ((C.vy = -500 * (this.surface.quicksand ? 0.75 : 1)),
+          : ((C.vy = -500 * (this.surface.quicksand ? 0.75 : 1) * (C.onGround && C.groundCode === 20 ? 1.25 : 1)),
             (this.jumpBuf = 0),
             (this.coyote = 0),
             (this.jumpCutDone = !1),
@@ -12523,6 +12564,14 @@ class Ws {
         // 점프는 누르는 길이와 상관없이 항상 최대 높이 (키를 일찍 떼도 끊지 않는다)
 
         (C.vy = Math.min(Vt.maxFall, C.vy + Vt.gravity * S * (C.vy > 0 ? 1.15 : 1))));
+      // 물: 천천히 가라앉고, 점프 키로 헤엄쳐 오른다 (걷는 속도도 느리다)
+      if (C.inWater) {
+        C.vy > 90 && (C.vy = 90);
+        T.jump && C.vy > -240 && (C.vy = -240);
+        const ms = a * 0.6;
+        C.vx = Math.max(-ms, Math.min(ms, C.vx));
+        this.airJumps = Math.max(this.airJumps, 1);
+      }
     }
     if (!E && this.hurtT <= 0) {
       (T.swap >= 0 && this.weapons.swap(T.swap), this.weapons.update(S, T));
@@ -19724,7 +19773,7 @@ class Er extends zt.Scene {
     const h = Math.max(0, R - 4),
       m = (h - this.world.originChunk) * vt * gt;
     this.world.originChunk = h;
-    for (const [a, v] of this.world.loaded) v.rt.x = this.world.lx(a * vt);
+    this.world.placeBands();
     this.rebase(m);
     const t = row ?? this.world.groundRowAt(tx),
       gy0 = py ?? (row == null ? this.world.groundYAt(tx) : -1);
@@ -19746,7 +19795,7 @@ class Er extends zt.Scene {
     const h = Math.max(0, R - 4),
       m = (h - this.world.originChunk) * vt * gt;
     this.world.originChunk = h;
-    for (const [a, v] of this.world.loaded) v.rt.x = this.world.lx(a * vt);
+    this.world.placeBands();
     this.rebase(m);
     const t = this.world.groundRowAt(E),
       gy0 = this.world.groundYAt(E);

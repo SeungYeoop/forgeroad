@@ -44,6 +44,7 @@ import { makeTiles } from "./tiles.js";
 import { makePlayer, makeNpc } from "./char.js";
 import { makeMobs } from "./mobs.js";
 import * as HUBART from "./hubart.js";
+import { paintDeco } from "./natdeco.js";
 
 let R = null; // 엔진 참조 (main.js가 bind로 넘김)
 const ORIG_W = {};
@@ -2440,7 +2441,7 @@ export function hudUpdate(hud) {
 
 // ── 미니맵 (오른쪽 아래) ─────────────────────────────
 // 지금 구역 전체를 실제 지형 장(natgen)에서 줄여 그린다. 구역이 바뀔 때만 다시 만들고, 표시는 1초에 10번 갱신
-const MINI_W = 150, MINI_H = 68;
+const MINI_W = 104, MINI_H = 104;
 function miniCreate(hud) {
   const x = R.ot - MINI_W - 7, y = R.xt - MINI_H - 7;
   hud.frMini = { x, y, zid: null, t: 0, blink: 0 };
@@ -3739,7 +3740,7 @@ function chargeRelease(sc, C) {
   sc.fx.stop?.(0.04 + k * 0.06);
 }
 
-export { paintChunk, prepaint, prepaintStep, paintPreview, _wkState } from "./terrain.js";
+export { paintChunk, prepaint, prepaintStep, paintPreview, _wkState, BANDH } from "./terrain.js";
 export { designChunk, carveCaves, TOP as TOP_ROWS, UG as UG_ROWS } from "./levels.js";
 export { skyRoute, carveUnderground } from "./routes.js";
 
@@ -3995,14 +3996,17 @@ export function travel(sc, to, back) {
   sc.zoneBusy = 1;
   R.j.play("portal");
   sc.cameras.main.fadeOut(160, 8, 6, 12);
-  sc.time.delayedCall(170, () => {
-    const at = back ?? "L";
-    const p = arrivePos(sc.world, z, at);
-    sc.travelTo(p.tile, at === "R" ? -1 : 1, p.row > 0 ? p.row : null, p.py > 0 ? p.py : null);
-    sc.cameras.main.fadeIn(260, 8, 6, 12);
-    sc.zoneBusy = 0;
-    arrive(sc, z);
-  });
+  ensurePlan(sc, z);
+  sc.time.delayedCall(170, () =>
+    whenPlanned(sc, z, () => {
+      const at = back ?? "L";
+      const p = arrivePos(sc.world, z, at);
+      sc.travelTo(p.tile, at === "R" ? -1 : 1, p.row > 0 ? p.row : null, p.py > 0 ? p.py : null);
+      sc.cameras.main.fadeIn(260, 8, 6, 12);
+      sc.zoneBusy = 0;
+      arrive(sc, z);
+    }),
+  );
 }
 function arrive(sc, z) {
   const d = sd();
@@ -4014,6 +4018,7 @@ function arrive(sc, z) {
     sc.fr.visited[z.id] || ((sc.fr.visited[z.id] = 1), (sc.run.frZones = Object.keys(sc.fr.visited).length));
   }
   R.it.write();
+  sc.time.delayedCall(800, () => sc.world && prefetchNeighbors(sc, z));
   const D = ZN.dangerOf(z);
   sc.hud?.()?.regionBanner(z.name, `${ZN.LAYER_NAME(z.y)} · ${D.name} ${D.label}${first ? " · 처음 밟는 땅" : ""}`);
   ZN.packChunk(z) >= 0 && !sc.fr?.packs?.[z.id] && sc.time.delayedCall(1600, () => sc.hud?.()?.toast("이 구역 어딘가에 정예 무리가 떠돈다", "#ff9a6a"));
@@ -4023,10 +4028,23 @@ function arrive(sc, z) {
 export function zoneBegin(sc) {
   ZN.setRunSeed(sc.fr?.runSeed ?? (Math.random() * 4294967295) >>> 0);
   const z0 = ZN.cell(1, 0);
-  const p0 = arrivePos(sc.world, z0, "L");
-  sc.travelTo(p0.tile, 1, p0.row > 0 ? p0.row : null, p0.py > 0 ? p0.py : null);
-  const wait = (n = 0) => (sc.hud?.() ? arrive(sc, z0) : n < 40 && sc.time.delayedCall(150, () => wait(n + 1)));
-  sc.time.delayedCall(400, () => wait());
+  const go = () => {
+    const p0 = arrivePos(sc.world, z0, "L");
+    sc.travelTo(p0.tile, 1, p0.row > 0 ? p0.row : null, p0.py > 0 ? p0.py : null);
+    const wait = (n = 0) => (sc.hud?.() ? arrive(sc, z0) : n < 40 && sc.time.delayedCall(150, () => wait(n + 1)));
+    sc.time.delayedCall(400, () => wait());
+  };
+  if (planReady(sc, z0)) return go();
+  // 첫 구역 설계를 기다리는 동안 화면을 어둡게 (안내 글은 HUD가 뜨면)
+  sc.cameras.main.fadeOut(1, 8, 6, 12);
+  const note = (n = 0) => (sc.hud?.() ? loadingNote(sc, !planReady(sc, z0)) : n < 40 && sc.time.delayedCall(100, () => note(n + 1)));
+  note();
+  ensurePlan(sc, z0).then(() => {
+    loadingNote(sc, !1);
+    if (sc.sys?.isActive?.() === !1 || !sc.world) return;
+    go();
+    sc.cameras.main.fadeIn(260, 8, 6, 12);
+  });
 }
 export const seenCount = () => Object.keys(sd().seen ?? {}).filter((k) => ZN.BY_ID[k]?.kind === "zone").length;
 // 출구 물체, 떠도는 정예 무리
@@ -4140,9 +4158,89 @@ export const _ZN = ZN;
 export const _ZG = ZG;
 export const _exitPos = (world, z, at) => exitPos(world, z, at);
 // 카메라가 지금 구역 밖(옆 구역)을 비추지 않게: 구역 왼쪽 끝 ~ 오른쪽 끝 - 화면 폭
+// 자연 지형 나무·폐허 그림: 처음 쓸 때 한 번 그려 텍스처로 둔다
+export function natDecorTex(scene, key) {
+  if (scene.textures.exists(key)) return;
+  const D = paintDeco(key);
+  const cv = document.createElement("canvas");
+  cv.width = D.w;
+  cv.height = D.h;
+  const cx = cv.getContext("2d");
+  const im = cx.createImageData(D.w, D.h);
+  im.data.set(D.data);
+  cx.putImageData(im, 0, 0);
+  scene.textures.addCanvas(key, cv);
+}
 export function zoneCam(sc, camX) {
   const z = zoneOfPlayer(sc);
   if (!z) return camX;
   const l = sc.world.lx(z.c0 * 32), r = sc.world.lx(z.c1 * 32) - R.ot;
   return r > l ? Math.min(r, Math.max(l, camX)) : camX;
+}
+// ── 구역 설계를 다른 스레드에서 (큰 구역은 몇 초 걸린다: 그동안 화면이 멈추지 않게) ──
+let NW = null, NW_N = 0;
+const NW_JOBS = new Map(), NW_PEND = new Map();
+function natWorker() {
+  if (NW !== null) return NW;
+  try {
+    NW = new Worker(new URL("./natworker.js", import.meta.url), { type: "module" });
+    NW.onmessage = (ev) => {
+      const j = NW_JOBS.get(ev.data.id);
+      NW_JOBS.delete(ev.data.id);
+      j && (ev.data.error ? j.reject(ev.data.error) : j.resolve(ev.data.data));
+    };
+    NW.onerror = () => {
+      NW = !1;
+      for (const j of NW_JOBS.values()) j.reject("worker");
+      NW_JOBS.clear();
+    };
+  } catch {
+    NW = !1;
+  }
+  return NW;
+}
+const planOpts = (sc, z) => ({ seed: sc.world.gen.seed, Ft: R.Ft, up: z.kind === "zone" ? ZN.upChunk(z) : -1, down: z.kind === "zone" ? ZN.downChunk(z) : -1 });
+export const planReady = (sc, z) => !z || ZG.hasPlan(z, sc.world.gen.seed);
+// 설계가 준비되면 풀리는 약속 (이미 있으면 바로). 작업 스레드가 없으면 그냥 풀린다(필요할 때 그 자리에서 만든다)
+export function ensurePlan(sc, z) {
+  if (!z || planReady(sc, z)) return Promise.resolve();
+  const o = planOpts(sc, z), key = ZG.planKey(z, o.seed);
+  if (NW_PEND.has(key)) return NW_PEND.get(key);
+  const W = natWorker();
+  if (!W) return Promise.resolve();
+  const zz = { id: z.id, kind: z.kind, c0: z.c0, c1: z.c1, x: z.x, y: z.y, boss: z.boss };
+  const p = new Promise((res, rej) => {
+    const id = ++NW_N;
+    NW_JOBS.set(id, { resolve: res, reject: rej });
+    W.postMessage({ id, z: zz, o });
+  })
+    .then((data) => void ZG.adoptPlan(z, o.seed, data))
+    .catch((e) => console.warn("zone plan worker failed", e))
+    .finally(() => NW_PEND.delete(key));
+  NW_PEND.set(key, p);
+  return p;
+}
+// 이웃 구역을 미리 (갈 수 있는 출구 쪽)
+function prefetchNeighbors(sc, z) {
+  const zz = z.kind === "dungeon" ? ZN.zoneOfPocket(z) : z;
+  for (const e of ZN.exitList(zz)) {
+    const t = ZN.BY_ID[e.to];
+    t && ensurePlan(sc, t);
+  }
+}
+// "지형을 만드는 중" 표시 (화면이 어두워진 동안)
+function loadingNote(sc, on) {
+  const hud = sc.hud?.();
+  if (!hud) return;
+  if (on && !hud.frLoading) hud.frLoading = R.ct(hud, R.ot / 2, R.xt / 2, "지형을 만드는 중…", "body", "#f2e6c4").setOrigin(0.5).setDepth(900).setScrollFactor(0);
+  else if (!on && hud.frLoading) (hud.frLoading.destroy(), (hud.frLoading = null));
+}
+// 설계가 준비된 뒤 f() (준비 안 됐으면 안내 글을 띄우고 기다린다)
+function whenPlanned(sc, z, f) {
+  if (planReady(sc, z)) return f();
+  loadingNote(sc, !0);
+  ensurePlan(sc, z).then(() => {
+    loadingNote(sc, !1);
+    sc.sys?.isActive?.() !== !1 && sc.world && f();
+  });
 }
