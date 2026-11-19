@@ -4,6 +4,7 @@ import * as IT from "./items.js";
 import * as VFX from "./vfx.js";
 import * as ATMO from "./atmo.js";
 import * as DEPTH from "./depth.js";
+import * as NATANIM from "./natanim.js";
 import * as PROPS from "./props3d.js";
 import * as FOES from "./foes/core.js";
 import { bindR0 } from "./foes/r0.js";
@@ -54,6 +55,7 @@ export function bind(refs) {
   VFX.bindVfx(R.zt);
   LOOK.bindLook(R);
   ATMO.bindAtmo(R);
+  NATANIM.bindAnim(R);
   DEPTH.bindDepth(R);
   FOES.bindFoes(R);
   bindR0(R.j);
@@ -1718,6 +1720,7 @@ export function update(sc, dt) {
   updateZones(sc, dt);
   VFX.updateVfx(sc, dt);
   ATMO.update(sc, dt);
+  NATANIM.update(sc, dt, natAnimSrc(sc));
   updateEnts(sc, dt);
   updatePickups(sc, dt);
   LOOK.update(sc, dt);
@@ -4159,6 +4162,13 @@ export const _ZG = ZG;
 export const _exitPos = (world, z, at) => exitPos(world, z, at);
 // 카메라가 지금 구역 밖(옆 구역)을 비추지 않게: 구역 왼쪽 끝 ~ 오른쪽 끝 - 화면 폭
 // 자연 지형 나무·폐허 그림: 처음 쓸 때 한 번 그려 텍스처로 둔다
+// 움직이는 장식 층에 넘길 지금 구역의 설계 (설계가 준비된 자연 지형 구역만)
+function natAnimSrc(sc) {
+  const z = zoneOfPlayer(sc);
+  if (!z || !planReady(sc, z)) return null;
+  const P = ZG.planOf(z, planOpts(sc, z));
+  return P && P.props && P.props.length ? { key: z.id + ":" + P.seed, P, ox: sc.world.lx(z.c0 * 32) } : null;
+}
 export function natDecorTex(scene, key) {
   if (scene.textures.exists(key)) return;
   const D = paintDeco(key);

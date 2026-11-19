@@ -64,6 +64,12 @@ export function paintLayer3d(T, S, E, h, id) {
         const x = R(0, W);
         each(x, (xx) => G.crystal(B, xx, 315, R(14, 24), R(80, 170), E.accent, hz(0.35)));
       }
+    // 들판 하늘: 아주 먼 하늘섬 몇 개 (안개에 묻힌다)
+    if (th === "plains")
+      for (let i = 0; i < 3; i++) {
+        const x = R(0, W), y = R(80, 170), w = R(22, 44);
+        each(x, (xx) => G.island(B, xx, y, w, E.top, E.rock, hz(0.62), seed + 70 + i));
+      }
     if (th === "sky")
       for (let i = 0; i < 5; i++) {
         const x = R(0, W), y = R(150, 230), w = R(30, 60);

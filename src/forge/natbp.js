@@ -28,7 +28,7 @@ export const BLUEPRINTS = {
     //   동쪽 길: 산 동쪽 어깨 → E1 → E2(거대: 낮은 쪽 속 동굴·샘 → 턱 벽 입구 → 높은 쪽 기둥 동굴) → E4(속 동굴·샘, 보물) → E5(속 동굴) → E6 → ▲ 섬 동쪽 입구
     //   ▲ 섬 속 신전: 양쪽 옆 입구 → 방 → 계단 → 방 → 계단 → 평평한 윗면의 ▲ 문 (서쪽 성소에 큰 상자)
     //     지하 묘실 (신전 아래): 서쪽 회랑 바닥 계단 ↔ 묘실 회랑 → 보물실, 동쪽 경비실 바닥 구멍으로 떨어져도 들어온다
-    //   높은 하늘: ▲ 섬 서쪽 끝 → W6 보물섬 → W7 전망섬 · E6 턱 위 → E7 보물섬
+    //   높은 하늘: ▲ 섬 서쪽 끝 → W6 보물섬 → W7 전망섬 · ▲ 섬 동쪽 끝 → E7 보물섬
     //   "id>" / "id<" = 동쪽 / 서쪽 옆 굴 입구, "id^" = 턱 섬의 높은 쪽, "g:x" = 땅 x 자리 평지
     //   섬 속: halls 방 [x0, x1, 바닥 F, 높이 h] (kind pool 샘 · pillar 뒤 기둥) · pass 계단 굴 [xa, fa, xb, fb] · mouths 옆 입구 (edge = 입구가 뚫린 벽 x)
     sky: {
@@ -42,7 +42,7 @@ export const BLUEPRINTS = {
             { x0: 3600, x1: 3940, F: 1520, h: 230, type: "sanctum" }, // 성소 (큰 상자)
             { x0: 5400, x1: 5700, F: 1830, h: 200, role: "arena" }, // 동쪽 경비실
             { x0: 4760, x1: 5060, F: 1520, h: 210, type: "colonnade", role: "rest" }, // 동쪽 회랑
-            { x0: 3600, x1: 4200, F: 2300, h: 220, type: "colonnade", role: "arena" }, // 지하 묘실 회랑
+            { x0: 3600, x1: 4200, F: 2300, h: 220, type: "colonnade", role: "arena", trap: [3860, 3940] }, // 지하 묘실 회랑 (가운데 가시)
             { x0: 3900, x1: 4900, F: 2024, h: 190, role: "rest" }, // 중층 홀 (묘실 계단 중간에서 가로 굴)
             { x0: 4400, x1: 5560, F: 2360, h: 280, type: "vault", role: "treasure" }, // 지하 묘실 보물실
           ],
@@ -54,6 +54,7 @@ export const BLUEPRINTS = {
       },
       isles: [
         { id: "A1", cx: 3700, top: 3992, w: 520, t: 220, role: "rest" }, // 산 위 쉼터: ▲ 섬 밑이 올려다보인다
+        { id: "M", cx: 3650, top: 3400, w: 700, t: 260, shape: "lumpy", role: "vista" }, // 가운데 전망 섬: ▲ 섬 배와 양쪽 길이 다 보인다
         // 서쪽 거대 섬: 높은 쪽(서) 2860 · 낮은 쪽(동) 3440
         { id: "W1", cx: 1590, top: 3440, w: 2820, t: 700, shape: "block", form: "keel", role: "rest", step: { at: 0.468, dy: 580, hi: "L" },
           inner: { halls: [{ x0: 2480, x1: 2900, F: 3880, h: 220, role: "arena" }, { x0: 1960, x1: 2180, F: 3700, h: 200, kind: "pool", role: "rest" },
@@ -68,7 +69,7 @@ export const BLUEPRINTS = {
             pass: [[1060, 2142, 820, 1942], [640, 1942, 400, 1700]], mouths: [{ side: "E", x: 1380, F: 2142 }] } },
         { id: "W5", cx: 2225, top: 1800, w: 950, t: 260, shape: "slab", role: "arena" }, // ▲ 섬 앞 들판 섬
         { id: "W6", cx: 2300, top: 1250, w: 700, t: 320, shape: "lumpy", role: "treasure" }, // 높은 하늘 보물섬
-        { id: "W7", cx: 950, top: 1180, w: 700, t: 300, shape: "spire", role: "vista" }, // 가장 높은 서쪽 전망섬
+        { id: "W7", cx: 1130, top: 1180, w: 700, t: 300, shape: "spire", role: "vista" }, // 가장 높은 서쪽 전망섬
         // 동쪽 거대 섬: 낮은 쪽(서) 3700 · 높은 쪽(동) 3200
         { id: "E1", cx: 5560, top: 4304, w: 380, t: 140, shape: "slab", role: "rest" },
         { id: "E2", cx: 7030, top: 3700, w: 2120, t: 600, shape: "block", form: "roots", role: "arena", step: { at: 0.547, dy: 500, hi: "R" },
@@ -82,18 +83,17 @@ export const BLUEPRINTS = {
         { id: "E5", cx: 7550, top: 2050, w: 900, t: 620, shape: "block", form: "cone", role: "rest", step: { at: 0.4, dy: 72, hi: "L" },
           inner: { halls: [{ x0: 7180, x1: 7480, F: 2452, h: 220, role: "arena" }],
             pass: [[7480, 2452, 7860, 2050]], mouths: [{ side: "W", x: 7180, F: 2452 }] } },
-        { id: "E6", cx: 6330, top: 1780, w: 900, t: 300, shape: "slab", role: "arena", step: { at: 0.6, dy: 72, hi: "R" } }, // ▲ 섬 앞 턱 섬
-        { id: "E7", cx: 7630, top: 1400, w: 840, t: 340, shape: "lumpy", role: "treasure" }, // 높은 하늘 보물섬 (동)
+        { id: "E6", cx: 6330, top: 1840, w: 900, t: 300, shape: "slab", role: "arena", step: { at: 0.6, dy: 72, hi: "R" } }, // ▲ 섬 앞 턱 섬
+        { id: "E7", cx: 6220, top: 1150, w: 680, t: 300, shape: "lumpy", role: "treasure" }, // 높은 하늘 보물섬 (동, ▲ 섬 동쪽 끝에서)
         // 갈래 섬 (땅 가까이)
-        { id: "CV", cx: 4870, top: 3984, w: 340, t: 150, role: "treasure", shape: "spire" }, // 산 정상에서 오르는 보물섬
-        { id: "WL", cx: 486, top: 4480, w: 440, t: 140, role: "arena", shape: "slab", step: { at: 0.5, dy: 72, hi: "L" } }, // 들판 위 낮은 섬 (첫 나는 적)
+        { id: "CV", cx: 4870, top: 3904, w: 340, t: 150, role: "treasure", shape: "spire" }, // 산 정상에서 오르는 보물섬
         { id: "XT", cx: 7969, top: 4504, w: 190, t: 120, role: "treasure", shape: "spire" }, // 출구 들판 위 작은 보물 바위
       ],
       // 이을 길 (아래 → 위)
       links: [
         ["g:4250", "A1"], ["A1", "W1>"], ["W1^", "W3<"], ["W3", "W4>"], ["W4", "W5"], ["W5", "G<"],
         ["g:5040", "E1"], ["E1", "E2<"], ["E2^", "E4>"], ["E4", "E5<"], ["E5^", "E6^"], ["E6", "G>"],
-        ["G", "W6"], ["W6", "W7"], ["E6^", "E7"], ["g:4250", "CV"], ["g:1060", "WL"], ["g:7520", "XT"],
+        ["G", "W6"], ["G", "E7"], ["W6", "W7"], ["g:4250", "CV"], ["W1", "M"], ["g:7520", "XT"],
       ],
     },
     // 서쪽 자연 동굴 (x 0~4100): 방 [x0, x1, 바닥 y, 높이] + 종류·역할
@@ -123,7 +123,7 @@ export const BLUEPRINTS = {
       { id: "N4", x0: 2550, x1: 3050, fy: 6150, h: 220, kind: "hall", floor: "flat", role: "arena" }, // 협곡 옆 굴
       // 띠4 (서쪽 → 던전 탑 E 밑)
       { id: "P1", x0: 300, x1: 850, fy: 7250, h: 200, kind: "small", floor: "flat", role: "treasure" }, // 버섯 굴 (막다른 곳 상자)
-      { id: "P2", x0: 1100, x1: 1700, fy: 7200, h: 230, kind: "pillared", floor: "flat", role: "arena" }, // 메아리 홀
+      { id: "P2", x0: 1100, x1: 1700, fy: 7200, h: 230, kind: "hall", floor: "mound", role: "arena" }, // 메아리 홀
       { id: "P3", x0: 1950, x1: 2550, fy: 7300, h: 210, kind: "hall", floor: "steps", role: "rest" }, // 낮은 굴
       { id: "P4", x0: 2800, x1: 3350, fy: 7392, h: 220, kind: "tiered", floor: "steps", role: "arena" }, // 탑 밑 굴
       { id: "C14", x0: 3460, x1: 4060, fy: 7776, h: 230, kind: "hall", floor: "flat", role: "rest" }, // 던전 옆 쉼터 (→ 던전 보물실 5)
@@ -138,7 +138,8 @@ export const BLUEPRINTS = {
       ["C3", "R00"], ["C13", "R10"], ["C8", "R20"], ["C12", "TE"], ["P4", "TE_d"], ["C14", "R60"], ["C10", "R71"],
     ],
     // 떨어지는 구멍 [위 방, 아래 방]
-    drops: [["C1", "N2"], ["N1", "C5"], ["C5", "P2"], ["P1", "C9"], ["N3", "C7"], ["P3", "C11"]],
+    //   셋째 값 = 구멍을 못 뚫을 때 대신 이을 옆길 (구멍으로만 드나드는 무리가 막히지 않게)
+    drops: [["C1", "N2", ["N2", "N3"]], ["N1", "C5", ["N2", "N3"]], ["C5", "P2", ["P2", "P3"]], ["P1", "C9", ["P2", "P3"]], ["N4", "C7", ["N2", "N3"]], ["P3", "C11"]],
     // 동쪽 던전 (고대 유적): 격자 칸 512×384px, 6열 × 8층. 방은 직사각형, 길은 수평 문과 탑 방만
     //   내려가는 길: 정문 탑 → 1층 회랑 → 탑 A → 2층 투기장 → 탑 B → 3층 → 탑 C → 4층 → 탑 D → 5층 → 탑 E → 6층 → 탑 F → 7층 → 탑 G → 성소
     //   탑은 열을 바꿔 가며 놓아 층마다 가로로 지나가게 하고, 탑마다 발판 짜임이 다르다
@@ -151,7 +152,7 @@ export const BLUEPRINTS = {
       gate: { door: 7250, col: 5 },
       // 탑: 열, 윗층 s (s·s+1 두 층), 윗층 문 쪽(up)·아랫층 문 쪽(down), 발판 짜임
       towers: [
-        { id: "TA", col: 2, s: 0, up: "WE", down: "E", pat: "zig" },
+        { id: "TA", col: 2, s: 0, up: "WE", down: "WE", pat: "zig" },
         { id: "TB", col: 5, s: 1, up: "W", down: "W", pat: "float" },
         { id: "TC", col: 1, s: 2, up: "WE", down: "WE", pat: "ring" },
         { id: "TD", col: 4, s: 3, up: "WE", down: "WE", pat: "pillar" },
@@ -163,7 +164,7 @@ export const BLUEPRINTS = {
       rooms: [
         { id: "R00", c0: 0, c1: 1, s: 0, type: "guard", role: "arena", cave: 1 }, // 경비실 (산 밑 큰 공동과 이어짐)
         { id: "R01", c0: 3, c1: 4, s: 0, type: "colonnade", role: "arena" }, // 입구 회랑: 첫 전투
-        { id: "R10", c0: 0, c1: 0, s: 1, type: "vault", role: "treasure", cave: 1 }, // 보물실 1 (동굴 쪽에서만)
+        { id: "R10", c0: 0, c1: 1, s: 1, type: "vault", role: "treasure", cave: 1 }, // 보물실 1 (이끼 굴 ↔ 탑 TA 아래층)
         { id: "R11", c0: 3, c1: 4, s: 1, type: "arena", role: "arena" }, // 투기장 1
         { id: "R20", c0: 0, c1: 0, s: 2, type: "trap", role: "trap", cave: 1 }, // 함정 복도 (동굴로)
         { id: "R21", c0: 2, c1: 3, s: 2, type: "colonnade", role: "arena" }, // 경비 회랑

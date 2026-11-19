@@ -53,11 +53,18 @@ export function lvTile(G) {
         }
       const e = Math.sqrt(f2) - Math.sqrt(f1);
       let L;
-      if (e < 1.15) L = 5;
+      if (e < 1.1) L = 5;
       else {
-        const R = G * 0.55, edge = Math.max(0, 1 - e / 3.6), s = 0.55 + edge * 1.3;
-        const I = (dx1 / R) * s * -0.6 + (dy1 / R) * s * -0.8 + (H(id, 3) - 0.5) * 0.5;
-        L = I > 0.85 ? 0 : I > 0.3 ? 1 : I > -0.35 ? 2 : I > -0.95 ? 3 : 4;
+        // 둥근 모서리 돌: 가장자리 띠(약 3px)만 바깥으로 기울어 왼쪽 위는 밝고 오른쪽 아래는 어둡다, 가운데는 거의 평평
+        //   + 돌마다 밝기 · 잔결 · 일부 돌에 가는 금
+        const R = G * 0.55, dl = Math.hypot(dx1, dy1) || 1, nx = dx1 / dl, ny = dy1 / dl;
+        const bev = Math.max(0, 1 - (e - 1.1) / 3.2), tilt = bev * bev * 1.3 + 0.22 * Math.min(1, dl / R);
+        const I = (-nx * 0.6 - ny * 0.8) * tilt + (H(id, 3) - 0.5) * 0.6 + (H(wx >> 1, wy >> 1, 11) - 0.5) * 0.2;
+        L = I > 0.62 ? 0 : I > 0.22 ? 1 : I > -0.22 ? 2 : I > -0.62 ? 3 : 4;
+        if (H(id, 13) > 0.8 && dl < R * 0.75) {
+          const an = H(id, 14) * Math.PI, dd = Math.abs(dx1 * Math.sin(an) - dy1 * Math.cos(an));
+          dd < 0.6 && (L = Math.min(5, L + 2));
+        }
         const q = H(wx, wy, 7);
         q > 0.985 && (L = Math.max(0, L - 1));
         q < 0.012 && (L = Math.min(4, L + 1));
