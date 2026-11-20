@@ -72,8 +72,8 @@ export function planOf(z, o) {
     const Q2 = makePlan(z, o, a);
     tries.push(Q2.check);
     if (!best || Q2.check.score > best.check.score) best = Q2;
-    // 길(출구·문)만 다 이어지면 다시 만들지 않는다 (작은 갇힘은 고치기에서 줄인다)
-    if (Q2.check.ok || Q2.check.miss.length === 0) break;
+    // 길(출구·문)이 다 이어지고 갇힘이 작으면 다시 만들지 않는다 (큰 갇힘 = 빠지면 못 나오는 굴은 다른 시도로)
+    if (Q2.check.ok || (Q2.check.miss.length === 0 && (Q2.check.traps ?? 0) <= 12)) break;
   }
   best.tries = tries;
   best.seedIn = o.seed;
@@ -325,7 +325,17 @@ function placeProps(P) {
     out.push({ x: Math.round(x), y: Math.round(hang ? yy - 6 : yy + 2), k, s, v: SCALED.includes(k) ? 0 : R.int(0, 1), sc, acc: o.acc ?? null, hang: hang ? 1 : 0, g: o.g ?? 0, ...(fall ? { fall } : {}) });
     return true;
   };
-  const CRY = [0x60d0ff, 0xc080ff, 0xffd070], SHR = [0xc060e0, 0x40e0c0, 0xffa040];
+  // 동굴 구역 짜임별 소품 (설계도 cave.style): 바닥·천장 소품표, 뒷벽 큰 소품, 수정·버섯 색
+  const CS = P.bp?.cave?.style ?? null;
+  const CRY = CS === "drip" ? [0x80e0ff, 0xd8f4ff, 0x60c8e8] : CS === "mine" ? [0xc080ff, 0xffa040, 0xa070f0] : [0x60d0ff, 0xc080ff, 0xffd070];
+  const SHR = CS === "root" ? [0x60f0c0, 0xc070f0, 0xffb040, 0x80e0ff] : [0xc060e0, 0x40e0c0, 0xffa040];
+  const CAVE_FLOOR = {
+    drip: [["p_stalag", 44], ["p_boulder", 16], ["p_crystal", 10], ["p_rubble", 8], ["p_bones", 5], ["p_shroom", 4]],
+    mine: [["p_crates", 16], ["p_rubble", 18], ["p_crystal", 20], ["p_boulder", 10], ["p_rack", 8], ["p_log", 8], ["p_bones", 6], ["p_skulls", 3], ["p_stalag", 6]],
+    root: [["p_shroom", 34], ["p_fern", 18], ["p_log", 10], ["p_boulder", 8], ["p_flowers", 6], ["p_stalag", 6], ["p_bones", 5]],
+  }[CS];
+  const CAVE_CEIL = { drip: [["p_stalac", 70], ["p_moss", 8], ["p_web", 6]], mine: [["p_chain", 20], ["p_web", 18], ["p_stalac", 14], ["p_cage", 6], ["p_moss", 6]], root: [["p_roots", 50], ["p_moss", 26], ["p_web", 8], ["p_stalac", 6]] }[CS];
+  const woodAt = (x, y) => (P.walls ?? []).some((w) => w.m === "wood" && x >= w.x0 && x < w.x1 && y >= w.y0 && y < w.y1);
   // 구름 디딤돌: 위에도 아래에도 아무것도 두지 않는다
   const CL = (P.spec ?? []).filter((s) => s.t === 2);
   const onCloud = (x, y) => CL.some((s) => x >= s.x0 - 8 && x < s.x1 + 8 && y >= s.y0 - 14 && y <= s.y1 + 14);
@@ -374,17 +384,21 @@ function placeProps(P) {
           out.push({ x, y: tap ? yy - clear + 6 : yy - 30 - R.int(0, 20), k: tap ? "p_tapestry" : "p_niche", s: 1, v: R.int(0, 1), sc: tap ? 1 : R() < 0.5 ? 1 : 1.25, acc: null, hang: tap ? 1 : 0, bg: 1, g: 1 });
         } else if (ctx === "cave" && clear >= 150 && !out.some((q) => q.bg && !q.hang && Math.abs(q.x - x) < 170 && Math.abs(q.y - yy) < 140) && R() < 0.85) {
           const big = Math.min(2.6, clear / 70);
-          out.push({ x, y: yy + 2, k: R() < 0.7 ? "p_stalag" : "p_crystal", s: 2, v: R.int(0, 1), sc: snapSc(Math.max(1.25, big * (0.6 + R() * 0.4))), acc: CRY[R.int(0, 2)], hang: 0, bg: 1, g: 1 });
+          const bk = CS === "root" ? (R() < 0.6 ? "p_shroom" : "p_stalag") : CS === "mine" ? (R() < 0.6 ? "p_crystal" : "p_rockcol") : R() < (CS === "drip" ? 0.85 : 0.7) ? "p_stalag" : "p_crystal";
+          bk === "p_rockcol"
+            ? clear >= 170 && clear < 316 && out.push({ x, y: yy + 2, k: "p_rockcol", s: Math.round((clear + 8) / 8) * 8, v: 18, acc: null, hang: 0, bg: 1, dim: 0.04, ext: 1, g: 1 })
+            : out.push({ x, y: yy + 2, k: bk, s: 2, v: R.int(0, 1), sc: snapSc(Math.max(1.25, big * (0.6 + R() * 0.4))), acc: bk === "p_shroom" ? SHR[R.int(0, SHR.length - 1)] : CRY[R.int(0, 2)], hang: 0, bg: 1, g: 1 });
         }
         const rate = ctx === "open" ? 0.075 : ctx === "cave" ? 0.15 : 0.12;
         if (R() > rate) continue;
-        const k = ctx === "open" ? pickW(T_OPEN) : ctx === "ugb" ? pickW(T_UGB) : ctx === "skb" ? pickW(T_SKB) : pickW([["p_stalag", 28], ["p_shroom", 16], ["p_crystal", deep ? 24 : 12], ["p_boulder", 14], ["p_bones", 7], ["p_rubble", 8], ["p_skulls", 3]]);
-        tryPut(x, yy, k, false, { room: clear, g: ug ? 1 : 0, acc: k === "p_crystal" ? CRY[R.int(0, 2)] : k === "p_shroom" ? SHR[R.int(0, 2)] : null });
+        const k = ctx === "open" ? pickW(T_OPEN) : ctx === "ugb" ? pickW(T_UGB) : ctx === "skb" ? pickW(T_SKB) : CAVE_FLOOR ? pickW(CAVE_FLOOR) : pickW([["p_stalag", 28], ["p_shroom", 16], ["p_crystal", deep ? 24 : 12], ["p_boulder", 14], ["p_bones", 7], ["p_rubble", 8], ["p_skulls", 3]]);
+        tryPut(x, yy, k, false, { room: clear, g: ug ? 1 : 0, acc: k === "p_crystal" ? CRY[R.int(0, 2)] : k === "p_shroom" ? SHR[R.int(0, SHR.length - 1)] : null });
         // 벽돌 방: 뒷벽 횃불 (천장이 높은 방, 220px마다)
-        if (brk && clear >= 110 && !torchAt.some((t) => Math.abs(t.x - x) < 220 && Math.abs(t.y - yy) < 60) && free(x + 40, yy, 12)) {
+        const mineW = CS === "mine" && woodAt(x + 40, yy - 60);
+        if ((brk || mineW) && clear >= 110 && !torchAt.some((t) => Math.abs(t.x - x) < (mineW ? 300 : 220) && Math.abs(t.y - yy) < 60) && free(x + 40, yy, 12)) {
           let c2 = 0;
           for (let q = yy - 4; q > yy - 120 && !solid(x + 40, q); q -= 4) c2 += 4;
-          c2 >= 110 && wallAt(x + 40, yy - 60) && (torchAt.push({ x: x + 40, y: yy }), out.push({ x: x + 40, y: yy - 46, k: "p_torch", s: 0, v: 0, acc: null, hang: 0 }));
+          c2 >= 110 && (wallAt(x + 40, yy - 60) || mineW) && (torchAt.push({ x: x + 40, y: yy }), out.push({ x: x + 40, y: yy - 46, k: "p_torch", s: 0, v: 0, acc: null, hang: 0 }));
         }
       } else {
         // ── 천장 (바위 밑) ──
@@ -396,11 +410,11 @@ function placeProps(P) {
         if (!ug && !brk && !wallAt(x, yy + 30)) continue;
         const ctx = brk ? (ug ? "ugb" : "skb") : "cave";
         // 큰 동굴 천장 뒷벽: 흐릿한 큰 종유석 (바위에 묻혀 붙는다)
-        if (ctx === "cave" && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < 190 && Math.abs(q.y - yy) < 120) && R() < 0.8 && ceilOK(x, yy, 30, 60))
-          out.push({ x, y: yy - 6, k: "p_stalac", s: 2, v: R.int(0, 1), sc: snapSc(Math.min(2.6, 1.25 + R() * below / 160)), acc: null, hang: 1, bg: 1, g: 1 });
-        if (R() > (ctx === "cave" ? 0.12 : 0.08)) continue;
+        if (ctx === "cave" && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < (CS === "drip" ? 130 : 190) && Math.abs(q.y - yy) < 120) && R() < (CS === "mine" ? 0.35 : 0.8) && ceilOK(x, yy, 30, 60))
+          out.push({ x, y: yy - 6, k: CS === "root" && R() < 0.7 ? "p_roots" : "p_stalac", s: 2, v: R.int(0, 1), sc: snapSc(Math.min(2.6, 1.25 + R() * below / 160)), acc: null, hang: 1, bg: 1, g: 1 });
+        if (R() > (ctx === "cave" ? (CS === "drip" ? 0.2 : 0.12) : 0.08)) continue;
         const tall = below > 170;
-        const k = ctx === "ugb" ? pickW([["p_chain", 18], ["p_cage", 14], ["p_web", 16], ["p_moss", 16], ["p_chand", tall ? 10 : 0], ["p_banner", tall ? 8 : 0]]) : ctx === "skb" ? pickW([["p_banner", tall ? 30 : 0], ["p_chand", tall ? 20 : 0], ["p_chain", 12], ["p_web", 6]]) : pickW([["p_stalac", 50], ["p_roots", ug ? 10 : 40], ["p_moss", 24]]);
+        const k = ctx === "ugb" ? pickW([["p_chain", 18], ["p_cage", 14], ["p_web", 16], ["p_moss", 16], ["p_chand", tall ? 10 : 0], ["p_banner", tall ? 8 : 0]]) : ctx === "skb" ? pickW([["p_banner", tall ? 30 : 0], ["p_chand", tall ? 20 : 0], ["p_chain", 12], ["p_web", 6]]) : CAVE_CEIL ? pickW(CAVE_CEIL) : pickW([["p_stalac", 50], ["p_roots", ug ? 10 : 40], ["p_moss", 24]]);
         tryPut(x, yy, k, true, { room: below - 60, g: ug ? 1 : 0 });
       }
     }
@@ -2588,6 +2602,28 @@ function cleanCells(C, keepRows) {
 }
 
 // ── 동굴 ─────────────────────────────────────────────
+// 동굴 구역 짜임 (설계도 cave.style): 같은 생성기로 지역마다 다른 동굴
+//   drip 드립스톤: 큰 공동이 많고 천장이 높다 · 매달린 종유 바위가 빽빽 · 웅덩이·호수 바닥 · 들쭉날쭉한 굴
+//   mine 아이언베인: 옛 갱도 — 반듯한 바닥·천장의 방, 곧은 굴, 세로 갱도 넷, 나무 판자 벽 (after)
+//   root 루트홀로우: 둥근 굴방 · 봉긋한 바닥 · 굵은 뿌리 기둥 · 구불구불한 굴
+const CAVE_STYLE = {
+  drip: {
+    maxGrand: 6, shafts: 2, gap: [100, 130], band: 0.35, ceil: ["dome", "double", "dome", "slant"], hang: 2.2, jag: 4, tunH: [11, 14],
+    k: { large: ["lake", "pillared", "lake", "tiered", "hall"], medium: ["lake", "hall", "tiered", "hall"] },
+    fl: { hall: ["flat", "basin", "steps"], grand: ["basin", "steps", "basin", "mound"] },
+  },
+  mine: {
+    maxGrand: 1, shafts: 4, gap: [84, 100], band: 0.8, ceil: ["flat"], ceilAmp: 0.15, hang: 0, jag: 0, tunH: [10, 11],
+    k: { large: ["pillared", "hall", "tiered", "hall"], medium: ["hall", "tiered", "hall"], tall: ["tiered"] },
+    fl: { hall: ["flat", "flat", "steps"], pillared: ["flat"], grand: ["flat", "steps"], tiered: ["steps"] },
+    wood: 0.62,
+  },
+  root: {
+    maxGrand: 3, shafts: 2, gap: [90, 120], band: 0.3, ceil: ["dome", "dome", "double"], hang: 0.6, jag: 2, tunH: [10, 12], pillars: 1,
+    k: { large: ["pillared", "pillared", "hall", "lake"], medium: ["hall", "hall", "lake"] },
+    fl: { hall: ["mound", "flat", "basin"], pillared: ["mound", "flat"], grand: ["mound", "basin"] },
+  },
+};
 function buildCave(P) {
   const { WP, R, arenaFrom, F } = P;
   const base = FLOOR * TS, bottom = (P.Ft - 5) * TS;
@@ -2595,15 +2631,17 @@ function buildCave(P) {
   const C = cellsOf(P);
   const bot = Math.floor((bottom - 24) / BLK) & ~1, lim = Math.min(WP, arenaFrom);
   const NXl = Math.floor(lim / BLK) - 6;
+  const ST = CAVE_STYLE[P.bp?.cave?.style] ?? null;
   caveWorld(P, C, {
     y0: 14,
     y1: bot,
     anchor: base / BLK,
-    gap: [96, 124],
-    band: 0.4,
-    shafts: R.int(2, 3),
+    gap: ST?.gap ?? [96, 124],
+    band: ST?.band ?? 0.4,
+    shafts: ST?.shafts ?? R.int(2, 3),
     lim: NXl,
-    maxGrand: 4,
+    maxGrand: ST?.maxGrand ?? 4,
+    style: ST,
     entries: true,
     topAt: () => 14,
     arena: arenaFrom < WP ? Math.floor(arenaFrom / BLK) : -1,
@@ -2614,6 +2652,14 @@ function buildCave(P) {
   cleanCells(C, 0);
   writeCells(P, C);
   applySpecReq(P);
+  // 옛 갱도: 방 일부에 나무 판자 뒷벽 (지형이 빈 곳에만 그려진다)
+  if (ST?.wood) {
+    const WR = rng((P.seed ^ 0x3a7e) >>> 0);
+    for (const r of P.rooms ?? []) {
+      if (r.top == null || r.kind === "grand" || r.kind === "lake" || r.kind === "door" || r.kind === "ruins" || WR() > ST.wood) continue;
+      P.walls.push({ x0: (r.x0 - 1) * BLK, y0: (r.top - 2) * BLK, x1: (r.x1 + 1) * BLK, y1: r.fy * BLK, m: "wood" });
+    }
+  }
   // 입구·출구 통로 바닥 (칸 경계에 평평하게)
   flatFloor(P, 34, 140, base, 16, 28, 30);
   flatFloor(P, WP - 140, WP - 34, base, 16, 28, 30);
@@ -2920,9 +2966,9 @@ function caveWorld(P, C, o) {
     // ▲ 문 자리 등: 가운데 바닥은 평평하게
     if (r.flatC != null) for (let i = Math.max(0, r.flatC - 9); i < Math.min(w, r.flatC + 9); i++) lv[i] = 0;
     // 천장: 한쪽으로 치우친 둥근 지붕, 큼직한 잡음 (2~4칸씩 같은 높이)
-    const pk = R.range(0.25, 0.75), sq = R.range(0.35, 0.8), amp = R.range(0.1, 0.28), fq = R.range(14, 34), so = R() * 99;
+    const pk = R.range(0.25, 0.75), sq = R.range(0.35, 0.8), amp = R.range(0.1, 0.28) * (o.style?.ceilAmp ?? 1), fq = R.range(14, 34), so = R() * 99;
     // 천장 모양: 둥근 지붕 · 쌍봉 · 한쪽으로 기운 · 평평(끝만 둥글게)
-    const ct = r.ceil ?? R.pick(["dome", "dome", "double", "slant", "flat"]);
+    const ct = r.ceil ?? R.pick(o.style?.ceil ?? ["dome", "dome", "double", "slant", "flat"]);
     const p1 = R.range(0.18, 0.4), p2 = R.range(0.6, 0.82), s1 = R.range(0.16, 0.26), s2 = R.range(0.16, 0.26), sl = R() < 0.5;
     const top = new Int32Array(w);
     let hold = 0, run = 0;
@@ -2942,7 +2988,7 @@ function caveWorld(P, C, o) {
     // 웅덩이: 문 높이보다 낮은 바닥에 물 (둑은 단이라 걸어서 나온다)
     for (const [a, b] of segs) if (lv[a] < 0) P.specReq.push({ x0: x0 + a, y0: fy, x1: x0 + b, y1: fy - lv[a], k: "water" });
     // 매달린 바위 (끝은 3칸 이상으로 굵게, 바닥 위 12칸 이상 띄운다)
-    const nh = kind === "grand" ? R.int(3, 6) : kind === "small" ? 0 : R.int(0, 3);
+    const nh = Math.round((kind === "grand" ? R.int(3, 6) : kind === "small" ? 0 : R.int(0, 3)) * (o.style?.hang ?? 1));
     for (let k = 0; k < nh; k++) {
       const i = R.int(10, w - 11);
       let fMin = 1e9;
@@ -2956,7 +3002,7 @@ function caveWorld(P, C, o) {
       }
     }
     // 굵은 바위 기둥 (아래는 아치로 뚫려 지나간다)
-    const np = kind === "pillared" ? R.int(1, 2) : kind === "grand" ? R.int(0, 2) : 0;
+    const np = (kind === "pillared" ? R.int(1, 2) : kind === "grand" ? R.int(0, 2) : 0) + (o.style?.pillars && kind !== "small" && w >= 70 ? o.style.pillars : 0);
     for (let k = 0; k < np; k++) {
       const pw = R.int(8, 14), i0 = R.int(16, Math.max(17, w - 16 - pw)), aH = R.int(12, 15);
       for (let i = i0; i < i0 + pw && i < w; i++) {
@@ -2971,12 +3017,12 @@ function caveWorld(P, C, o) {
   };
 
   // ── 굴: A 문(xa, ya 바닥 줄) → B 문(xb, yb). 가로 길이 ≥ 높이 차 (비탈 45°). 평지·비탈이 섞이고 천장은 들쭉날쭉 ──
-  const tunnel = (xa, ya, xb, yb, h = R.int(10, 13)) => {
+  const tunnel = (xa, ya, xb, yb, h = R.int(o.style?.tunH?.[0] ?? 10, o.style?.tunH?.[1] ?? 13)) => {
     const dir = xb >= xa ? 1 : -1, dn = Math.sign(yb - ya);
     let left = Math.abs(yb - ya), slack = Math.max(0, Math.abs(xb - xa) - left);
     let x = xa, f = ya, jg = 0, run = 0;
     const col = (fp) => {
-      if (run-- <= 0) ((jg = R.int(0, 3)), (run = R.int(3, 7)));
+      if (run-- <= 0) ((jg = R.int(0, o.style?.jag ?? 3)), (run = R.int(3, 7)));
       for (let y = Math.min(f, fp) - h - jg; y < f; y++) air(x, y);
     };
     col(f);
@@ -3322,8 +3368,8 @@ function caveWorld(P, C, o) {
       fy = clamp(fy, hiY, o.y1 - 2) & ~1;
       if (!free(x0, x0 + w, fy - Math.ceil(h * 1.3) - 2, fy + 10, 12)) continue;
       if (o.design && !rectRock(x0 - 8, fy - Math.ceil(h * 1.3) - 10, x0 + w + 8, fy + 12)) continue;
-      const kind = R.pick(S2.k);
-      const r = newRoom({ x0, x1: x0 + w, fy, h, kind, floor: R.pick(FL[kind]), cls });
+      const kind = R.pick(o.style?.k?.[cls] ?? S2.k);
+      const r = newRoom({ x0, x1: x0 + w, fy, h, kind, floor: R.pick(o.style?.fl?.[kind] ?? FL[kind]), cls });
       carveCavern(r);
       cov += w * h;
       k++;

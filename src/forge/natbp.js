@@ -312,3 +312,10 @@ export function editSky(S, patch = {}, links = null) {
     sky: S1,
   };
 }
+
+// ── 동굴 구역 셋 (y=1 줄): 같은 동굴 생성기에 지역마다 다른 짜임과 소품 (natgen.js CAVE_STYLE) ──
+//   g1_1 드립스톤: 종유석 대공동 · 지하 호수 · 높은 천장 / g0_1 아이언베인: 옛 갱도 · 나무 판자 벽과 횃불 · 광맥 수정
+//   gm1_1 루트홀로우: 둥근 굴방 · 뿌리 기둥 · 늘어진 뿌리와 빛 버섯
+BLUEPRINTS.g1_1 = { cave: { style: "drip" } };
+BLUEPRINTS.g0_1 = { cave: { style: "mine" } };
+BLUEPRINTS.gm1_1 = { cave: { style: "root" } };

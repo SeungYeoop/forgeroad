@@ -172,7 +172,10 @@ export function* pixFine(ch, base, region, S) {
     desert: mix(P.soil, P.rock, 0.35), snow: mix(P.rock, 0xa8d0f0, 0.45), fortress: mix(P.rock, 0x8a5a48, 0.25),
     kingdom: mix(P.rock, 0xf0ecf4, 0.4), abyss: P.rock,
   }[th] ?? mix(P.rock, P.soil, 0.3);
-  const ugBase = BI ? BI.rock : mix(regionBase, 0x3a3448, 0.35);
+  // 지역 팔레트가 땅속 바위·뒷벽 색을 정하면 생물군계 색보다 먼저 (동굴 구역마다 다른 바위색)
+  const ugBase = P.ugRock ?? (BI ? BI.rock : mix(regionBase, 0x3a3448, 0.35));
+  // 종유석 끝 색: 지역 바위색을 따른다 (석회 동굴은 하얗게)
+  const DRIP = P.ugRock ? [mix(ugBase, 0xffffff, 0.5), mix(ugBase, 0x101418, 0.45), mix(ugBase, 0xffffff, 0.15)] : [0xd8b088, 0x6a4a30, 0xa8845e];
   const SOIL = rampOf(mix(P.soilDark ?? sh(P.soil, -0.4), P.soil, 0.55));
   const G = rh.stone ?? 14;
   const strata = rh.strata ?? 0.3;
@@ -487,7 +490,7 @@ export function* pixFine(ch, base, region, S) {
   yield;
   // ── 6) 지하 뒷벽: 지표 아래, 위가 바위로 덮인 공기에만 (바위 가까이는 더 어둡게) ──
   if (ug.top * T < OY + PH) {
-    const wallBase = BI ? BI.wall : mix(regionBase, 0x0e0a14, 0.7);
+    const wallBase = P.ugWall ?? (BI ? BI.wall : mix(regionBase, 0x0e0a14, 0.7));
     const WR = rampOf(sh(wallBase, 0.08));
     for (let x = 0; x < PW; x++) {
       if ((x & 31) === 0) yield;
@@ -599,7 +602,7 @@ export function* pixFine(ch, base, region, S) {
             const L = 4 + Math.floor(H(wx, 73) * 12), w = 1 + Math.floor(L / 6);
             for (let k = 1; k <= L; k++) {
               const ww = Math.max(0, Math.round(w * (1 - k / L)));
-              for (let dx = -ww; dx <= ww; dx++) empty(x + dx, y - k) && put(x + dx, y - k, dx < 0 ? 0xd8b088 : dx > 0 ? 0x6a4a30 : 0xa8845e);
+              for (let dx = -ww; dx <= ww; dx++) empty(x + dx, y - k) && put(x + dx, y - k, dx < 0 ? DRIP[0] : dx > 0 ? DRIP[1] : DRIP[2]);
             }
           }
           break;
@@ -670,7 +673,7 @@ export function* pixFine(ch, base, region, S) {
           const geo = ug.biome === "geode";
           for (let k = 0; k < L; k++) {
             const ww = Math.max(0, Math.round(w * (1 - k / L)));
-            for (let dx = -ww; dx <= ww; dx++) empty(x + dx, y + k) && put(x + dx, y + k, geo ? (dx < 0 ? 0xe0b0ff : dx > 0 ? 0x5a2a90 : 0x9a5ae0) : dx < 0 ? 0xd8b088 : dx > 0 ? 0x6a4a30 : 0xa8845e);
+            for (let dx = -ww; dx <= ww; dx++) empty(x + dx, y + k) && put(x + dx, y + k, geo ? (dx < 0 ? 0xe0b0ff : dx > 0 ? 0x5a2a90 : 0x9a5ae0) : dx < 0 ? DRIP[0] : dx > 0 ? DRIP[1] : DRIP[2]);
           }
         }
         break;

@@ -7,6 +7,7 @@ import { pixFine, fineSlice } from "../src/forge/terrfine.js";
 import { savePNG } from "./png.mjs";
 import fs from "node:fs";
 import { paintDeco } from "../src/forge/natdeco.js";
+import { biomeOf } from "../src/forge/terrprof.js";
 
 const [id = "g1_0", seedS = "1", out = "paint.png", ...crop] = process.argv.slice(2);
 const z = ZONES.find((q) => q.id === id);
@@ -14,7 +15,7 @@ const seed = Number(seedS);
 const o = { seed, Ft: 528, up: z.kind === "zone" ? upChunk(z) : -1, down: z.kind === "zone" ? downChunk(z) : -1, fe: 1, ze: 0, biome: null, noRepair: !!process.env.NOREP };
 const CAVE_BIO = (x, y) => (y === 3 ? "magma" : y === 2 ? "deep" : x === -1 ? "lush" : Math.abs(x) % 2 ? "geode" : "drip");
 const GROUND_BIO = { "-3": "drip", "-2": "deep", "-1": "lush", 1: "drip", 2: "geode", 3: "magma" };
-o.biome = z.y > 0 ? CAVE_BIO(z.x, z.y) : GROUND_BIO[z.x] ?? "drip";
+o.biome = biomeOf(z);
 o.patterns = z.y === 0 ? z.reg?.patterns : null;
 // PLANFILE: 미리 만든 설계(natpaintp가 한 번만 만든다)
 const P = process.env.PLANFILE ? adoptPlan(z, seed, v8.deserialize(fs.readFileSync(process.env.PLANFILE))) : planOf(z, o);

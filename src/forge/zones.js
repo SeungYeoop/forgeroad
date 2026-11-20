@@ -42,11 +42,11 @@ const REMADE = {
   gm1_m1: { name: "리프크라운", look: "leafcrown", particle: "pollen",
     pal: { sky: [0x5aa0d8, 0xf0f4d0], far: 0xb8d4a8, mid: 0x6aa050, near: 0x2e5a2a, top: 0x58b038, topHi: 0xb0e85a, soil: 0x7a5434, soilDark: 0x3e2818, soilHi: 0x9a7048, rock: 0x8a6a48, accent: 0xffc040, fog: 0xf8ffe8, glow: 0xfff0b0 } },
   g0_1: { name: "아이언베인", look: "ironvein", particle: "drips",
-    pal: { sky: [0x1c1a20, 0x4a4248], far: 0x3a3438, mid: 0x2c2628, near: 0x1a1618, top: 0x7a6a5a, topHi: 0xb09a80, soil: 0x5a4a3e, soilDark: 0x2a221c, soilHi: 0x7a6450, rock: 0x6a6670, accent: 0xd07a3a, fog: 0xc09070, glow: 0xffb060 } },
+    pal: { sky: [0x1c1a20, 0x4a4248], far: 0x3a3438, mid: 0x2c2628, near: 0x1a1618, top: 0x7a6a5a, topHi: 0xb09a80, soil: 0x5a4a3e, soilDark: 0x2a221c, soilHi: 0x7a6450, rock: 0x6a6670, accent: 0xd07a3a, fog: 0xc09070, glow: 0xffb060, ugRock: 0x6c6672, ugWall: 0x221e26 } },
   g1_1: { name: "드립스톤", look: "dripstone", particle: "drips",
-    pal: { sky: [0x10202a, 0x2a4a58], far: 0x2a4048, mid: 0x1e3038, near: 0x121e24, top: 0xb8c4b8, topHi: 0xe8f0e4, soil: 0x6a7470, soilDark: 0x343c3c, soilHi: 0x8a948c, rock: 0x9aa8a4, accent: 0x60e0f0, fog: 0x80c8d8, glow: 0xa0f0ff } },
+    pal: { sky: [0x10202a, 0x2a4a58], far: 0x2a4048, mid: 0x1e3038, near: 0x121e24, top: 0xb8c4b8, topHi: 0xe8f0e4, soil: 0x6a7470, soilDark: 0x343c3c, soilHi: 0x8a948c, rock: 0x9aa8a4, accent: 0x60e0f0, fog: 0x80c8d8, glow: 0xa0f0ff, ugRock: 0xb0b4a4, ugWall: 0x2a3432 } },
   gm1_1: { name: "루트홀로우", look: "roothollow", particle: "spores",
-    pal: { sky: [0x16101a, 0x3a2a40], far: 0x2e2232, mid: 0x221a26, near: 0x140e16, top: 0x6a5a3a, topHi: 0x9a8a5a, soil: 0x5a4030, soilDark: 0x2a1c14, soilHi: 0x7a5a40, rock: 0x5e5048, accent: 0x7af0a0, fog: 0x9a7ab0, glow: 0xb0ffd0 } },
+    pal: { sky: [0x16101a, 0x3a2a40], far: 0x2e2232, mid: 0x221a26, near: 0x140e16, top: 0x6a5a3a, topHi: 0x9a8a5a, soil: 0x5a4030, soilDark: 0x2a1c14, soilHi: 0x7a5a40, rock: 0x5e5048, accent: 0x7af0a0, fog: 0x9a7ab0, glow: 0xb0ffd0, ugRock: 0x7a6e58, ugWall: 0x2a2018 } },
 };
 // 층 띠별 몬스터 목록 (bestiary.js → 엔진·배치가 쓰는 꼴)
 function layersOf(zid) {
