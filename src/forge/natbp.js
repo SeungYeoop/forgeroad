@@ -475,4 +475,75 @@ BLUEPRINTS.g0_1 = {
   drops: [["W8", "W9"], ["E8", "E10"]],
 };
 
-BLUEPRINTS.gm1_1 = { cave: { style: "root" } };
+// ── gm1_1 「루트홀로우 · 뿌리 속」 손 설계: 세로로 박힌 고목 줄기가 주인공 ──
+//   가운데에 3열 10층 고목 줄기(나무껍질 성채): 탑이 좌우로 엇갈리며 꼭대기 ▲ 에서 바닥까지 내려가고, 가운데 열엔 방이 한 칸씩
+//   줄기의 탑마다 뿌리 굴이 양옆 아래로 뻗는다 (빛 버섯 숲 · 뿌리 웅덩이 · 독 포자 굴). 맨 아래엔 거대한 뿌리 심장 공동, 그 서쪽에 ▼
+BLUEPRINTS.gm1_1 = {
+  cave: { style: "root" },
+  caves: cvR([
+    ["A0b", 300, 1300, 2100, 280, "hall", "mound", "treasure"], // 말라붙은 뿌리굴
+    ["A0", 1800, 3000, 2300, 320, "hall", "mound", "arena"], // 뿌리 꼭대기 굴
+    ["PK", 4016, 4900, 2400, 300, "hall", "flat", "rest", { peak: 1 }], // ▲ 줄기 꼭대기 옹이 구멍
+    ["E0", 5500, 6800, 2200, 300, "hall", "mound", "arena"], // 윗뿌리 회랑
+    ["E0b", 7300, 8050, 1900, 260, "small", "flat", "treasure"], // 새 둥지 굴
+    ["W2b", 600, 1700, 3000, 340, "hall", "mound", "arena"], // 굼벵이 굴
+    ["W2", 2300, 3100, 3400, 340, "hall", "mound", "arena"], // 껍질 틈 굴
+    ["E1", 5600, 6900, 3300, 360, "hall", "mound", "arena"], // 노움 굴
+    ["E1b", 7400, 8050, 3000, 280, "small", "flat", "treasure"], // 노움 보물굴
+    ["W3", 2400, 3150, 3900, 300, "hall", "flat", "rest"], // 뿌리 쉼터
+    ["W3b", 400, 1900, 4000, 420, "pillared", "mound", "rest"], // 빛 버섯 숲
+    ["E3", 5600, 7000, 4250, 380, "lake", "basin", "rest"], // 뿌리 웅덩이
+    ["EL", 64, 900, 4800, 300, "hall", "flat", "rest", { entry: "L" }],
+    ["WE", 1500, 2700, 4950, 340, "hall", "mound", "arena"], // 뿌리 입구 굴
+    ["EM", 5600, 6300, 4900, 300, "hall", "flat", "arena"], // 동쪽 뿌리목
+    ["ER", 6800, 8100, 4800, 320, "hall", "flat", "rest", { entry: "R" }],
+    ["W6", 2500, 3150, 5450, 320, "lake", "basin", "rest"], // 뿌리 물웅덩이
+    ["W6b", 700, 2000, 5700, 380, "hall", "mound", "arena"], // 버섯 사슴 굴
+    ["E7", 5600, 7200, 5700, 380, "pillared", "mound", "arena"], // 독 포자 굴
+    ["E7b", 7600, 8050, 5400, 260, "small", "flat", "treasure"], // 포자 주머니 굴
+    ["W8", 2400, 3150, 6250, 320, "hall", "steps", "arena"], // 썩은 뿌리 굴
+    ["W8b", 600, 1900, 6600, 360, "pillared", "mound", "arena"], // 망령 굴
+    ["E9", 5500, 6400, 6650, 300, "hall", "flat", "arena"], // 뿌리 끝 굴
+    ["W9", 500, 2000, 7550, 380, "hall", "mound", "treasure"], // 잔뿌리 굴
+    ["DP", 2500, 3500, 7950, 360, "hall", "flat", "rest", { deep: 1 }], // ▼ 뿌리 밑 구멍
+    ["HEART", 3900, 6200, 7800, 600, "grand", "mound", "vista"], // 뿌리 심장 공동
+  ]),
+  // 고목 줄기: 3열 10층 (x 3584~5120, y 2560~6400). 탑이 왼쪽·오른쪽 끝 열을 번갈아 두 층씩, 가운데 열은 방
+  dungeon: {
+    x0: 3584, y0: 2560, cols: 3, stories: 10, wall: "wood", mat: "wood", step: 6, stairs: 1,
+    gate: { col: 0, row: 2400, door: 4016, up: "WE", down: "E", cave: "up" },
+    towers: [
+      { id: "T1", col: 2, s: 0, up: "W", down: "W", caveE: "both" },
+      { id: "T2", col: 0, s: 1, up: "E", down: "E", cave: "both" },
+      { id: "T3", col: 2, s: 2, up: "W", down: "W", caveE: "both" },
+      { id: "T4", col: 0, s: 3, up: "E", down: "E", cave: "both" },
+      { id: "T5", col: 2, s: 4, up: "W", down: "W", caveE: "both" },
+      { id: "T6", col: 0, s: 5, up: "E", down: "E", cave: "both" },
+      { id: "T7", col: 2, s: 6, up: "W", down: "W", caveE: "both" },
+      { id: "T8", col: 0, s: 7, up: "E", down: "E", cave: "both" },
+      { id: "T9", col: 2, s: 8, up: "W", down: "W", caveE: "both" },
+    ],
+    rooms: [
+      { id: "M0", c0: 1, c1: 1, s: 0, type: "guard", role: "arena" }, // 옹이 문간
+      { id: "M1", c0: 1, c1: 1, s: 1, type: "shrine", role: "rest" }, // 수액 샘
+      { id: "M2", c0: 1, c1: 1, s: 2, type: "vault", role: "treasure" }, // 도토리 창고
+      { id: "M3", c0: 1, c1: 1, s: 3, type: "guard", role: "arena" }, // 뿌리 초소
+      { id: "M4", c0: 1, c1: 1, s: 4, type: "trap", role: "trap" }, // 가시 덩굴 복도
+      { id: "M5", c0: 1, c1: 1, s: 5, type: "arena", role: "arena" }, // 나이테 홀
+      { id: "M6", c0: 1, c1: 1, s: 6, type: "shrine", role: "rest" }, // 수액 샘 2
+      { id: "M7", c0: 1, c1: 1, s: 7, type: "vault", role: "treasure" }, // 씨앗 창고
+      { id: "M8", c0: 1, c1: 1, s: 8, type: "guard", role: "arena" }, // 뿌리 문지기
+      { id: "M9", c0: 0, c1: 1, s: 9, type: "sanctum", role: "arena" }, // 줄기 밑동 성소
+    ],
+  },
+  links: [
+    ["A0b", "A0"], ["A0", "VG"], ["PK", "E0"], ["E0", "E0b"],
+    ["W2b", "W2"], ["W2", "T2"], ["T1_d", "E1"], ["E1", "E1b"],
+    ["W3b", "W3"], ["W3", "T2_d"], ["T3_d", "E3"],
+    ["EL", "WE"], ["WE", "T6"], ["T5_d", "EM"], ["EM", "ER"],
+    ["W6b", "W6"], ["W6", "T6_d"], ["T7_d", "E7"], ["E7", "E7b"],
+    ["W8b", "W8"], ["W8", "T8_d"], ["T9_d", "E9"],
+    ["W9", "DP"], ["DP", "HEART"],
+  ],
+  drops: [["A0b", "W2b"], ["W2b", "W3b"], ["W6b", "W8b"], ["W8b", "W9"], ["E9", "HEART"], ["E1", "E3"]],
+};
