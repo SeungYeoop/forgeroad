@@ -34,6 +34,7 @@ import { interp } from "./interp.js";
 import * as SP from "./spells.js";
 import * as ZN from "./zones.js";
 import * as ZG from "./natgen.js";
+import * as CHS from "./chests.js";
 import { biomeOf } from "./terrprof.js";
 import * as SK from "./skills.js";
 import * as LOOK from "./look.js";
@@ -385,6 +386,7 @@ export const rarityColor = (it) => RAR_COL[IT.RARITY_OF(it)];
 
 // 부팅 시 생성하는 공용 텍스처
 export function bootTextures(scene) {
+  CHS.chestTextures(scene);
   VFX.bootVfx(scene, R.ht, R.lt);
   ICON.bootIcons(scene, R.ht, R.lt);
   makePlayer(scene, R.ht, R.Et, R.As, R.le);
@@ -2082,15 +2084,108 @@ export function onKill(sc, T) {
   else if (Math.random() < 0.005 * luck) dropItem(sc, x, y, randomItem(sc));
 }
 // 보물 상자: 등급별 아이템 (하드: 0: 25% 1개, 1: 60% 1개, 2: 1개 + 60% 융합석)
+// ── 보물 상자 ────────────────────────────────────────
+// 등급별 보상: 아이템(확률 목록) · 한 등급 위 아이템이 나올 확률 · 융합석(정수 + 남은 확률) · 재료 [최소, 최대] · 골드
+const CHEST_LOOT = [
+  { items: [0.8], up: 0, stones: 0.2, mats: [1, 2], gold: 90 },
+  { items: [1, 0.55], up: 0.2, stones: 0.6, mats: [2, 4], gold: 220 },
+  { items: [1, 1, 0.5], up: 0.5, stones: 1.5, mats: [4, 6], gold: 480 },
+  { items: [1, 1, 1, 0.6], up: 1, stones: 2.6, mats: [7, 10], gold: 1000 },
+];
 export function chestLoot(sc, x, y, tier) {
   if (!sc.fr) return;
-  const n = tier === 2 ? 1 : tier === 1 ? (Math.random() < 0.6 ? 1 : 0) : Math.random() < 0.25 ? 1 : 0;
-  for (let i = 0; i < n; i++) dropItem(sc, x, y, randomItem(sc));
-  tier === 2 && Math.random() < 0.6 && gainStoneDrop(sc, x, y);
-  dropMat(sc, x, y, tier === 2 ? 4 : tier === 1 ? 2 : Math.random() < 0.5 ? 1 : 0);
+  const L = CHEST_LOOT[Math.max(0, Math.min(3, tier))];
+  const jobs = [];
+  L.items.forEach((p, i) => {
+    if (Math.random() >= p) return;
+    // 전설 상자 첫 아이템은 반드시 한 등급 위 (25%는 두 등급 위)
+    const up = tier === 3 && i === 0 ? (Math.random() < 0.25 ? 2 : 1) : Math.random() < L.up ? 1 : 0;
+    jobs.push(() => dropItem(sc, x, y, randomItem(sc, void 0, up)));
+  });
+  const st = Math.floor(L.stones) + (Math.random() < L.stones % 1 ? 1 : 0);
+  for (let i = 0; i < st; i++) jobs.push(() => gainStoneDrop(sc, x, y));
+  const mn = L.mats[0] + Math.floor(Math.random() * (L.mats[1] - L.mats[0] + 1));
+  jobs.push(() => dropMat(sc, x, y, mn));
+  // 하나씩 튀어나온다
+  jobs.forEach((f, i) => sc.time.delayedCall(i * 120, () => sc.fr && f()));
+}
+// 상자 물체 (엔진 이벤트 관리자 evm이 가까우면 prompt를 띄우고 E로 interact)
+//   o.camp: 지키는 무리 — 그 무리가 살아 있는 동안 사슬로 잠겨 있다
+export function chestObj(sc, evm, st, x, y, tier, after, o = {}) {
+  tier = Math.max(0, Math.min(3, tier | 0));
+  const col = CHS.TIER_COLOR[tier], name = CHS.TIER_NAME[tier];
+  const ADD = R.zt.BlendModes.ADD;
+  const glow = sc.add.image(x, y - 12, "vx_glow").setTint(col).setBlendMode(ADD).setDepth(5).setAlpha(0).setScale(0.7 + tier * 0.18);
+  const spr = sc.add.sprite(x, y + 1, `fr_chest${tier}`, st.opened ? 3 : 0).setOrigin(0.5, 1).setDepth(6);
+  const v = { chunk: null, x, y, sprites: [spr, glow], alive: !0 };
+  const guards = () => (o.camp ? (sc.enemies ?? []).filter((e) => !e.dead && !e.removed && e.opts?.camp === o.camp && Math.hypot(e.cx - x, e.body.y - y) < 420).length : 0);
+  let sealed = !st.opened && guards() > 0, chk = 0, fxT = 0, t = 0, openT = -1;
+  const setPrompt = () => (v.prompt = st.opened ? void 0 : sealed ? `잠김 · ${name} (지키는 적을 쓰러뜨리면 열린다)` : `열기 · ${name}`);
+  !st.opened && spr.setFrame(sealed ? 4 : 0);
+  setPrompt();
+  v.update = (dt) => {
+    t += dt;
+    if (openT >= 0) {
+      openT += dt;
+      spr.setFrame(openT < 0.12 ? 1 : openT < 2.4 ? 2 : 3);
+      glow.setAlpha(Math.max(0, 0.9 - openT * 0.35));
+      return;
+    }
+    if (st.opened) return;
+    // 잠김 → 풀림
+    if ((chk -= dt) <= 0) {
+      chk = 0.25;
+      const s2 = guards() > 0;
+      if (sealed && !s2) {
+        sc.fx.burst("chunk", x, y - 12, 10, 0x9a9aa4);
+        sc.fx.burst("glow", x, y - 12, 14, col);
+        sc.fx.text(x, y - 34, "봉인이 풀렸다", CHS.TIER_CSS[tier]);
+        R.j.play("open");
+      }
+      sealed !== s2 && ((sealed = s2), spr.setFrame(sealed ? 4 : 0), setPrompt());
+    }
+    // 반짝임: 등급이 높을수록 자주·밝게. 잠긴 동안은 붉게
+    glow.setAlpha(sealed ? 0.18 + 0.08 * Math.sin(t * 3) : (0.12 + tier * 0.1) * (0.75 + 0.25 * Math.sin(t * 2.4)));
+    sealed && glow.setTint(0xff4040);
+    !sealed && glow.setTint(col);
+    if ((fxT -= dt) <= 0 && !sealed) {
+      fxT = 0.5 / (1 + tier);
+      sc.fx.burst("glow", x + (Math.random() - 0.5) * 22, y - 6 - Math.random() * 14, 1, col);
+      tier === 3 && sc.fx.burst("rise", x + (Math.random() - 0.5) * 18, y - 4, 1, 0x7af0ff);
+    }
+  };
+  v.interact = () => {
+    if (st.opened) return;
+    sealed && guards() === 0 && ((sealed = !1), spr.setFrame(0));
+    if (sealed) {
+      sc.fx.text(x, y - 34, "지키는 적이 남아 있다", "#ff8a8a");
+      R.j.play("warn", 0.5);
+      return;
+    }
+    st.opened = !0;
+    v.prompt = void 0;
+    openT = 0;
+    R.j.play("chest");
+    tier >= 2 && R.j.play("magic", 0.6);
+    sc.fx.burst("glow", x, y - 12, 18 + tier * 10, col);
+    tier >= 1 && sc.fx.text(x, y - 36, name, CHS.TIER_CSS[tier]);
+    tier >= 2 && sc.fx.shake?.(tier === 3 ? 3 : 1.5);
+    // 빛기둥
+    const beam = sc.add.image(x, y - 6, "fr_beam").setOrigin(0.5, 1).setTint(col).setDepth(23).setBlendMode(ADD).setAlpha(0.9).setScale(0.6 + tier * 0.35, 0.3);
+    sc.tweens.add({ targets: beam, scaleY: 1.4 + tier * 0.5, alpha: 0, duration: 900 + tier * 250, ease: "Cubic.easeOut", onComplete: () => beam.destroy() });
+    sc.time.delayedCall(180, () => {
+      if (!sc.fr && !sc.dropGold) return;
+      sc.dropGold(x, y - 14, CHEST_LOOT[tier].gold);
+      chestLoot(sc, x, y - 14, tier);
+      (tier === 3 || (tier === 2 && Math.random() < 0.35)) && sc.queueRelic(0.6);
+      tier >= 1 && Math.random() < 0.5 && evm.randomBlessing(x, y - 30, !0);
+      after?.();
+    });
+  };
+  return v;
 }
 const KO2K = { 무기: "weapon", 스킬: "skill", 마법: "magic", 방어구: "armor", 각인: "rune" };
-export function randomItem(sc, hint) {
+export function randomItem(sc, hint, up = 0) {
   const reg = sc.currentRegion?.()?.idx ?? 0;
   let kinds = null;
   if (hint) for (const [ko, k] of Object.entries(KO2K)) hint.includes(ko) && (kinds = [...(kinds ?? []), k]);
@@ -2098,7 +2193,7 @@ export function randomItem(sc, hint) {
   const w = { weapon: 2, skill: 3, magic: 3, armor: 1.6, rune: 2.4 };
   let tot = pool.reduce((s, x) => s + w[x.kind], 0);
   let r = Math.random() * tot;
-  const g = IT.dropGrade(reg);
+  const g = Math.min(IT.GRADE_MAX, IT.dropGrade(reg) + up);
   for (const x of pool) if ((r -= w[x.kind]) <= 0) return IT.makeBase(x.id, g);
   return IT.makeBase(pool[0]?.id ?? "G01", g);
 }

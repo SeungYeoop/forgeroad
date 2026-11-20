@@ -146,3 +146,16 @@
 - 엔진 연결: 조각 데이터에 fine·gy(칸마다 실제 지면 px)·flat(칸 전체가 평평한가). 적·상자·행사·표석·출구·장식·이정표는 실제 지면 높이(py)에, 평평한 칸에만 상자·행사
 - 도구: terrain-lab.html(같은 구역을 여러 시드로 나란히 비교, 게임 그림/길찾기 구조, 경사 분포), tools/natterrain-test.mjs(종합 검사),
   natlab.mjs(많은 시드 일괄 검사·그림), natpaint.mjs(실제 그림 PNG), natphys.mjs(길찾기 이동을 실제 충돌로 재현), natcheck.mjs(헤드리스 크롬 실게임 검사)
+
+## 몬스터 영역 · 그래스메어 층별 배치 · 새 상자 · 미니맵 확대 (2026-11-20)
+- 몬스터 영역(모든 구역): 태어난 구역 + 층(하늘섬·땅·지하) + 집에서 가로 480px(정예 600px). 플레이어가 벗어나면 쫓기를 그만두고 집으로 돌아가며 체력이 초당 15% 찬다.
+  glue.js inTerritory/leashTick, foes/core.js goHome·homeStep(7초 안에 못 돌아가면 그 자리가 새 집), main.js Cs.update. 층 판정 = natgen.js layerAt(지표보다 120px 위 = 하늘섬, 64px 아래 = 지하), 플레이어 층은 땅을 밟을 때만 바뀜
+- 그래스메어(g1_0) 층별 몬스터(zones.js REMADE.layers, t = 위협): 땅 = 슬라임·늑대·멧돼지 + 정예 켄타우로스 / 하늘섬 = 말벌·맨드레이크 / 지하 = 고블린 무리 + 정예 오우거
+- 배치(natgen.js planEnc): 구역 전체를 한 번에. 무리(같은 턱 위) 단위, 층마다 간격(ENC_GAP)·상한(CAMP_N), 입구·출구·문·쉼터·보스 방 앞은 비움. 탐험마다(runSeed) 바뀜. 엔진 무작위 배치·상자는 이 구역에서 끔(zg.planned)
+- 상자(chests.js 그림, glue.js chestObj/chestLoot): 4단계 나무·철·황금·전설, 프레임 닫힘·틈·열림·빈·사슬. 모든 설계 상자에 지키는 무리를 붙이고 무리 세기 = 등급
+  (나무 = 약한 종 2 · 철 = 3마리 · 황금 = 정예 특성 우두머리 · 전설 = 정예 종 + 특성 둘). 지키는 적(opts.camp)이 420px 안에 살아 있으면 잠김. 찾기 어려운 곳(높은 하늘·깊은 지하·큰 보물 방)일수록 높은 등급
+  보상 CHEST_LOOT: 아이템 0.8/1.55/2.5/3.6개, 등급 상승, 융합석, 재료, 골드 90/220/480/1000, 전설은 유물 확정
+- 황금 고블린 삭제 (출현·행사 모두)
+- 던전 정문 뒷벽 버그: 지표를 가로지르는 뒷벽은 지표선 아래만 남김(natgen.js clipWalls), 정문 복도 뒷벽을 문 칸까지
+- 미니맵 확대·축소: +/− 단추, 마우스 휠, 키보드 +/− → ×2 · ×1 · ×1/2 · 구역 전체
+- 검사: `node --import ./tools/json-hook.mjs tools/natenc.mjs g1_0 [세계 시드] [탐험 시드]`, 상자 그림 `node tools/chestsheet.mjs out.json`, 실게임 `node --import ./tools/json-hook.mjs tools/leashtest.mjs <폴더>`

@@ -7039,7 +7039,7 @@ function Ds(A) {
       particle: C.particle,
       bg: E.bg,
       patterns: m,
-      events: { treasure: 3, altar: 2, ambush: 4, deal: 3, goldenGoblin: 1, eliteGround: 3, rift: 1, spring: 1 },
+      events: { treasure: 3, altar: 2, ambush: 4, deal: 3, eliteGround: 3, rift: 1, spring: 1 },
       music: { root: 53 + (A % 5), scale: [0, 2, 4, 6, 8, 10], tempo: 118 + (A % 4) * 4, wave: "square", mood: 8 },
       pal: h,
       theme: E.theme ?? E.id,
@@ -9146,7 +9146,8 @@ class Xn {
       }
     }
     // 황금 고블린: 구역마다 낮은 확률로 직접 배치
-    if (!e && S > 2 && R >= 60 && E.chance(0.07)) {
+    // 황금 고블린은 없앴다 (사용자 요청 2026-11-20)
+    if (!1 && !e && S > 2 && R >= 60 && E.chance(0.07)) {
       for (let V = 0; V < 10; V++) {
         const W = E.int(4, vt - 4);
         if (l[W] > 0 && !i.noSpawn.has(W) && !i.hazards.some((k) => W >= k.x - 1 && W <= k.x + k.w)) {
@@ -9163,16 +9164,20 @@ class Xn {
           const LP = m.layers?.[sp.layer] ?? m;
           let id = sp.enemy;
           const tr = [];
-          if (sp.lead && E.chance(m.eliteChance + a.eliteBonus + (sp.big ? 0.15 : 0))) {
-            LP.elites?.length && E.chance(0.6) && (id = E.pick(LP.elites));
+          // 상자를 지키는 무리는 상자 등급대로 (1 = 정예 특성 · 2 = 정예 종 + 특성 둘), 아니면 무작위
+          const forced = sp.guard != null ? sp.elite ?? 0 : -1;
+          if (sp.lead && (forced > 0 || (forced < 0 && E.chance(m.eliteChance + a.eliteBonus + (sp.big ? 0.15 : 0))))) {
+            LP.elites?.length && (forced === 2 || (forced < 0 && E.chance(0.6))) && (id = E.pick(LP.elites));
             tr.push(E.pick(Ye));
-            if (E.chance(0.12 + a.tier * 0.02)) {
+            if (forced === 2 || (forced < 0 && E.chance(0.12 + a.tier * 0.02))) {
               const V = E.pick(Ye);
               V !== tr[0] && tr.push(V);
             }
           }
           const fl = !!se[id]?.flying;
-          d.push({ id: `${S}:${d.length}`, enemy: id, x: sp.x, row: fl ? Math.floor(sp.fy / gt) : sp.row, py: fl ? sp.fy : sp.py, traits: tr, layer: sp.layer });
+          // 특성 둘을 꼭 받아야 하면 다른 것으로
+          forced === 2 && tr.length < 2 && tr.push(Ye[(Ye.indexOf(tr[0]) + 1) % Ye.length]);
+          d.push({ id: `${S}:${d.length}`, enemy: id, x: sp.x, row: fl ? Math.floor(sp.fy / gt) : sp.row, py: fl ? sp.fy : sp.py, traits: tr, layer: sp.layer, camp: sp.camp, ox: sp.ox });
           continue;
         }
         const pool = m.enemies.filter((V) => !!se[V.id]?.flying === !!sp.fly);
@@ -9211,7 +9216,7 @@ class Xn {
     if (!e && !c && S > 2) {
       const y = 0.2 + Math.min(0.08, a.tier * 0.01);
       if (E.chance(y)) {
-        const x = Object.entries({ ...m.events, merchant: 3 }).filter(([w]) => !C.includes(w));
+        const x = Object.entries({ ...m.events, merchant: 3 }).filter(([w]) => !C.includes(w) && w !== "goldenGoblin");
         if (x.length) {
           const [w] = E.weighted(x, (M) => M[1]);
           for (let M = 0; M < 16; M++) {
@@ -15523,7 +15528,7 @@ class xr {
     (S.chests ?? []).forEach((c, k) => {
       const tr = FG.chestRoll(S.index, k, c.tier);
       if (tr == null) return;
-      const o = this.chest(`${S.index}:c${k}`, T + c.x * gt + 8, c.py ?? c.row * gt, tr);
+      const o = this.chest(`${S.index}:c${k}`, T + c.x * gt + 8, c.py ?? c.row * gt, tr, void 0, { camp: c.camp });
       ((o.chunk = S.index), this.objs.push(o));
     });
   }
@@ -15747,46 +15752,10 @@ class xr {
     }
     this.objs.push(a);
   }
-  chest(S, T, C, E, R) {
-    const h = this.s,
-      m = E === 2 ? "chest_epic" : E === 1 ? "chest_rare" : "chest",
-      t = this.st(S),
-      a = h.add
-        .sprite(T, C, m, t.opened ? 1 : 0)
-        .setOrigin(0.5, 1)
-        .setDepth(6),
-      v = { chunk: S, x: T, y: C, sprites: [a], alive: !0, prompt: t.opened ? void 0 : "열기" };
-    let o = 0;
-    return (
-      (v.update = (n) => {
-        ((o -= n),
-          !t.opened &&
-            o <= 0 &&
-            ((o = 0.4),
-            h.fx.burst(
-              "glow",
-              T + (Math.random() - 0.5) * 16,
-              C - 10,
-              1,
-              E === 2 ? 16736511 : E === 1 ? 8446207 : 16769152,
-            )));
-      }),
-      (v.interact = () => {
-        if (t.opened) return;
-        ((t.opened = !0),
-          (v.prompt = void 0),
-          a.setFrame(1),
-          j.play("chest"),
-          h.fx.burst("glow", T, C - 10, 24, 16769120));
-        const n = [28, 70, 170][E];
-        (h.dropGold(T, C - 14, n),
-          FG.chestLoot(h, T, C - 14, E),
-          E === 2 && h.queueRelic(0.5),
-          E >= 1 && Math.random() < 0.5 && this.randomBlessing(T, C - 30, !0),
-          R == null || R());
-      }),
-      v
-    );
+  // 보물 상자: 그림·잠금·여는 연출·보상은 glue.js chestObj (4단계: 0 나무 · 1 철 · 2 황금 · 3 전설)
+  chest(S, T, C, E, R, o = {}) {
+    const v = FG.chestObj(this.s, this, this.st(S), T, C, E, R, o);
+    return ((v.chunk = S), v);
   }
   randomBlessing(S, T, C = !1) {
     var t;
@@ -18731,7 +18700,7 @@ class Er extends zt.Scene {
         if (!room || !this.world.standable(gx0, R.row)) continue;
       }
       const h = se[R.enemy],
-        m = C + R.x * gt + 8,
+        m = C + R.x * gt + 8 + (R.ox ?? 0),
         t = R.py != null ? R.py - 1 : R.row * gt,
         a = new Cs(this, R.enemy, m, (h.flying, t), Math.max(0, E + R.x), {
           spawnId: R.id,
@@ -18740,6 +18709,7 @@ class Er extends zt.Scene {
           hpRatio: this.enemyHp.get(R.id),
           midBoss: R.mid,
           layer: R.layer,
+          camp: R.camp,
         });
       R.mid && FG.makeMidBoss(this, a);
       this.enemies.push(a);

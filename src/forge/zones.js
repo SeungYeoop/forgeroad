@@ -40,9 +40,10 @@ const REMADE = {
       //   하늘섬: 거대 말벌 · 맨드레이크 (섬 꽃밭에 숨어 있음)
       //   지하(동굴·고대 던전): 고블린 정찰병 무리, 정예 초원 오우거
       layers: {
-        ground: { enemies: [{ id: "gm_slime", w: 5, pack: [1, 3] }, { id: "gm_wolf", w: 3, pack: [2, 3] }, { id: "gm_boar", w: 2, pack: [1, 1] }], elites: ["gm_centaur"] },
-        sky: { enemies: [{ id: "gm_wasp", w: 5, pack: [2, 3] }, { id: "gm_mandrake", w: 3, pack: [1, 2] }], elites: [] },
-        under: { enemies: [{ id: "gm_goblin", w: 1, pack: [2, 3] }], elites: ["gm_ogre"] },
+      // t = 위협 (상자 지기를 고를 때: 나무 상자는 약한 것, 황금·전설은 센 것)
+        ground: { enemies: [{ id: "gm_slime", w: 5, pack: [1, 3], t: 1 }, { id: "gm_wolf", w: 3, pack: [2, 3], t: 2 }, { id: "gm_boar", w: 2, pack: [1, 1], t: 3 }], elites: ["gm_centaur"] },
+        sky: { enemies: [{ id: "gm_wasp", w: 5, pack: [2, 3], t: 2 }, { id: "gm_mandrake", w: 3, pack: [1, 2], t: 1 }], elites: [] },
+        under: { enemies: [{ id: "gm_goblin", w: 1, pack: [2, 3], t: 2 }], elites: ["gm_ogre"] },
       },
       // 지표 기준 목록 (떠도는 정예 무리·매복 행사 등 엔진이 쓰는 곳)
       enemies: [{ id: "gm_slime", w: 5 }, { id: "gm_wolf", w: 3 }, { id: "gm_boar", w: 2 }],
@@ -199,9 +200,11 @@ export function chestRoll(c, k, tier) {
   const z = zoneAtChunk(c);
   if (!z) return tier;
   if (z.kind === "dungeon") return Math.max(1, tier);
+  // 층별 몬스터 구역: 상자 등급은 지키는 무리 세기로 이미 정해졌다 (탐험마다 자리·등급이 다시 짜인다)
+  if (z.reg?.layers) return tier;
   if (roll(RUN_SEED, "ch", c, k) < 0.3) return null;
   // 구역 설계가 놓은 상자는 tier가 곧 "찾기 어려운 정도" (하늘 꼭대기·깊은 지하는 좋은 상자가 잘 나온다)
-  const q = roll(RUN_SEED, "ct", c, k) + (z.ring - 1) * 0.06 + (z.reg?.layers ? tier * 0.14 : 0);
+  const q = roll(RUN_SEED, "ct", c, k) + (z.ring - 1) * 0.06;
   return q > 0.95 ? 2 : q > 0.68 ? 1 : 0;
 }
 // 구역의 출구 목록: [{at: "L"|"R"|"U"|"D"|"DG", to: 구역 id | HUB_ID, back: 도착할 자리}]

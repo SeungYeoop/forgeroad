@@ -165,11 +165,43 @@ export function makePlan(z, o, attempt) {
   P.check = { ok: A.ok, score: A.score, miss: A.miss, traps: A.trapCount, repairs: P.repairs };
   P.A = A;
   finishMeta(P, A);
+  P.kind === "ground" && P.h && clipWalls(P);
   placeDeco(P);
   P.bp && placeProps(P);
   for (const r of P.spec) if (r.t <= 2) cutShape(P, r.x0 - 4, r.y0 - 4, r.x1 + 4, r.y1 + 4, (px, py) => Math.min(px - r.x0, r.x1 - px, py - r.y0, r.y1 - py) + 0.5);
   P.spec.some((r) => r.t <= 2) && blockSnap(P);
   return P;
+}
+// 지표를 가로지르는 뒷벽은 지표선 아래(언덕 속)만 남긴다.
+//   정문 복도·동굴 입구처럼 비탈이 방을 비스듬히 자르는 곳에서, 네모난 뒷벽이 비탈 바깥 하늘에 그대로 보이던 문제
+//   (지표보다 완전히 위인 뒷벽 = 하늘섬 속 방은 그대로 둔다)
+function clipWalls(P) {
+  const S = 4, hAt = (x) => P.h[clamp(Math.round(x / Q), 0, P.h.length - 1)];
+  const out = [];
+  for (const w of P.walls ?? []) {
+    let cross = !1;
+    for (let x = w.x0; x < w.x1 && !cross; x += S) {
+      const h = Math.max(hAt(x), hAt(Math.min(w.x1, x + S)));
+      cross = w.y0 < h - 2 && w.y1 > h + 2;
+    }
+    if (!cross) {
+      out.push(w);
+      continue;
+    }
+    // 4px 기둥마다 지표 아래부터. 같은 높이끼리 이어 붙인다
+    let cur = null;
+    for (let x = w.x0; x < w.x1; x += S) {
+      const x1 = Math.min(w.x1, x + S);
+      const h = Math.ceil(Math.max(hAt(x), hAt(x1)) / 4) * 4, y0 = Math.max(w.y0, h);
+      if (y0 >= w.y1) {
+        cur = null;
+        continue;
+      }
+      if (cur && cur.y0 === y0 && cur.x1 === x) cur.x1 = x1;
+      else ((cur = { ...w, x0: x, x1, y0 }), out.push(cur));
+    }
+  }
+  P.walls = out;
 }
 // ── 특수 블럭: 1 나무판 2 구름 3 물 4 얼음 5 튕김 버섯 ──
 const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5 };
@@ -4522,7 +4554,8 @@ function dungeonWorld(P, C, D) {
     mkTower(g, colX(col) + 12, colX(col) + 52, surfRow, floorR(0), 13);
     const dx = Math.round(D.gate.door / BLK);
     rect(g.x1, surfRow - 12, dx + 2, surfRow, -1);
-    back(g.x1, surfRow - 12, dx, surfRow, "brick");
+    // 뒷벽은 판 자리 끝(문)까지 — 예전엔 마지막 2칸이 비어 언덕 속에 하늘이 보였다 (지표 위로 나온 부분은 clipWalls가 자른다)
+    back(g.x1, surfRow - 12, dx + 2, surfRow, "brick");
     brick(g.x1, surfRow - 12, dx, surfRow);
     uni("VG", "@root");
   }
@@ -5166,9 +5199,10 @@ export function drawChunk(P, z, S, r, l, s, o) {
       for (const c of P.enc.camps)
         c.pts.forEach((p, k) => {
           if (!inC(p.x)) return;
-          out.spawns.push({ ...mk(p), fy: flyY(F, p.x, p.y), layer: c.lay, enemy: c.type, lead: k === 0, big: c.big ? 1 : 0, camp: c.id });
+          const q = mk(p);
+          out.spawns.push({ ...q, ox: p.x - (x0 + q.x * TS + 8), fy: flyY(F, p.x, p.y), layer: c.lay, enemy: c.type, lead: k === 0, big: c.big ? 1 : 0, camp: c.key, elite: c.elite, guard: c.guard });
         });
-      for (const c of P.enc.chests) inC(c.x) && out.chests.push({ ...mk(c), tier: c.tier });
+      for (const c of P.enc.chests) inC(c.x) && out.chests.push({ ...mk(c), tier: c.tier, camp: c.key, planned: 1 });
     }
     for (let k = 0, n = P.kind === "ground" ? 2 : 4; k < n && spots.length && !L; k++) {
       const p = mk(pick());
@@ -5188,7 +5222,7 @@ export function drawChunk(P, z, S, r, l, s, o) {
         }
       }
       const cx = (t.x0 + t.x1) / 2;
-      if (t.role !== "treasure" || t.x1 <= x0 - 600 || t.x0 >= x0 + vt * TS + 600) continue;
+      if (L || t.role !== "treasure" || t.x1 <= x0 - 600 || t.x0 >= x0 + vt * TS + 600) continue;
       const c = P.spots.filter((p) => p.x >= t.x0 && p.x < t.x1 && p.y >= t.y0 && p.y <= t.y1).sort((a, b) => Math.abs(a.x - cx) - Math.abs(b.x - cx))[0];
       c && inC(c.x) && out.chests.push({ ...mk(c), tier: t.big ? 2 : R() < 0.4 ? 2 : 1 });
     }
@@ -5250,10 +5284,10 @@ function flyY(F, x, y) {
 //   - 전투 방(arena)에는 먼저 큰 무리를 둔다
 //   - 상자: 땅은 무리 뒤(지키는 상자), 하늘섬은 가장 높은 섬, 지하는 가장 깊은 굴 — 층마다 고르게
 // 탐험마다(rs) 무리 자리·종류·상자 자리가 바뀐다. 지형은 그대로
-const ENC_GAP = { ground: 480, sky: 500, under: 520 };
+const ENC_GAP = { ground: 340, sky: 360, under: 380 };
 // 구역(8192px) 하나에 무리 수 상한 — 예전 무작위 배치의 마릿수(지표 ~30 · 하늘 ~45 · 지하 ~60)에 맞춤
-const CAMP_N = { ground: 13, sky: 18, under: 24 };
-const CHEST_N = { ground: 2, sky: 2, under: 2 };
+const CAMP_N = { ground: 18, sky: 22, under: 26 };
+const CHEST_N = { ground: 5, sky: 4, under: 4 };
 function planEnc(P, z, rs) {
   const R = rng((P.seed ^ Math.imul((rs ^ 0x51ed27) + 1, 0x27d4eb2d)) >>> 0);
   const L = z.reg.layers, ring = z.ring ?? 1, dg = z.kind === "dungeon";
@@ -5262,8 +5296,10 @@ function planEnc(P, z, rs) {
   const safe = dg ? 360 : 760, end = Math.min(P.WP - safe, P.arenaFrom - 260);
   const doors = [P.peak, P.deep].filter(Boolean);
   const cand = { ground: [], sky: [], under: [] };
+  // 정말 설 수 있는 자리만 (발밑 바로 아래 땅, 발목 위 공기)
+  const stand = (p) => P.F.solid(p.x, p.y + 3) && !P.F.solid(p.x, p.y - 6);
   for (const p of P.spots) {
-    if (p.x < safe || p.x > end) continue;
+    if (p.x < safe || p.x > end || !stand(p)) continue;
     if (doors.some((d) => Math.abs(d.x - p.x) < 180 && Math.abs(d.y - p.y) < 140)) continue;
     const role = tagOf(p)?.role;
     if (role === "rest" || role === "sanctum") continue;
@@ -5291,7 +5327,7 @@ function planEnc(P, z, rs) {
     for (const e of list) if ((t -= e.w ?? 1) <= 0) return e;
     return list[0];
   };
-  const camps = [], chests = [];
+  const camps = [], chests = [], extra = { ground: [], sky: [], under: [] };
   for (const lay of ["ground", "sky", "under"]) {
     const pool = L[lay]?.enemies, C = cand[lay];
     if (!pool?.length || !C.length) continue;
@@ -5318,31 +5354,92 @@ function planEnc(P, z, rs) {
         if (pts.length < n && pts.every((r) => Math.abs(r.x - q.x) >= 22)) pts.push(q);
       camps.push({ id: camps.length, lay, type: E.id, pts, big });
     }
-    // 상자
-    if (dg) continue;
-    const tres = tags.filter((t) => t.role === "treasure").map((t) => ({ x: (t.x0 + t.x1) / 2, y: t.y1 }));
-    const taken = () => [...chests, ...tres, ...doors];
-    let list;
-    if (lay === "ground") {
-      // 무리 뒤 40~110px (지키는 상자)
-      list = [];
-      for (const c of shuffle(camps.filter((c) => c.lay === "ground"))) {
-        const h = c.pts[0], q = C.filter((q) => Math.abs(q.y - h.y) <= 10 && Math.abs(q.x - h.x) >= 40 && Math.abs(q.x - h.x) <= 110 && c.pts.every((r) => Math.abs(r.x - q.x) >= 18));
-        q.length && list.push(q[Math.floor(R() * q.length)]);
-      }
-    } else {
-      // 하늘섬은 높은 곳부터, 지하는 깊은 곳부터 (위·아래 30% 안에서 고른다)
-      const s2 = C.slice().sort((a, b) => (lay === "sky" ? a.y - b.y : b.y - a.y));
-      list = shuffle(s2.slice(0, Math.max(6, Math.ceil(s2.length * 0.3))));
-    }
-    let n = 0;
-    for (const q of list) {
-      if (n >= CHEST_N[lay]) break;
-      if (!far(taken(), q, 1300)) continue;
-      chests.push({ x: q.x, y: q.y, tier: lay === "ground" ? (R() < 0.3 ? 1 : 0) : R() < 0.35 ? 2 : 1 });
-      n++;
+    // 땅: 무리 뒤 40~110px 자리 (그 무리가 지키는 상자)
+    if (dg || lay !== "ground") continue;
+    for (const c of shuffle(camps.filter((c) => c.lay === "ground"))) {
+      const h = c.pts[0], q = C.filter((q) => Math.abs(q.y - h.y) <= 10 && Math.abs(q.x - h.x) >= 40 && Math.abs(q.x - h.x) <= 110 && c.pts.every((r) => Math.abs(r.x - q.x) >= 18));
+      q.length && extra.ground.push(q[Math.floor(R() * q.length)]);
     }
   }
+  // ── 상자: 보물 방 + 층마다 몇 개. 모든 상자에 지키는 무리를 붙이고, 무리 세기 = 상자 등급 ──
+  //   0 나무(작은 무리) · 1 철(3마리) · 2 황금(정예 우두머리) · 3 전설(정예 종 + 특성 둘)
+  //   찾기 어려운 상자(높은 하늘섬·깊은 지하·큰 보물 방)일수록 높은 등급
+  if (!dg) {
+    for (const t of tags) {
+      if (t.role !== "treasure") continue;
+      const cx = (t.x0 + t.x1) / 2;
+      const c = P.spots.filter((p) => p.x >= t.x0 && p.x < t.x1 && p.y >= t.y0 && p.y <= t.y1).sort((a, b) => Math.abs(a.x - cx) - Math.abs(b.x - cx))[0];
+      c && chests.push({ x: c.x, y: c.y, lay: layerAt(P, c.x, c.y), big: t.big ? 1 : 0 });
+    }
+    for (const lay of ["ground", "sky", "under"]) {
+      const C = cand[lay];
+      let list = extra[lay];
+      if (lay !== "ground") {
+        // 하늘섬은 높은 곳부터, 지하는 깊은 곳부터 (위·아래 30% 안에서 고른다)
+        const s2 = C.slice().sort((a, b) => (lay === "sky" ? a.y - b.y : b.y - a.y));
+        list = shuffle(s2.slice(0, Math.max(6, Math.ceil(s2.length * 0.3))));
+      }
+      const want = CHEST_N[lay];
+      let n = 0;
+      for (const q of list) {
+        if (n >= want) break;
+        if (!far([...chests, ...doors], q, 600)) continue;
+        chests.push({ x: q.x, y: q.y, lay });
+        n++;
+      }
+    }
+    // 지키는 무리: 가까운 무리(260px 안, 같은 층)를 쓰고, 없으면 상자 옆에 새로 세운다
+    const allSp = { ground: [], sky: [], under: [] };
+    for (const p of P.spots) stand(p) && allSp[layerAt(P, p.x, p.y)].push(p);
+    for (const c of cand.ground) allSp.ground.push(c);
+    const pickNear = (lay, p) => {
+      let q = allSp[lay].filter((q) => Math.abs(q.y - p.y) <= 12 && Math.abs(q.x - p.x) >= 40 && Math.abs(q.x - p.x) <= 170);
+      q.length || (q = allSp[lay].filter((q) => Math.abs(q.x - p.x) >= 30 && Math.hypot(q.x - p.x, q.y - p.y) <= 220));
+      return q.length ? q[Math.floor(R() * q.length)] : null;
+    };
+    for (const c of chests) {
+      const pool = L[c.lay]?.enemies;
+      let g = camps.filter((k) => k.lay === c.lay).map((k) => [k, Math.hypot(k.pts[0].x - c.x, (k.pts[0].y - c.y) * 1.5)]).filter(([, d]) => d < 260).sort((a, b) => a[1] - b[1])[0]?.[0];
+      if (!g && pool?.length) {
+        const p = pickNear(c.lay, c);
+        if (p) {
+          const E = pickW(pool);
+          g = { id: camps.length, lay: c.lay, type: E.id, pts: [{ x: p.x, y: p.y }], big: !1 };
+          camps.push(g);
+        }
+      }
+      g && (c.camp = g.id);
+    }
+    // 등급 나누기: 지키는 무리가 있는 상자만, 찾기 어려운 순서로 줄 세우고 높은 등급부터 (무방비 상자는 나무)
+    const surf = (x) => (P.h ? P.h[Math.max(0, Math.min(P.h.length - 1, Math.round(x / Q)))] : P.HP / 2);
+    for (const c of chests) c.score = (c.lay === "sky" ? surf(c.x) - c.y : c.lay === "under" ? c.y - surf(c.x) : R() * 1500) + (c.big ? 900 : 0) + R() * 600;
+    const gd = chests.filter((c) => c.camp != null).sort((a, b) => b.score - a.score), N = gd.length;
+    const nL = Math.max(1, Math.round(N * 0.12)), nG = Math.round(N * 0.28), nI = Math.round(N * 0.35);
+    gd.forEach((c, i) => (c.tier = i < nL ? 3 : i < nL + nG ? 2 : i < nL + nG + nI ? 1 : 0));
+    for (const c of chests) c.camp == null && (c.tier = 0);
+    // 지표에도 철 상자 하나는 (가장 찾기 어려운 지표 상자)
+    const gg = gd.filter((c) => c.lay === "ground");
+    gg.length && !gg.some((c) => c.tier >= 1) && (gg[0].tier = 1);
+    for (const c of gd) camps[c.camp].guard = Math.max(camps[c.camp].guard ?? -1, c.tier);
+    // 무리 세기를 상자 등급에 맞춘다
+    for (const g of camps) {
+      if (g.guard == null) continue;
+      const C = allSp[g.lay], p = g.pts[0], pool = L[g.lay]?.enemies ?? [];
+      // 지기 종류: 나무 = 가장 약한 것 · 철 = 중간까지 · 황금·전설 = 가장 센 것
+      if (pool.length) {
+        const ts = pool.map((e) => e.t ?? 1), lo = Math.min(...ts), hi = Math.max(...ts);
+        const ok = pool.filter((e) => (g.guard === 0 ? (e.t ?? 1) === lo : g.guard === 1 ? (e.t ?? 1) <= Math.max(lo, 2) : (e.t ?? 1) === hi));
+        ok.length && !ok.some((e) => e.id === g.type) && (g.type = pickW(ok).id);
+      }
+      const want = g.guard === 0 ? 2 : 3 + (g.guard === 3 ? 1 : 0);
+      if (g.guard === 0) g.pts.length = Math.min(g.pts.length, 2);
+      for (const q of shuffle(C.filter((q) => Math.abs(q.y - p.y) <= 6 && Math.abs(q.x - p.x) <= 130)))
+        if (g.pts.length < want && g.pts.every((r) => Math.abs(r.x - q.x) >= 22)) g.pts.push(q);
+      g.elite = g.guard >= 3 ? 2 : g.guard === 2 ? 1 : 0;
+    }
+  }
+  for (const c of camps) c.key = `${z.id}#${rs}#${c.id}`;
+  for (const c of chests) c.camp != null && (c.key = camps[c.camp].key);
   return { rs, camps, chests };
 }
 
