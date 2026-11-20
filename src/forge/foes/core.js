@@ -214,7 +214,7 @@ function worker(scene) {
 // 몬스터가 생기기 직전: 아직 없으면 지금 바로 만든다
 export function ensure(scene, id) {
   const spec = SPECS[id];
-  if (!spec?.model || (BUILT.has(id) && scene.textures.exists(keyOf(id)))) return;
+  if (!(spec?.model || spec?.px) || (BUILT.has(id) && scene.textures.exists(keyOf(id)))) return;
   spec._id = id;
   build3d(scene, keyOf(id), spec);
 }
@@ -223,7 +223,7 @@ const ASKED = new Set();
 export function preloadRegion(scene, ri, list = null) {
   if (!list && (ri < 0 || ASKED.has(ri))) return;
   list || ASKED.add(ri);
-  const ids = (list ?? [0, 1, 2, 3, 4, 5].map((k) => `fr${ri}_${k}`).concat([`fr${ri}_e0`, `fr${ri}_e1`, `frb${ri}`])).filter((id) => SPECS[id]?.model);
+  const ids = (list ?? [0, 1, 2, 3, 4, 5].map((k) => `fr${ri}_${k}`).concat([`fr${ri}_e0`, `fr${ri}_e1`, `frb${ri}`])).filter((id) => SPECS[id]?.model || SPECS[id]?.px);
   const w = worker(scene);
   for (const id of ids) {
     if (BUILT.has(id) || PENDING.has(id)) continue;
@@ -242,7 +242,7 @@ export const frameOf = (id, name, k = 0) => {
 };
 // 텍스처 만들기: draw(D, frameIndex) 로 프레임마다 그린다
 export function buildArt(scene, key, spec) {
-  if (spec.model) return build3d(scene, key, spec);
+  if (spec.model || spec.px) return build3d(scene, key, spec);
   const n = spec.frames ?? 20, fw = spec.fw, fh = spec.fh;
   const B = sheet(fw, fh, n);
   for (let f = 0; f < n; f++) {

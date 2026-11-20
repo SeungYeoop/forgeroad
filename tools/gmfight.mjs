@@ -41,7 +41,7 @@ try {
       await sleep(t - (seen.size ? [...seen].pop() : 0));
       seen.add(t);
       const anim = await ev(`window.__tf && window.__tf.fz ? window.__tf.fz.anim.name : "?"`);
-      const s = await send("Page.captureScreenshot", { format: "png", clip: { x: 240, y: 120, width: 800, height: 480, scale: 1 } });
+      const s = await send("Page.captureScreenshot", { format: "png", clip: process.env.FULL ? { x: 0, y: 0, width: 1280, height: 720, scale: 1 } : { x: 240, y: 120, width: 800, height: 480, scale: 1 } });
       fs.writeFileSync(`${out}/${fid}_${t}.png`, Buffer.from(s.result.data, "base64"));
       console.log("  ", t, anim);
     }

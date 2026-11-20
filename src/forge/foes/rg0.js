@@ -2,7 +2,8 @@
 //   슬라임(아주 약함) · 맨드레이크(약함, 비명으로 굳게 함) · 고블린(약함, 빠름) · 말벌(보통, 독) · 늑대(보통, 무리)
 //   · 멧돼지(강함, 돌진) · [정예] 오우거(매우 강함) · [정예] 켄타우로스(매우 강함, 원거리)
 import { register } from "./core.js";
-import { gSlime, gSlimeMini, goblin, plainsWolf, tuskBoar, giantWasp, mandrake, meadowOgre, centaur } from "./mg0.js";
+import { pxSlime, pxSlimeMini } from "./pg0.js";
+import { goblin, plainsWolf, tuskBoar, giantWasp, mandrake, meadowOgre, centaur } from "./mg0.js";
 
 const DT = 1 / 60;
 const POIS = (p = 0.15, d = 3) => ({ type: "poison", chance: 1, dur: d, power: p });
@@ -55,7 +56,7 @@ function slimeBrain(mini) {
 }
 register("gm_slime", {
   atkMul: 0.7,
-  ...gSlime, speed: 70, sight: 200,
+  ...pxSlime, speed: 70, sight: 200,
   brain: slimeBrain(!1),
   die(e) {
     if (e.opts.summoned) return;
@@ -68,7 +69,7 @@ register("gm_slime", {
   },
 });
 register("gm_slime_mini", {
-  atkMul: 0.5, ...gSlimeMini, speed: 85, sight: 220, brain: slimeBrain(!0) });
+  atkMul: 0.5, ...pxSlimeMini, speed: 85, sight: 220, brain: slimeBrain(!0) });
 
 // ════ 고블린 정찰병 ════ 멀면 돌팔매, 가까우면 단검으로 재빨리 찌르고 뒤로 깡충
 register("gm_goblin", {

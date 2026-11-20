@@ -14,13 +14,25 @@ export function renderSheet(spec, key = "") {
     const [n] = spec.anims[nm];
     fi[nm] = [];
     for (let k = 0; k < n; k++) {
-      const M = model();
-      try {
-        spec.model(M, nm, k, n);
-      } catch (e) {
-        console.warn("foe model", key, nm, k, e);
+      let fr;
+      if (spec.px) {
+        // 2D 픽셀로 직접 그린 그림
+        fr = new Uint32Array(fw * fh);
+        try {
+          const cv = spec.px(nm, k, n), src = cv.rgba();
+          for (let y = 0; y < Math.min(fh, cv.H); y++) fr.set(src.subarray(y * cv.W, y * cv.W + Math.min(fw, cv.W)), y * fw);
+        } catch (e) {
+          console.warn("foe px", key, nm, k, e);
+        }
+      } else {
+        const M = model();
+        try {
+          spec.model(M, nm, k, n);
+        } catch (e) {
+          console.warn("foe model", key, nm, k, e);
+        }
+        fr = render(M, fw, fh, spec.render ?? {});
       }
-      const fr = render(M, fw, fh, spec.render ?? {});
       const ox = (f % cols) * fw, oy = Math.floor(f / cols) * fh;
       for (let y = 0; y < fh; y++) buf.set(fr.subarray(y * fw, y * fw + fw), (oy + y) * W + ox);
       fi[nm].push(f++);
