@@ -11,7 +11,7 @@ for (const nm of names) {
   const spec = M[nm];
   const sh = renderSheet(spec, nm);
   const px = new Uint8Array(sh.buf.buffer);
-  for (const an of Object.keys(spec.anims)) rows.push({ spec, sh, px, an, fr: sh.fi[an] });
+  for (const an of Object.keys(spec.anims).filter((a) => !process.env.ANIMS || process.env.ANIMS.split(",").includes(a))) rows.push({ spec, sh, px, an, fr: sh.fi[an] });
 }
 const W = Math.max(...rows.map((r) => r.fr.length * r.spec.fw)) * sc + 8, H = rows.reduce((a, r) => a + r.spec.fh * sc + 4, 4);
 const img = new Uint8Array(W * H * 4);

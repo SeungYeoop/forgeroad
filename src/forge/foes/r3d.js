@@ -208,6 +208,31 @@ export function render(M, W, H, o = {}) {
       }
       occ = Math.min(1, occ / 4);
       const nl = nx * lx + ny * ly + nz * lz;
+      if (o.cel) {
+        // ── 픽셀 아트 칠하기: 4단계로 딱 끊고(디더링 없음), 결은 무늬로만, 반사광은 작은 점 ──
+        const R = m._cel ?? (m._cel = [m.cdeep ?? mix(mix(m.base, 0x000000, 0.56), 0x2a1450, 0.32), m.clo ?? mix(mix(m.base, 0x000000, 0.3), 0x3a2060, 0.18), m.base, m.chi ?? mix(m.base, 0xfff2c8, 0.36)]);
+        let L = nl > 0.5 ? 3 : nl > 0.02 ? 2 : nl > -0.42 ? 1 : 0;
+        occ > 0.45 && (L = Math.max(0, L - 1));
+        tx > 0.45 ? (L = Math.min(3, L + 1)) : tx < -0.45 && (L = Math.max(0, L - 1));
+        let c = R[L];
+        if (m.spec > 0.3) {
+          const sp = Math.pow(clamp((nx * hxv + ny * hyv + nz * hzv) / hl, 0, 1), m.shin) * m.spec * 4;
+          sp > 1.1 && (c = mix(R[3], 0xffffff, 0.55));
+        }
+        // 빛 쪽(왼쪽 위) 가장자리 한 줄 밝게: 바로 위·왼쪽이 비었거나 훨씬 뒤면
+        if (nl > -0.1) {
+          let ed = !1;
+          for (const [ddx, ddy] of [[-1, 0], [0, -1]]) {
+            const xx = x + ddx, yy = y + ddy;
+            if (xx < 0 || yy < 0) continue;
+            const j = yy * W + xx;
+            (MI[j] < 0 || Z[i] - Z[j] > (o.inner ?? 4)) && (ed = !0);
+          }
+          ed && (c = mix(R[3], 0xffffff, m.edge ?? 0.3));
+        }
+        cols[i] = c;
+        continue;
+      }
       const wrap = clamp((nl + 0.45) / 1.45, 0, 1);
       let t = 0.04 + 0.96 * Math.pow(wrap, 1.15) + tx * 0.1 - occ * 0.5;
       // 단계로 끊고 경계는 살짝 디더링
@@ -238,7 +263,7 @@ export function render(M, W, H, o = {}) {
           if (MI[j] >= 0 && Z[j] - Z[i] > (o.inner ?? 4)) edge = !0;
         }
         const m = mats[MI[i]];
-        out[i] = pack(edge && m.emit == null ? mix(cols[i], m.out, 0.75) : cols[i]);
+        out[i] = pack(edge && m.emit == null ? mix(cols[i], o.cel ? o.outline ?? 0x150c1c : m.out, o.cel ? 0.82 : 0.75) : cols[i]);
       } else {
         let best = -1;
         for (const [ddx, ddy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -249,7 +274,7 @@ export function render(M, W, H, o = {}) {
         }
         if (best >= 0) {
           const m = mats[MI[best]];
-          out[i] = pack(m.emit != null ? mix(m.emit, 0x3a1008, 0.5) : m.out);
+          out[i] = pack(o.cel ? (m.emit != null ? mix(m.emit, 0x150c1c, 0.55) : o.outline ?? 0x150c1c) : m.emit != null ? mix(m.emit, 0x3a1008, 0.5) : m.out);
         }
       }
     }
