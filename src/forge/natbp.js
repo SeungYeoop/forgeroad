@@ -323,26 +323,53 @@ BLUEPRINTS.g0_m1 = {
     ],
   },
 };
-// ── gm1_m1 「리프크라운」: 하늘에 뜬 거목 수관. 뿌리가 늘어진 수관 섬(roots), 새 둥지 섬(쉼터), 줄기 속 굴 ──
-{
-  const S0 = moveSky(BLUEPRINTS.g1_0.sky, { dy: 520 });
-  const S1 = editSky(S0, {
-    A1: { top: 4392, w: 600, t: 220, role: "rest", shape: "lumpy" },
-    E1: { top: 4440, w: 420, t: 130, role: "rest", shape: "lumpy" },
-    CV: { top: 4300, role: "treasure", shape: "lumpy" },
-    XT: { top: 4504, shape: "lumpy" },
-    M: { shape: "twin", role: "rest" },
-    W1: { form: "roots" }, W3: { form: "roots" }, W4: { form: "roots" }, E2: { form: "roots" }, E4: { form: "roots" }, E5: { form: "roots" },
-    W5: { shape: "lumpy" }, E6: { shape: "lumpy" }, W6: { shape: "twin", role: "treasure" }, W7: { shape: "lumpy", role: "vista" }, E7: { shape: "twin", role: "treasure" },
-  });
-  const links = S1.links.map(([a, b, n]) => {
-    if (a === "g:4250" && b === "A1") return ["g:4450", "A1", 5];
-    if (a === "g:4250" && b === "CV") return ["M", "CV", 6];
-    if (a === "g:5040" && b === "E1") return ["g:4950", "E1", 5];
-    return [a, b, n].filter((v) => v !== undefined);
-  });
-  BLUEPRINTS.gm1_m1 = { sky: { ...S1, links }, flatWalk: 1 };
-}
+// ── gm1_m1 「리프크라운 · 잎 왕관」 손 설계: 작은 섬 대신 거대한 잎 덩어리 층이 위로 갈수록 좁아지며 쌓인다 (나무 왕관 모양) ──
+//   층마다 끝에서 끝까지 잎 위를 길게 걷고, 끝의 잔가지 섬(나뭇가지)을 밟아 다음 층으로. 꼭대기는 왕관 정상 (▲, 동쪽 굴)
+//   갈래: 층 아래로 매달린 새 둥지 보물섬 · 서쪽 높은 전망 가지
+BLUEPRINTS.gm1_m1 = {
+  skyBase: 8000,
+  flatWalk: 1,
+  sky: {
+    peakY: 1700,
+    gate: {
+      cx: 4350, w: 2700, sh: 600, tS: 1200, belly: 0.6, flat: true,
+      inner: {
+        halls: [
+          { x0: 3100, x1: 3550, F: 2800, h: 210, role: "arena" }, // 서쪽 잎굴
+          { x0: 5150, x1: 5600, F: 2800, h: 210, role: "arena" }, // 동쪽 잎굴
+          { x0: 4000, x1: 4700, F: 2450, h: 230, type: "sanctum" }, // 왕관 속 둥지 (큰 상자)
+        ],
+        pass: [[3550, 2800, 4000, 2450, 150], [4700, 2450, 5150, 2800, 150], [4000, 2450, 3150, 1700, 150], [4700, 2450, 5550, 1700, 150]],
+        mouths: [{ side: "W", x: 3100, F: 2800 }, { side: "E", x: 5600, F: 2800 }],
+      },
+    },
+    isles: [
+      { id: "L1", cx: 4050, top: 7600, w: 5700, t: 240, shape: "lumpy", role: "rest", mat: "leaf" }, // 맨 아래 잎 층
+      { id: "W1", cx: 7550, top: 7250, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" }, // 잔가지
+      { id: "L2", cx: 4350, top: 6900, w: 4800, t: 260, shape: "lumpy", role: "arena", mat: "leaf" },
+      { id: "W2", cx: 1200, top: 6550, w: 400, t: 160, shape: "slab", role: "rest", mat: "wood" },
+      { id: "L3", cx: 3950, top: 6200, w: 4100, t: 260, shape: "lumpy", role: "arena", mat: "leaf" },
+      { id: "W3", cx: 6650, top: 5850, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
+      { id: "L4", cx: 4000, top: 5500, w: 3600, t: 260, shape: "lumpy", role: "rest", mat: "leaf" },
+      { id: "W4", cx: 1400, top: 5150, w: 600, t: 160, shape: "slab", role: "arena", mat: "wood" },
+      { id: "L5", cx: 3900, top: 4800, w: 3200, t: 260, shape: "lumpy", role: "arena", mat: "leaf" },
+      { id: "W5", cx: 6150, top: 4450, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
+      { id: "L6", cx: 4100, top: 4100, w: 2600, t: 260, shape: "lumpy", role: "rest", mat: "leaf" },
+      { id: "W6", cx: 1950, top: 3750, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
+      { id: "L7", cx: 4100, top: 3450, w: 3000, t: 240, shape: "lumpy", role: "arena", mat: "leaf" },
+      { id: "W7", cx: 6250, top: 3100, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
+      // 갈래
+      { id: "N1", cx: 7700, top: 6200, w: 500, t: 200, shape: "spire", role: "treasure", mat: "wood" }, // 새 둥지 보물 가지 (동)
+      { id: "N2", cx: 450, top: 4800, w: 500, t: 200, shape: "spire", role: "vista", mat: "wood" }, // 서쪽 높은 전망 가지
+      { id: "N3", cx: 6500, top: 1550, w: 600, t: 260, shape: "lumpy", role: "treasure", mat: "leaf" }, // 왕관 동쪽 보물 잎
+    ],
+    links: [
+      ["g:600", "L1"], ["L1", "W1"], ["W1", "L2"], ["L2", "W2"], ["W2", "L3"], ["L3", "W3"], ["W3", "L4"], ["L4", "W4"],
+      ["W4", "L5"], ["L5", "W5"], ["W5", "L6"], ["L6", "W6"], ["W6", "L7"], ["L7", "W7"], ["W7", "G>"],
+      ["W3", "N1"], ["W4", "N2"], ["G", "N3"],
+    ],
+  },
+};
 
 // ── gm1_0 「모스바크」: 이끼 덮인 거목 숲 (지상). 그래스메어 땅·하늘 짜임을 좌우로 뒤집고 숲답게 ──
 //   지표: 0~900 숲 입구 · 900~2400 이끼 고원(전투) · 2400~5250 거목 언덕(하늘 출발점) · 5300~6300 개울 골짜기(웅덩이) · 6300~7500 뿌리 둔덕(전투) · 7500~ 출구

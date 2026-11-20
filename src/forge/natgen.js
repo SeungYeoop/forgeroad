@@ -3960,7 +3960,7 @@ function skyWorld(P, groundAt, style, o = {}) {
       // 돌 폭 w(52~116) 중 발 디딜 거리 w-8, 틈 g(44~92): span = Σg + Σ(w-8)
       const loW = Math.max(44 * n, span - 92 * (n + 1)), hiW = Math.min(108 * n, span - 44 * (n + 1));
       if (n === 0 ? span > 92 || Math.abs(rise) > HR : loW > hiW) continue;
-      for (let tr = 0; tr < 8; tr++) {
+      for (let tr = 0; tr < (o.design ? 20 : 8); tr++) {
         const ws = n ? part(R.range(loW, hiW), n, 44, 108) : [];
         if (!ws) continue;
         const gs = part(span - ws.reduce((p, q) => p + q, 0), n + 1, 44, 92);
@@ -3999,8 +3999,9 @@ function skyWorld(P, groundAt, style, o = {}) {
               lowStep = gmax - gmin > 20 && gmax - (s.y + dep) < 108;
             }
             // 같은 섬에서 출발·도착하는 다른 디딤돌 길의 점프 공간(cor)은 피하지 않는다 (한 섬 같은 쪽 끝에서 위아래로 길이 갈라질 때)
+            // 같은 섬에서 갈라지는 다른 디딤돌 길의 점프 공간(cor)은 머리 위 여유를 70px까지만 본다 (100px 다 보면 길이 안 지어지고, 안 보면 머리가 막힌다)
             const shared = (b) => b.cor && b.ends && (b.ends.includes(ends[0]) || b.ends.includes(ends[1]));
-            const hitS = (x0, x1, y0, y1) => objs.some((b) => !shared(b) && !((ends.includes(b) || (b.of && ends.includes(b.of)))) && x0 < b.x1 && x1 > b.x0 && y0 < b.y1 && y1 > b.y0);
+            const hitS = (x0, x1, y0, y1) => objs.some((b) => !(ends.includes(b) || (b.of && ends.includes(b.of))) && x0 < b.x1 && x1 > b.x0 && y0 < b.y1 && y1 > (shared(b) ? b.y0 + 30 : b.y0));
             if (lowStep || hitS(s.x0 - 6, s.x1 + 6, s.y - 4, s.y + dep) || gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30)) {
               const W = globalThis.__why;
               W && (W[lowStep ? "low" : gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30) ? "stG" : "st"] = (W[lowStep ? "low" : gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30) ? "stG" : "st"] ?? 0) + 1);
@@ -4306,6 +4307,8 @@ function skyWorld(P, groundAt, style, o = {}) {
       const bTop = (x) => { if (!st) return top; const k = clamp(((st.hi === "R" ? x - rz : rz - x) + 150) / 300, 0, 1); return top + (hiTop - top) * smooth(k); };
       const botAbs = (x) => Math.min(nAbs ? nAbs(x, bTop(x) + dep(x)) : bTop(x) + dep(x), Math.max(lTop(x) + 24, gAt(x) - 240));
       island(P, q.cx, top, w, t, st2, { sub: false, lobes: 0, tiers, hill, round: q.shape === "block" ? 40 : 0, botFn: botAbs });
+      // 섬 몸 재질 (잎 덩어리 · 나뭇가지 등): 칠할 때만 쓰인다
+      q.mat && P.mats.push({ x0: x0 - 16, y0: hiTop - 80, x1: x1 + 16, y1: top + t * 1.8 + 60, m: q.mat });
       const head = { x0: 0, x1: 0, y0: -9, y1: -9 };
       objs.push(head);
       if (q.shape === "block") {
