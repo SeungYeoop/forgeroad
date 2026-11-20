@@ -1,5 +1,6 @@
 // 그래스메어 몬스터 추가 4종 (2D 픽셀 손그림, 오른쪽을 본다): 하늘 염소 · [정예] 말벌 여왕 · 고블린 주술사 · 굴파기 두더지
-import { board, ellR, capF, polyF, U, minus, pol, lerp, ik, ramp, rampF, rampGlow, mixc, dots, strokes, rot, eye, glass, limb, gait4, gait2, flapOf, spec, done, T2, L } from "./kit.js";
+import { board, ellR, capF, polyF, U, minus, pol, lerp, ik, ramp, rampF, rampGlow, mixc, dots, strokes, rot, eye, glass, limb, gait4, gait2, flapOf, spec, done, flash, T2, L } from "./kit.js";
+import { sculpt, mat } from "./px3.js";
 
 // ════ 하늘 염소 ════ 하늘섬 턱을 뛰어다니는 산양. 크림색 북슬 털 · 말린 뿔 · 턱수염 · 가로 눈동자
 //   p: bob · head(0~1 고개 숙임) · legs · jaw · blink · tail · hurt
@@ -60,59 +61,78 @@ export const pxGoat = spec(58, 44, 24, 22,
     return { hurt: f === 0, head: -0.3, bob: 0.5, blink: 1 };
   }, goatFrame);
 
-// ════ [정예] 말벌 여왕 ════ 말벌보다 두 배 큰 여왕. 왕관 같은 등딱지 · 줄무늬 큰 배 · 날개 넷 · 독침
+// ════ [정예] 말벌 여왕 ════ (큰 몬스터 조각 도구) 말벌보다 두 배 큰 여왕. 금빛 왕관 등딱지 · 붉은 겹눈 · 솜털 목깃 · 줄무늬 큰 배와 독침 · 반투명 날개 넷
 //   p: flap(-1~1) · curl 배 말기 · tilt 기울기 · bite 턱 · sting 독침 내밈 · hurt
-const QY = ramp(0xf0b820), QK = ramp(0x2a2234), QKF = rampF(0x2a2234), QR = ramp(0xc8402a);
+const QNK = 0.7;
+const QN_Y = mat(ramp(0xf0b820), { tex: "skin", amp: 0.25, spec: 0.5 }), QN_K = mat(ramp(0x2a2234), { tex: "fur", amp: 0.5, spec: 0.3 }), QN_KF = mat(ramp(0x221c2a, { cool: 0x1c2a40 }), { spec: 0.3 });
+const QN_YF = mat(ramp(0xc89418, { cool: 0x1c2a40 }), { spec: 0.3 }), QN_R = mat(ramp(0xc8402a), { spec: 0.6 }), QN_GOLD = mat(ramp(0xffd860), { spec: 0.9 }), QN_EYE = mat(ramp(0xa01c26), { spec: 0.9 }), QN_FUZZ = mat(ramp(0xd8a840), { tex: "fur", amp: 0.8 });
 function queenFrame(p = {}) {
-  const W = 76, H = 64, C = board(W, H);
-  const fl = p.flap ?? 0, cu = p.curl ?? 0, tl = p.tilt ?? 0;
-  const R = rot([36, 30], tl), P = (x, y) => R([x, y]);
-  // 뒤 날개 둘
-  const wingF = (o, a, len, wd) => { const r = pol(o, a, len), m = lerp(o, r, 0.5); return (x, y) => { const d = Math.hypot(x - m[0], y - m[1]); const ang = Math.atan2(r[1] - o[1], r[0] - o[0]), u = (x - m[0]) * Math.cos(ang) + (y - m[1]) * Math.sin(ang), v = -(x - m[0]) * Math.sin(ang) + (y - m[1]) * Math.cos(ang); return (u / (len / 2)) ** 2 + (v / wd) ** 2 <= 1 && d < len; }; };
-  glass(C, wingF(P(34, 18), -2.3 + fl * 0.5, 30, 7), 0.25);
-  glass(C, wingF(P(32, 20), -2.8 + fl * 0.4, 22, 5.5), 0.3);
-  // 다리 (가는 마디)
-  for (const [x, a] of [[33, 1.9], [37, 1.6], [41, 1.3]]) { const s = P(x, 33), e = pol(s, a + tl, 7), f = pol(e, a + 0.9 + tl, 6); C.part(U(capF(s, e, 1, 0.8), capF(e, f, 0.8, 0.5)), QKF); }
-  // 배 (줄무늬, 말면 앞으로 굽음)
-  const ab = (k) => { const a = 2.2 - cu * 1.1 + k * 0.18 * (1 - cu * 0.4); return pol(P(28, 30), a + tl, 7 + k * 6.5); };
-  const segs = [0, 1, 2, 3].map((k) => ab(k));
-  C.part(U(...segs.map((q, k) => ellR(q[0], q[1], 9 - k * 1.5, 8 - k * 1.2, 0.6 - cu * 0.5))), QY, { shine: 1 });
-  for (let k = 0; k < 4; k++) { const q = segs[k], aa = 2.2 - cu * 1.1 + 1.57; for (let j = -6; j <= 6; j++) C.over(q[0] + Math.cos(aa) * j * 0.9 + 1.5, q[1] + Math.sin(aa) * j * 0.9 + 1.2, QK[2]); }
-  // 독침
-  const st = pol(segs[3], 2.2 - cu * 1.1 + tl + 0.3, 7 + (p.sting ?? 0) * 4);
-  C.part(capF(segs[3], st, 2.4, 0.4), QK, { shine: 1 });
-  C.over(st[0], st[1], 0xb0ff60);
-  // 가슴 + 머리
-  C.part(ellR(...P(38, 22), 8.5, 7.5, -0.2), QK, { shine: 1 });
-  C.part(ellR(...P(38, 19), 7, 3.4, -0.2), QR, { sep: !1, shine: 1 }); // 붉은 등판
-  // 왕관 등딱지 (뾰족 셋)
-  C.part(polyF([P(32, 16), P(33, 9), P(35.5, 14), P(38, 7), P(40.5, 14), P(43, 9), P(44, 16)]), ramp(0xffd860), { shine: 1 });
-  C.part(ellR(...P(48, 24), 6.5, 6, 0.1), QY, { shine: 1, lv: 0.05 });
-  // 큰 겹눈
-  C.part(ellR(...P(50.5, 22.5), 3.4, 3.8, 0.3), ramp(0x8a1820), { shine: 1, sep: !1 });
-  C.over(...P(50, 21), 0xffb0a0).over(...P(51, 21.5), 0xff6040);
-  // 더듬이
-  strokes(C, [[...P(46, 18), ...P(50, 10)], [...P(50, 10), ...P(54, 9)]], QK[1]);
-  // 큰 턱
+  const W = 108, H = 92, AX = 52, k = p.k ?? QNK, S = sculpt(W, H, { k, ax: AX });
+  const fl = p.flap ?? 0, cu = p.curl ?? 0, tl = p.tilt ?? 0, R = rot([52, 44], tl), P = (x, y) => R([x, y]);
+  // 다리 여섯 (검은 넓적다리 + 노란 종아리, 늘어뜨림)
+  const leg = (x, a, far) => {
+    const s = P(x, 42), e = pol(s, a + tl, 9), f = pol(e, a + 0.9 + tl, 8);
+    S.add(capF(s, e, 1.5, 1.2), far ? QN_KF : QN_K, { z: far ? -3 : 7, h: 1.2 });
+    S.add(capF(e, f, 1.2, 0.7), far ? QN_YF : QN_Y, { z: far ? -2.8 : 7.2, h: 1 });
+  };
+  for (const [x, a] of [[49, 2.0], [54, 1.7], [59, 1.35]]) leg(x + 2, a, 1);
+  // 배 (줄무늬 다섯 마디 · 말면 앞으로 굽음) + 독침
+  const base = P(46, 40), ab = (j) => pol(base, 2.3 - cu * 1.2 + j * 0.2 * (1 - cu * 0.4) + tl, 9 + j * 7.6);
+  const seg = [0, 1, 2, 3, 4].map(ab), ang = (j) => 2.3 - cu * 1.2 + j * 0.2 * (1 - cu * 0.4) + tl;
+  for (let j = 0; j < 5; j++) S.add(ellR(seg[j][0], seg[j][1], 10.5 - j * 1.6, 9.6 - j * 1.4, ang(j)), QN_Y, { z: 1 + j * 0.1, h: 10 - j * 1.4 });
+  for (let j = 0; j < 5; j++) { const a = ang(j), q = pol(seg[j], a, 2.2 - j * 0.2), r = 9.6 - j * 1.4; S.add(capF(pol(q, a + 1.57, r), pol(q, a - 1.57, r), 1.9 - j * 0.15), QN_K, { on: 1, h: 0.4 }); }
+  const sa = ang(4) + 0.3, st = pol(seg[4], sa, 7 + (p.sting ?? 0) * 5);
+  S.add(capF(pol(seg[4], sa, 3), st, 2.4, 0.4), QN_K, { z: 1.6, h: 1.6 });
+  p.block || S.decal(st[0], st[1], 0xb0ff60);
+  // 가슴 (솜털 검정) + 붉은 등판 + 금빛 왕관 등딱지 + 솜털 목깃
+  S.add(ellR(...P(54, 34), 11.5, 10, -0.2), QN_K, { z: 3, h: 10 });
+  S.add(ellR(...P(54, 28.5), 9, 4, -0.2), QN_R, { lift: 1.2, h: 1.6 });
+  S.add(polyF([P(45.5, 27), P(46.5, 18), P(50.5, 24), P(54, 14.5), P(57.5, 24), P(61.5, 18), P(62.5, 27)]), QN_GOLD, { lift: 3, h: 3 });
+  p.block || [[54, 18], [47, 21], [61, 21]].forEach(([x, y]) => S.decal(...P(x, y), 0xff5050));
+  S.add(ellR(...P(63, 36), 4.4, 7.6, -0.1), QN_FUZZ, { z: 4, h: 5 });
+  // 머리: 노란 얼굴 · 큰 붉은 겹눈(눈알 무늬) · ㄱ자 더듬이 · 큰 턱
+  S.add(U(capF(P(68, 29), P(71, 20), 0.8, 0.7), capF(P(71, 20), P(80, 17), 0.7, 0.6)), QN_K, { z: 5, h: 0.8 });
+  S.add(U(capF(P(70, 29.4), P(74, 21.4), 0.7), capF(P(74, 21.4), P(82, 20), 0.6)), QN_KF, { z: 4.6, h: 0.6 });
+  S.add(ellR(...P(70, 37.4), 8.4, 8, 0.1), QN_Y, { z: 5, h: 7 });
+  S.add(ellR(...P(72.6, 33.6), 4.4, 5.4, 0.35), QN_EYE, { z: 6, h: 4 });
+  if (!p.block && !p.hurt) { const e0 = P(72, 32.4); S.decal(e0[0], e0[1], 0xffb0a0).decal(e0[0] + 1, e0[1] + 0.6, 0xff6040).decal(e0[0] - 0.6, e0[1] + 2, 0x6a1018).decal(e0[0] + 1.2, e0[1] + 2.6, 0x6a1018); }
+  S.add(capF(P(66, 40), P(74, 41), 0.8, 0.6), QN_YF, { lift: 0.6, h: 0.6 });
   const bt = p.bite ?? 0;
-  C.part(U(capF(P(51, 28), P(55 + bt, 30 - bt), 1.6, 0.8), capF(P(51, 29), P(54 + bt, 32 + bt), 1.6, 0.8)), QK, { shine: 1 });
-  // 앞 날개 둘 (가장 앞)
-  glass(C, wingF(P(38, 17), -2.0 - fl * 0.6, 32, 7.5), 0.05);
-  glass(C, wingF(P(36, 19), -2.6 - fl * 0.5, 23, 5.5), 0.1);
-  return done(C, p);
+  S.add(U(capF(P(75, 41), P(79 + bt, 40.4 - bt * 1.6), 1.7, 0.7), capF(P(75, 42.6), P(78.6 + bt, 45 + bt * 1.4), 1.7, 0.7)), QN_K, { z: 6.4, h: 1.4 });
+  for (const [x, a] of [[47, 1.95], [52, 1.65], [57, 1.3]]) leg(x, a, 0);
+  const C = S.render({ debug: p.debug, rim: !p.block });
+  // 반투명 날개 넷 (뒤 둘은 몸 뒤에만, 앞 둘은 몸 위로 비침) + 날개맥
+  if (!p.block && !p.debug) {
+    const Wo = C.W, Ho = C.H, T = (q) => [Wo / 2 + (q[0] - AX) * k, Ho + (q[1] - H) * k];
+    const wingF = (o0, a, len, wd) => {
+      const o = T(o0), L0 = len * k, Wd = wd * k, r = pol(o, a, L0), m = lerp(o, r, 0.5), ca = Math.cos(a), sa2 = Math.sin(a);
+      return (x, y) => { const u = (x - m[0]) * ca + (y - m[1]) * sa2, v = -(x - m[0]) * sa2 + (y - m[1]) * ca; return (u / (L0 / 2)) ** 2 + (v / Wd) ** 2 <= 1; };
+    };
+    const vein = (o0, a, len) => { const o = T(o0); for (let s = 2; s < len * k * 0.86; s += 0.5) { const x = Math.floor(o[0] + Math.cos(a) * s), y = Math.floor(o[1] + Math.sin(a) * s); if (x < 0 || y < 0 || x >= Wo || y >= Ho) continue; const i = y * Wo + x; C.d[i] >= 0 && (C.d[i] = mixc(C.d[i], 0x2e3a46, 0.35)); } };
+    glass(C, wingF(P(52, 26), -2.35 + fl * 0.5, 40, 9), 0.25, !0);
+    glass(C, wingF(P(50, 28), -2.85 + fl * 0.4, 30, 7), 0.3, !0);
+    glass(C, wingF(P(55, 25), -2.05 - fl * 0.6, 42, 10), 0.05);
+    glass(C, wingF(P(53, 27), -2.6 - fl * 0.5, 31, 7.5), 0.1);
+    vein(P(55, 25), -2.05 - fl * 0.6 + 0.06, 42), vein(P(53, 27), -2.6 - fl * 0.5 - 0.05, 31);
+  }
+  return p.hurt ? flash(C) : C;
 }
-export const pxQueen = spec(76, 64, 30, 26,
-  { idle: [4, 24], move: [4, 26], wind: [4, 12, !1], atk: [3, 16], rec: [3, 10, !1], hurt: [2, 12, !1], call: [6, 14, !1], volley: [4, 14, !1] },
-  (nm, f, n, t) => {
-    const fl = [1, 0.2, -1, 0.2][f % 4];
-    if (nm === "wind") return { flap: fl, curl: t, tilt: -0.12 * t };
-    if (nm === "atk") return { flap: [-1, 0.6, -0.4][f], curl: 1, tilt: 0.5, bite: 1, sting: 1 };
-    if (nm === "rec") return { flap: fl, curl: 1 - t, tilt: 0.25 * (1 - t) };
-    if (nm === "call") return { flap: fl, tilt: -0.2 - 0.1 * Math.sin(t * 6), bite: f % 2, curl: 0.2 };
-    if (nm === "volley") return { flap: fl, curl: 0.8, tilt: 0.25, sting: 1 };
-    if (nm === "hurt") return { flap: 0.6, hurt: f === 0, tilt: -0.3 };
-    return { flap: fl, tilt: nm === "move" ? 0.15 : 0 };
-  }, queenFrame, { flying: !0 });
+export const pxQueen = {
+  fw: Math.round(108 * QNK), fh: Math.round(92 * QNK), w: 30, h: 26, flying: !0,
+  anims: { idle: [4, 24], move: [4, 26], wind: [4, 12, !1], atk: [3, 16], rec: [3, 10, !1], hurt: [2, 12, !1], call: [6, 14, !1], volley: [4, 14, !1] },
+  px(nm, f, n) {
+    const t = f / Math.max(1, n - 1), fl = [1, 0.2, -1, 0.2][f % 4];
+    let P = { flap: fl, curl: 0.15 };
+    if (nm === "move") P = { flap: fl, tilt: 0.12, curl: 0.1 };
+    if (nm === "wind") P = { flap: fl, curl: t, tilt: -0.12 * t };
+    if (nm === "atk") P = { flap: [-1, 0.6, -0.4][f], curl: 1, tilt: 0.5, bite: 1, sting: 1 };
+    if (nm === "rec") P = { flap: fl, curl: 1 - t, tilt: 0.25 * (1 - t) };
+    if (nm === "call") P = { flap: fl, tilt: -0.2 - 0.1 * Math.sin(t * 6), bite: f % 2, curl: 0.2 };
+    if (nm === "volley") P = { flap: fl, curl: 0.8, tilt: 0.25, sting: 1 };
+    if (nm === "hurt") P = { hurt: f === 0, flap: 0.4, tilt: -0.3, curl: 0.5, bite: 1 };
+    return queenFrame(P);
+  },
+};
 
 // ════ 고블린 주술사 ════ 잎 망토 두건 · 뼈 지팡이 끝에 불씨 해골 · 깃털 장식 · 허리에 작은 북
 //   p: bob · lean · staff 지팡이 각(0 세움 · + 앞으로) · flame 불씨 크기 · drum 북 치는 손 · cast 손 앞으로 · jaw · hurt
