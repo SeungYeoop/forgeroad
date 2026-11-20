@@ -231,6 +231,8 @@ function placeDeco(P) {
   const avoid = [P.peak, P.chest, P.deep, ...(P.mouths ?? [])].filter(Boolean);
   const pads = P.pads ?? [];
   const surfMax = (x) => (P.kind === "ground" && P.h ? P.h[Math.min(P.h.length - 1, Math.round(x / Q))] + 8 : P.HP - 8);
+  // 숲 지역(모스바크): 지표면이면 머리 위에 하늘섬이 있어도 나무를 세운다 (나무 키만큼만 비면)
+  const FOREST = P.z.reg?.look === "mossbark";
   for (let x = 200; x < lim; ) {
     const grove = N.n1(x / 900 + 17.3) > -0.15;
     x += grove ? R.range(40, 100) : R.range(160, 380);
@@ -241,7 +243,7 @@ function placeDeco(P) {
       if (!F.solid(x, y) || F.solid(x, y - 1)) continue;
       if (P.spec.some((r) => x >= r.x0 - 16 && x < r.x1 + 16 && y >= r.y0 - 8 && y <= r.y1 + 8)) continue;
       // 윗면 y: 섬 위는 70%, 땅 위는 숲이면 거의 항상
-      if (R() > (grove ? 0.9 : 0.75)) continue;
+      if (R() > (FOREST ? 0.97 : grove ? 0.9 : 0.75)) continue;
       const kind = R.pick(kinds), sz = grove ? R.int(1, 2) : R.int(0, 2);
       const w = decoWidth(kind, sz), h = decoHeight(kind, sz);
       let ok = true;
@@ -250,7 +252,7 @@ function placeDeco(P) {
       // 설계 구역: 작은 디딤돌 위에는 나무를 두지 않는다 (나무 폭만큼 발판이 있어야)
       if (P.bp) for (const dx of [-w * 0.45, w * 0.45]) ok = ok && F.solid(x + dx, y + 24);
       // 설계 구역: 하늘이 트인 곳에만 (섬 속 동굴·신전 바닥에는 두지 않는다)
-      if (P.bp) for (let yy = y - 8; ok && yy > 0; yy -= 16) ok = !F.solid(x, yy);
+      if (P.bp && !(FOREST && P.h && Math.abs(y - (surfMax(x) - 8)) < 48)) for (let yy = y - 8; ok && yy > 0; yy -= 16) ok = !F.solid(x, yy);
       // 위 공간이 비었는가
       for (let dx = -w / 2; ok && dx <= w / 2; dx += 8) for (let yy = y - 4; ok && yy > y - h; yy -= 8) ok = !F.solid(x + dx, yy);
       if (ok && !P.trees.some((T) => Math.abs(T.x - x) < (T.w + w) * 0.3 && Math.abs(T.y - y) < 40)) P.trees.push({ x: Math.round(x), y, w, key: decoKey(kind, sz, R.int(0, 5), reg.pal) });
@@ -361,7 +363,8 @@ function placeProps(P) {
       prevSolid = sd;
       let yy = y;
       while (yy > y - 4 && solid(x, yy - 1) === sd) yy--;
-      const ug = yy > surf(x) + 24, brk = brickAt(x, sd ? yy + 6 : yy - 6);
+      // 하늘 구역: 땅속이 없다 (섬 윗면 = 바깥 소품, 섬 속 방 = 뒷벽이 있으면 동굴 소품)
+      const ug = P.kind === "sky" ? !1 : yy > surf(x) + 24, brk = brickAt(x, sd ? yy + 6 : yy - 6);
       if (onCloud(x, yy)) continue;
       if (sd) {
         // ── 바닥 ──
