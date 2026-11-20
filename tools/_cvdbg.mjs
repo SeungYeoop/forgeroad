@@ -1,7 +1,7 @@
 import { ZONES, upChunk, downChunk } from "../src/forge/zones.js";
 import { makePlan } from "../src/forge/natgen.js";
 import { biomeOf } from "../src/forge/terrprof.js";
-globalThis.__dbg = 1;
+globalThis.__dbg = 1; globalThis.__sky = 1;
 const [id = "g1_1", sd = "1"] = process.argv.slice(2);
 const z = ZONES.find((q) => q.id === id);
 const o = { seed: +sd, Ft: 528, up: upChunk(z), down: downChunk(z), fe: 1, ze: 0, biome: biomeOf(z), noRepair: 1, patterns: z.y === 0 ? z.reg?.patterns : null };
@@ -43,3 +43,4 @@ for (let y=+process.env.Y0||4200;y<(+process.env.Y1||4740);y+=16){ let row=""; f
   const ns=[]; for(let n=0;n<A.NN;n++){ const x=A.nC[n]*8+4; if (Math.abs(x-4360)<40 && Math.abs(A.nY[n]-2880)<60) ns.push(x+','+A.nY[n]+(A.reach[n]?'R':'n')); } console.log('nodes', ns.join(' ')); }
 { const D = BLUEPRINTS[id].dungeon; if (D) { const GX=Math.round(D.x0/8), GY=Math.round(D.y0/8); const lines=[];
   for (let s=0;s<D.stories;s++){ let l='s'+s+' '; for(let c=0;c<D.cols;c++){ const x0=(GX+c*64)*8, x1=x0+512, y1=(GY+(s+1)*48)*8, y0=y1-384; let r=0,t=0; for(let n=0;n<A.NN;n++){const x=A.nC[n]*8, y=A.nY[n]; if(x>x0&&x<x1&&y>y0&&y<=y1)(t++,A.reach[n]&&r++);} l+=(t?String(Math.round(100*r/t)).padStart(4):'   -'); } lines.push(l);} console.log(lines.join('\n')); } }
+{ const SK = BLUEPRINTS[id].sky; if (SK) { const rs = []; for (const q of SK.isles) { let r = 0, t = 0; for (let n = 0; n < A.NN; n++) { const x = A.nC[n] * 8, y = A.nY[n]; if (x > q.cx - q.w / 2 + 20 && x < q.cx + q.w / 2 - 20 && y > q.top - 600 && y < q.top + 60) (t++, A.reach[n] && r++); } rs.push(`${q.id}:${t ? Math.round((100 * r) / t) : "-"}`); } console.log("isles", rs.join(" ")); } }

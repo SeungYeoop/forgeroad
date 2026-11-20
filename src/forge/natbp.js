@@ -226,43 +226,103 @@ export function editSky(S, patch = {}, links = null) {
   return { ...S, isles, links: links ?? S.links };
 }
 
-// ── g1_m1 「스톤브리지」: 그래스메어 하늘 설계를 하늘 구역 하나로 옮긴 형태 (REGIONS.md) ──
-//   아래 섬 길(구름다리, y≈4800)을 땅 삼아: 쉼터 섬 → 서쪽 거대 섬(속 동굴·샘) → 유적 섬 → 기둥 동굴 섬 → ▲ 신전 섬
-//   동쪽: 돌다리 쉼터 → 동쪽 거대 섬 → 샘 섬 → 동굴 섬 → 턱 섬 → ▲ / 높은 하늘 보물섬·전망섬
-{
-  const S0 = moveSky(BLUEPRINTS.g1_0.sky, { dy: 400 });
-  const S1 = editSky(S0, {
-    A1: { top: 4392, w: 560, t: 200, role: "rest", shape: "slab" },
-    E1: { top: 4440, w: 420, t: 130, role: "rest", shape: "slab" },
-    CV: { top: 4300, role: "treasure" },
-    XT: { top: 4504 },
-  });
-  const links = S1.links.map(([a, b, n]) => {
-    if (a === "g:4250" && b === "A1") return ["g:4450", "A1", 5];
-    if (a === "g:4250" && b === "CV") return ["M", "CV", 6];
-    if (a === "g:5040" && b === "E1") return ["g:4950", "E1", 5];
-    return [a, b, n].filter((v) => v !== undefined);
-  });
-  BLUEPRINTS.g1_m1 = { sky: { ...S1, links }, flatWalk: 1 };
-}
+// ── g1_m1 「스톤브리지 · 돌다리」 손 설계: 덩어리 섬 대신 길고 얇은 돌다리 판이 층층이 엇갈린다 ──
+//   다리 열세 개가 서→동→서로 꺾이며 350px씩 오르고, 꺾이는 자리는 속에 옛 초소가 있는 돌탑 섬. 정상은 무너진 성(유적 방·계단 굴)
+//   갈래: 다리 끝마다 짧은 보물 바위 · 동쪽 끝 전망탑
+BLUEPRINTS.g1_m1 = {
+  skyBase: 8000,
+  flatWalk: 1,
+  sky: {
+    peakY: 1800,
+    gate: {
+      cx: 4350, w: 2700, sh: 600, tS: 1300, belly: 0.5, flat: true,
+      inner: {
+        kind: "ruin",
+        halls: [
+          { x0: 3050, x1: 3550, F: 3000, h: 220, type: "colonnade", role: "arena" }, // 서쪽 성벽 회랑
+          { x0: 5150, x1: 5650, F: 3000, h: 220, type: "colonnade", role: "arena" }, // 동쪽 성벽 회랑
+          { x0: 4000, x1: 4700, F: 2650, h: 240, type: "sanctum" }, // 옥좌실 (큰 상자)
+        ],
+        pass: [[3550, 3000, 4000, 2650, 150], [4700, 2650, 5150, 3000, 150], [4000, 2650, 3150, 1800, 150], [4700, 2650, 5550, 1800, 150]],
+        mouths: [{ side: "W", x: 3050, F: 3000 }, { side: "E", x: 5650, F: 3000 }],
+      },
+    },
+    isles: [
+      { id: "B1", cx: 3300, top: 7650, w: 1800, t: 90, shape: "slab", role: "rest" }, // 첫 다리
+      { id: "B2", cx: 1100, top: 7300, w: 1800, t: 90, shape: "slab", role: "arena" },
+      { id: "B3", cx: 3300, top: 6950, w: 1800, t: 90, shape: "slab", role: "arena" },
+      { id: "B4", cx: 5500, top: 6600, w: 1800, t: 90, shape: "slab", role: "rest" },
+      { id: "K1", cx: 7400, top: 6250, w: 1100, t: 420, shape: "lumpy", role: "arena" }, // 동쪽 돌탑 섬 (꺾임)
+      { id: "B6", cx: 5500, top: 5900, w: 1800, t: 90, shape: "slab", role: "arena" },
+      { id: "B7", cx: 3300, top: 5550, w: 1800, t: 90, shape: "slab", role: "arena" },
+      { id: "K2", cx: 1100, top: 5200, w: 1600, t: 420, shape: "lumpy", role: "rest" }, // 서쪽 돌탑 섬 (쉼터)
+      { id: "B9", cx: 3300, top: 4900, w: 1800, t: 90, shape: "slab", role: "arena" },
+      { id: "B10", cx: 5500, top: 4550, w: 1800, t: 90, shape: "slab", role: "arena" },
+      { id: "K3", cx: 7500, top: 4200, w: 1100, t: 420, shape: "lumpy", role: "arena" }, // 동쪽 돌탑 섬 2
+      { id: "B12", cx: 5500, top: 3850, w: 1800, t: 90, shape: "slab", role: "rest" },
+      { id: "B13", cx: 7550, top: 3500, w: 1100, t: 90, shape: "slab", role: "arena" },
+      { id: "P", cx: 6275, top: 3200, w: 550, t: 260, shape: "spire", role: "arena" }, // 성문 앞 돌기둥
+      // 갈래
+      { id: "T1", cx: 7600, top: 7650, w: 500, t: 150, shape: "spire", role: "treasure" }, // 땅 가까운 동쪽 보물 바위
+      { id: "T2", cx: 3900, top: 3500, w: 600, t: 240, shape: "spire", role: "vista" }, // 성 밑 전망탑
+      { id: "T3", cx: 6400, top: 1650, w: 600, t: 300, shape: "lumpy", role: "treasure" }, // 성 동쪽 보물섬
+    ],
+    links: [
+      ["g:4600", "B1"], ["B1", "B2"], ["B2", "B3"], ["B3", "B4"], ["B4", "K1"], ["K1", "B6"], ["B6", "B7"], ["B7", "K2"],
+      ["K2", "B9"], ["B9", "B10"], ["B10", "K3"], ["K3", "B12"], ["B12", "B13"], ["B13", "P"], ["P", "G>"],
+      ["g:6900", "T1"], ["B12", "T2"], ["G", "T3"],
+    ],
+  },
+};
 
-// ── g0_m1 「그린스텝」: 거점 바로 위 하늘 입문. 넓고 낮은 풀섬 계단, 큰 풀섬 속 작은 굴(보물), 동쪽은 돌다리 섬(첫 하늘 전투) ──
-//   스톤브리지 설계를 좌우로 뒤집어 쓰되, 높은 섬 일부를 빼고 섬 모양을 계단밭(tiers)·넓적한 판으로 바꾼다 (쉽고 넓게)
-{
-  const S0 = moveSky(BLUEPRINTS.g1_m1.sky, { flip: true });
-  BLUEPRINTS.g0_m1 = {
-    flatWalk: 1,
-    sky: editSky(S0, {
-      W7: null, E7: null,
-      A1: { shape: "slab", role: "rest", w: 640 },
-      M: { shape: "slab", role: "vista" },
-      W1: { form: "tiers" }, E2: { form: "tiers" },
-      W5: { shape: "slab", role: "arena", w: 1100 },
-      E6: { shape: "slab", role: "arena" },
-    }, null),
-  };
-  BLUEPRINTS.g0_m1.sky.links = BLUEPRINTS.g0_m1.sky.links.filter(([a, b]) => ![a, b].some((k) => /^(W7|E7)/.test(k)));
-}
+// ── g0_m1 「그린스텝 · 하늘 계단」 손 설계: 기초 땅(구름 섬 길)은 맨 아래 8000, 그 위로 넓은 풀 계단밭 섬이 지그재그로 쌓인다 ──
+//   동쪽으로 다섯 단 → 서쪽으로 네 단 → 동쪽으로 네 단 → 정상 풀밭(▲) 동쪽 굴로. 단마다 350px씩 오르고, 섬은 계단밭(tiers)이라 윗면도 층층이
+//   갈래: 땅 가까이 서쪽 보물섬 · 가운데 높이 동쪽 끝 전망섬 · 정상 위 보물섬 둘
+BLUEPRINTS.g0_m1 = {
+  skyBase: 8000,
+  flatWalk: 1,
+  sky: {
+    peakY: 1600,
+    gate: {
+      cx: 4350, w: 2600, sh: 600, tS: 1300, belly: 0.6, flat: true,
+      inner: {
+        halls: [
+          { x0: 3100, x1: 3550, F: 2800, h: 210, type: "colonnade", role: "arena" }, // 서쪽 풀밭 굴
+          { x0: 5150, x1: 5600, F: 2800, h: 210, role: "arena" }, // 동쪽 풀밭 굴
+          { x0: 4000, x1: 4700, F: 2450, h: 230, type: "sanctum" }, // 정상 아래 성소 (큰 상자)
+        ],
+        pass: [[3550, 2800, 4000, 2450, 150], [4700, 2450, 5150, 2800, 150], [4000, 2450, 3150, 1600, 150], [4700, 2450, 5550, 1600, 150]],
+        mouths: [{ side: "W", x: 3100, F: 2800 }, { side: "E", x: 5600, F: 2800 }],
+      },
+    },
+    isles: [
+      { id: "A", cx: 1700, top: 7600, w: 1000, t: 220, shape: "slab", role: "rest" }, // 첫 계단밭
+      { id: "B", cx: 3200, top: 7300, w: 1000, t: 360, shape: "twin", role: "arena" },
+      { id: "C", cx: 4700, top: 6950, w: 1000, t: 360, shape: "chunk", role: "arena" },
+      { id: "D", cx: 6200, top: 6600, w: 1000, t: 360, shape: "twin", role: "rest" },
+      { id: "E", cx: 7600, top: 6250, w: 800, t: 320, shape: "lumpy", role: "arena" }, // 동쪽 꺾임 섬
+      { id: "F", cx: 6200, top: 5900, w: 1000, t: 360, shape: "chunk", role: "arena" },
+      { id: "G2", cx: 4700, top: 5550, w: 1000, t: 360, shape: "block", form: "bowl", role: "rest", inner: { halls: [{ x0: 4400, x1: 4800, F: 5800, h: 200, kind: "pool", role: "treasure" }], pass: [[4800, 5800, 5100, 5550]], mouths: [] } }, // 샘 굴 섬
+      { id: "H", cx: 3200, top: 5200, w: 1000, t: 360, shape: "twin", role: "arena" },
+      { id: "I", cx: 1650, top: 4850, w: 1100, t: 360, shape: "lumpy", role: "rest" }, // 서쪽 꺾임 섬
+      { id: "J", cx: 3200, top: 4500, w: 1000, t: 360, shape: "chunk", role: "arena" },
+      { id: "K", cx: 4700, top: 4150, w: 1000, t: 360, shape: "twin", role: "arena" },
+      { id: "L", cx: 6200, top: 3800, w: 1000, t: 360, shape: "chunk", role: "rest" },
+      { id: "M", cx: 7600, top: 3420, w: 800, t: 320, shape: "lumpy", role: "arena" },
+      { id: "P", cx: 6500, top: 3100, w: 800, t: 300, shape: "slab", role: "arena" }, // 정상 앞 판섬
+      // 갈래
+      { id: "T1", cx: 450, top: 7450, w: 500, t: 240, shape: "spire", role: "treasure" }, // 땅 가까운 서쪽 보물섬
+      { id: "V1", cx: 400, top: 4500, w: 500, t: 260, shape: "spire", role: "vista" }, // 서쪽 끝 전망섬
+      { id: "T2", cx: 2500, top: 1450, w: 600, t: 280, shape: "lumpy", role: "treasure" }, // 정상 서쪽 보물섬
+      { id: "T3", cx: 6200, top: 1400, w: 600, t: 280, shape: "lumpy", role: "treasure" }, // 정상 동쪽 보물섬
+    ],
+    links: [
+      ["g:2700", "A"], ["A", "B"], ["B", "C"], ["C", "D"], ["D", "E"], ["E", "F"], ["F", "G2"], ["G2", "H"], ["H", "I"],
+      ["I", "J"], ["J", "K"], ["K", "L"], ["L", "M"], ["M", "P"], ["P", "G>"],
+      ["A", "T1"], ["I", "V1"], ["G", "T2"], ["G", "T3"],
+    ],
+  },
+};
 // ── gm1_m1 「리프크라운」: 하늘에 뜬 거목 수관. 뿌리가 늘어진 수관 섬(roots), 새 둥지 섬(쉼터), 줄기 속 굴 ──
 {
   const S0 = moveSky(BLUEPRINTS.g1_0.sky, { dy: 520 });

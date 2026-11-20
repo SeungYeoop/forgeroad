@@ -86,7 +86,7 @@ export function planOf(z, o) {
 // ── 다른 스레드(natworker)에서 만든 설계를 주고받기 ──
 export const planKey = (z, seed) => `${z.id}:${seed}`;
 export const hasPlan = (z, seed) => PLANS.has(planKey(z, seed));
-const KEEP = ["props", "kind", "pkey", "seed", "attempt", "W", "WP", "HP", "Ft", "LW", "LH", "isZone", "arenaFrom", "upX", "downX", "gy", "h", "spots", "hzSpots", "pads", "peak", "chest", "deep", "ugTop", "islands", "check", "tries", "ms", "repairs", "trees", "mats", "walls", "feats", "spec", "roomTags"];
+const KEEP = ["base", "props", "kind", "pkey", "seed", "attempt", "W", "WP", "HP", "Ft", "LW", "LH", "isZone", "arenaFrom", "upX", "downX", "gy", "h", "spots", "hzSpots", "pads", "peak", "chest", "deep", "ugTop", "islands", "check", "tries", "ms", "repairs", "trees", "mats", "walls", "feats", "spec", "roomTags"];
 export function packPlan(P) {
   const data = { d: P.F.d };
   for (const k of KEEP) data[k] = P[k];
@@ -2696,7 +2696,8 @@ function rubble(P) {
 function buildSky(P) {
   const { prof: S, WP, R, N, arenaFrom, F } = P;
   F.d.fill(-12);
-  const base = FLOOR * TS;
+  // 섬 길(맨 아래 기초 땅) 높이: 설계도 skyBase가 있으면 그 높이 (출구도 그 높이)
+  const base = (P.base = P.bp?.skyBase ?? FLOOR * TS);
   const fl = S.floor;
   // 바닥 섬: 큰 섬 사이 틈 (뛰어넘는다)
   const segs = [];
@@ -3997,7 +3998,10 @@ function skyWorld(P, groundAt, style, o = {}) {
               }
               lowStep = gmax - gmin > 20 && gmax - (s.y + dep) < 108;
             }
-            if (lowStep || hitB(s.x0 - 6, s.x1 + 6, s.y - 4, s.y + dep, ends) || gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30)) {
+            // 같은 섬에서 출발·도착하는 다른 디딤돌 길의 점프 공간(cor)은 피하지 않는다 (한 섬 같은 쪽 끝에서 위아래로 길이 갈라질 때)
+            const shared = (b) => b.cor && b.ends && (b.ends.includes(ends[0]) || b.ends.includes(ends[1]));
+            const hitS = (x0, x1, y0, y1) => objs.some((b) => !shared(b) && !((ends.includes(b) || (b.of && ends.includes(b.of)))) && x0 < b.x1 && x1 > b.x0 && y0 < b.y1 && y1 > b.y0);
+            if (lowStep || hitS(s.x0 - 6, s.x1 + 6, s.y - 4, s.y + dep) || gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30)) {
               const W = globalThis.__why;
               W && (W[lowStep ? "low" : gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30) ? "stG" : "st"] = (W[lowStep ? "low" : gHit(s.x0 - 8, s.x1 + 8, s.y + dep + 30) ? "stG" : "st"] ?? 0) + 1);
               bad = true;
@@ -4008,6 +4012,7 @@ function skyWorld(P, groundAt, style, o = {}) {
             ey = ly;
           }
         }
+        if (!bad) for (const c of cors) c.ends = ends;
         if (!bad) return { st, cors, hops: cors.map((c, i) => ({ i, from: i === 0 ? a : { x: d > 0 ? st[i - 1].x1 - 8 : st[i - 1].x0 + 8, y: st[i - 1].y }, to: i < st.length ? { x: d > 0 ? st[i].x0 + 8 : st[i].x1 - 8, y: st[i].y } : b })) };
       }
     }
@@ -4919,7 +4924,7 @@ export function analyze(P) {
       }
     return best;
   };
-  const base = FLOOR * TS;
+  const base = P.base ?? FLOOR * TS;
   const start = near(44, base, 20, 40);
   const goals = [];
   goals.push({ id: "R", n: near(P.WP - 56, base, 24, 40) });
@@ -4999,7 +5004,7 @@ function repair(P, A) {
       if (gn < 0) {
         did = true;
         // 목표 자리에 바닥이 없다: 그 자리를 둥근 방 + 평평한 바닥으로
-        const pt = id === "U" ? P.peak : id === "D" ? P.deep : id === "R" ? { x: P.WP - 56, y: FLOOR * TS } : { x: 44, y: FLOOR * TS };
+        const pt = id === "U" ? P.peak : id === "D" ? P.deep : id === "R" ? { x: P.WP - 56, y: P.base ?? FLOOR * TS } : { x: 44, y: P.base ?? FLOOR * TS };
         if (!pt) continue;
         cutShape(P, pt.x - 50, pt.y - 66, pt.x + 50, pt.y, (x, y) => {
           const ex = (x - pt.x) / 1.4, ey = y - (pt.y - 26);
@@ -5156,7 +5161,7 @@ function finishMeta(P, A) {
   const NC = A.C.NC;
   // 칸마다 "주 지면" 높이 (px)
   const W = P.W, gy = new Int16Array(W).fill(-1);
-  const base = FLOOR * TS;
+  const base = P.base ?? FLOOR * TS;
   for (let t = 0; t < W; t++) {
     const c = t * 2;
     let best = -1, bd = 1e9;
