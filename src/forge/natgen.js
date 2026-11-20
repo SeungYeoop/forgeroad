@@ -2635,7 +2635,13 @@ function buildCave(P) {
   const bot = Math.floor((bottom - 24) / BLK) & ~1, lim = Math.min(WP, arenaFrom);
   const NXl = Math.floor(lim / BLK) - 6;
   const ST = CAVE_STYLE[P.bp?.cave?.style] ?? null;
-  caveWorld(P, C, {
+  // 손 설계 동굴 구역: 방·입구·▲▼ 방을 설계도대로, 위아래는 비탈 굴과 떨어지는 구멍만 (세로 갱도·오르는 방 없음)
+  const DS = P.bp?.caves ? P.bp : null;
+  if (DS) {
+    const dg = DS.dungeon ? dungeonWorld(P, C, DS.dungeon) : null;
+    caveWorld(P, C, { y0: 14, y1: bot, anchor: base / BLK, gap: [96, 124], lim: NXl, topAt: () => 14, design: DS, extern: dg, style: ST, noClimb: 1, shafts: 0, deepX: -1, peakX: -1, arena: -1 });
+  }
+  else caveWorld(P, C, {
     y0: 14,
     y1: bot,
     anchor: base / BLK,
@@ -3176,11 +3182,16 @@ function caveWorld(P, C, o) {
   if (o.design) {
     for (const q of o.design.caves) {
       const x0 = Math.round(q.x0 / BLK), x1 = Math.round(q.x1 / BLK), fy = Math.round(q.fy / BLK) & ~1;
-      const r = newRoom({ x0, x1, fy, h: Math.round(q.h / BLK), kind: q.kind, floor: q.floor, role: q.role, ceil: q.ceil, bpId: q.id });
+      const r = newRoom({ x0, x1, fy, h: Math.round(q.h / BLK), kind: q.kind, floor: q.floor, role: q.role, ceil: q.ceil, bpId: q.id, peak: q.peak ? 1 : 0 });
       if (q.deep && P.downX >= 0) r.flatC = Math.round(P.downX / BLK) - x0;
+      if (q.peak && P.upX >= 0) r.flatC = Math.round(P.upX / BLK) - x0;
+      if (q.entry) r.flatC = q.entry === "L" ? 0 : x1 - x0 - 1;
       carveCavern(r);
       byId[q.id] = r;
       if (q.deep && P.downX >= 0) P.deep = { x: Math.round((P.downX - 8) / TS) * TS + 8, y: fy * BLK };
+      if (q.peak && P.upX >= 0) P.peak = { x: Math.round((P.upX - 8) / TS) * TS + 8, y: fy * BLK };
+      // 입구 방: 구역 끝까지 곧은 굴 (이웃 구역 문)
+      if (q.entry) (q.entry === "L" ? tunnel(1, fy, x0 - 1, fy) : tunnel(x1, fy, NX - 2, fy), uni(r.id, 0), r.deg++);
     }
   }
   // 던전 서쪽 문: 연결용 점 (던전 안 무리마다 이어짐 노드, 정문과 이어진 무리는 바깥)
@@ -3379,9 +3390,12 @@ function caveWorld(P, C, o) {
     }
   };
   if (o.extern) {
-    let dx0 = 1e9;
-    for (const L of o.extern.links) dx0 = Math.min(dx0, L.x + 3);
-    dx0 < 1e9 && boxes.push({ r: null, x0: dx0, x1: lim + 8, y0: 0, y1: NY });
+    if (o.extern.box) boxes.push({ r: null, ...o.extern.box });
+    else {
+      let dx0 = 1e9;
+      for (const L of o.extern.links) dx0 = Math.min(dx0, L.x + 3);
+      dx0 < 1e9 && boxes.push({ r: null, x0: dx0, x1: lim + 8, y0: 0, y1: NY });
+    }
   }
   if (!o.design) place("grand", o.maxGrand ?? 2, 0.06);
   if (!o.design) {
@@ -3401,13 +3415,13 @@ function caveWorld(P, C, o) {
         const dx = B.x0 - 1 - A.x1, dy = B.fy - A.fy;
         if (dx < 6 || dx > 220 || Math.abs(dy) > 140) continue;
         if (dx >= Math.abs(dy) + 6) cands.push({ a: A, b: B, t: "slope", c: (dx + Math.abs(dy) + (Math.abs(dy) < 8 ? 30 : 0)) * R.range(0.7, 1.3) });
-        else if (dx >= 34 && Math.abs(dy) <= 110) cands.push({ a: A, b: B, t: "climbMid", c: dx + 2 * Math.abs(dy) + 30 });
+        else if (!o.noClimb && dx >= 34 && Math.abs(dy) <= 110) cands.push({ a: A, b: B, t: "climbMid", c: dx + 2 * Math.abs(dy) + 30 });
       }
     for (const A of rooms)
       for (const B of rooms) {
         if (A === B || A.fy >= B.fy || A.x1 <= B.x0 || B.x1 <= A.x0 || !nw(A, B)) continue;
         const dy = B.fy - A.fy;
-        if (dy >= 16 && dy <= 110) cands.push({ a: A, b: B, t: "climbSide", c: 2 * dy + 60 });
+        if (!o.noClimb && dy >= 16 && dy <= 110) cands.push({ a: A, b: B, t: "climbSide", c: 2 * dy + 60 });
       }
     for (const sh of shafts)
       for (const r of rooms) {
@@ -3498,6 +3512,11 @@ function caveWorld(P, C, o) {
       if (!A || !B) continue;
       let ok = false;
       for (const e of cands) if (!e.sh && ((e.a === A && e.b === B) || (e.a === B && e.b === A)) && !ok && (e.used || build(e))) ((e.used = 1), (ok = true));
+      // 손 설계: 후보 검사(다른 굴과 겹침)를 못 넘어도 설계한 비탈 굴은 판다 (자리는 설계도가 책임진다)
+      if (!ok && o.noClimb) {
+        const [Lr, Rr] = A.x1 <= B.x0 ? [A, B] : [B, A], gap = Rr.x0 - 1 - Lr.x1;
+        if (Lr.x1 <= Rr.x0 && gap >= Math.abs(Rr.fy - Lr.fy) + 2) (tunnel(Lr.x1, Lr.fy, Rr.x0 - 1, Rr.fy), linkR(Lr, Rr), (ok = true));
+      }
       !ok && globalThis.__dbg && console.log("design link failed", a, b);
     }
   };
@@ -4474,7 +4493,7 @@ function dungeonWorld(P, C, D) {
       back(x0, top + 4, x1, top + 6, "stem");
     }
     rect(x0, top, x1, F, -1);
-    back(x0, top, x1, F, r.type === "vault" ? "wood" : "brick");
+    back(x0, top, x1, F, r.type === "vault" ? "wood" : D.wall ?? "brick");
     brick(x0, top, x1, F);
     // 천장 받침돌 (회랑·성소): 기둥 위마다 거꾸로 선 계단 모양
     if (r.type === "colonnade" || r.type === "sanctum")
@@ -4527,7 +4546,7 @@ function dungeonWorld(P, C, D) {
     back(x0 + X(16), top + 2, x0 + X(16) + 2, F1, "rock");
     back(x1 - X(16) - 2, top + 2, x1 - X(16), F1, "rock");
     rect(x0, top, x1, F1, -1);
-    back(x0, top, x1, F1, "brick");
+    back(x0, top, x1, F1, D.wall ?? "brick");
     brick(x0, top, x1, F1);
     const both = t.up.includes("W") && t.up.includes("E"), M = !both && t.up.includes("E");
     const put = (a, b, row, side, br = 2) => {
@@ -4535,13 +4554,21 @@ function dungeonWorld(P, C, D) {
       if (M) ((p = W - X(b)), (q = W - X(a)), (sd = side < 0 ? -1 : 1 - side));
       ledge(x0 + p, x0 + q, row, sd, br);
     };
-    const n = Math.max(2, Math.round((F1 - F0) / 9.6)), lv = (k) => F1 - Math.round(((F1 - F0) * k) / n);
+    // 발판 사이 높이: 기본 9.6칸, 설계가 step을 주면 그만큼 (작을수록 촘촘)
+    const n = Math.max(2, Math.round((F1 - F0) / (D.step ?? 9.6))), lv = (k) => F1 - Math.round(((F1 - F0) * k) / n);
     // 착지대 (윗층 문 높이)
     put(0, 18, F0, 0);
     both && put(42, 60, F0, 1);
     const jit = () => R.int(-2, 2);
-    const pat = t.pat ?? "zig";
-    if (pat === "float" && n === 5) {
+    const pat = D.stairs ? "stair" : t.pat ?? "zig";
+    if (pat === "stair") {
+      // 계단식 (동굴 구역 던전): 위아래 한 단씩, 가로 4칸 틈으로 엇갈림 → 1단 점프로 오른다. 맨 위 단은 양쪽 착지대 밑에
+      for (let k = n - 1; k >= 1; k--) {
+        const j = n - 1 - k;
+        if (j === 0) (put(4, 24, lv(k), -1), put(36, 56, lv(k), -1));
+        else j % 2 ? put(32, 52, lv(k), -1) : put(8, 28, lv(k), -1);
+      }
+    } else if (pat === "float" && n === 5) {
       // 흔들림 없이: 발판 사이 틈 6칸 이하, 맨 위 발판에서 양쪽 착지대 모두 닿는다
       for (const [k, a, b] of [[1, 30, 44], [2, 10, 24], [3, 30, 44], [4, 24, 38]]) put(a, b, lv(k), -1);
     } else if (pat === "pillar" && n === 5) {
@@ -4578,7 +4605,8 @@ function dungeonWorld(P, C, D) {
   for (const t of towers) mkTower(t, colX(t.col) + 2, colX(t.col + 1) - 2, floorR(t.s), floorR(t.s + 1), 40);
   // ── 정문: 고원 동쪽 비탈 문 → 짧은 복도 → 정문 탑(VG, 지표 높이 → 1층) ──
   if (D.gate) {
-    const surfRow = (FLOOR * TS) / BLK, col = D.gate.col, g = { id: "VG", col, s: -1, up: "E", down: "W", pat: "zig", role: "rest" };
+    // 정문 탑: 기본은 지표 높이에서 1층까지. 동굴 구역은 row(문 높이 px)·down(1층 문 쪽)·cave(서쪽 벽 동굴 문)를 정한다
+    const surfRow = D.gate.row ? Math.round(D.gate.row / BLK) & ~1 : (FLOOR * TS) / BLK, col = D.gate.col, g = { id: "VG", col, s: -1, up: D.gate.up ?? "E", down: D.gate.down ?? "W", pat: "zig", role: "rest", cave: D.gate.cave };
     towers.push(g);
     mkTower(g, colX(col) + 12, colX(col) + 52, surfRow, floorR(0), 13);
     const dx = Math.round(D.gate.door / BLK);
@@ -4595,7 +4623,19 @@ function dungeonWorld(P, C, D) {
     brick(colX(0) - 3, F - 12, x0, F);
     links.push({ id, x: colX(0) - 3, y: F, comp: null, of });
   };
-  for (const r of rooms) r.cave && r.c0 === 0 && caveDoor(r.id, r.x0, r.F);
+  // 동쪽 벽 동굴 길 (cave: "E")
+  const NCOL = D.cols ?? 6;
+  const caveDoorE = (id, x1, F, of = id) => {
+    rect(x1, F - 12, colX(NCOL) + 3, F, -1);
+    brick(x1, F - 12, colX(NCOL) + 3, F);
+    links.push({ id, x: colX(NCOL) + 2, y: F, comp: null, of, east: 1 });
+  };
+  for (const r of rooms) r.cave === "E" ? r.c1 === NCOL - 1 && caveDoorE(r.id, r.x1, r.F) : r.cave && r.c0 === 0 && caveDoor(r.id, r.x0, r.F);
+  for (const t of towers)
+    if (t.caveE && t.col === NCOL - 1) {
+      t.caveE !== "down" && caveDoorE(t.id, t.x1, t.F0);
+      t.caveE !== "up" && caveDoorE(t.caveE === "both" ? t.id + "_d" : t.id, t.x1, t.F, t.id);
+    }
   for (const t of towers)
     if (t.cave && t.col === 0) {
       t.cave !== "down" && caveDoor(t.id, t.x0, t.F0);
@@ -4603,7 +4643,8 @@ function dungeonWorld(P, C, D) {
     }
   for (const L of links) L.comp = find(L.of);
   const rootComp = par.has("@root") ? find("@root") : null;
-  return { links, rootComp, find };
+  const box = { x0: GX - 4, x1: colX(NCOL) + 4, y0: GY - 2 - (D.gate ? 40 : 0), y1: GY + (D.stories ?? 8) * MH + 2 };
+  return { links, rootComp, find, box };
 }
 
 // 설계도 지표: 구간마다 정한 모양 (언덕 혹·골짜기·고원·큰 산)

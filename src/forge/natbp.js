@@ -316,6 +316,85 @@ export function editSky(S, patch = {}, links = null) {
 // ── 동굴 구역 셋 (y=1 줄): 같은 동굴 생성기에 지역마다 다른 짜임과 소품 (natgen.js CAVE_STYLE) ──
 //   g1_1 드립스톤: 종유석 대공동 · 지하 호수 · 높은 천장 / g0_1 아이언베인: 옛 갱도 · 나무 판자 벽과 횃불 · 광맥 수정
 //   gm1_1 루트홀로우: 둥근 굴방 · 뿌리 기둥 · 늘어진 뿌리와 빛 버섯
-BLUEPRINTS.g1_1 = { cave: { style: "drip" } };
+// 동굴 방 한 줄: [id, x0, x1, 바닥 y, 높이, 종류, 바닥, 역할, 덧붙임(peak·deep·entry)]
+const cvR = (rows) => rows.map(([id, x0, x1, fy, h, kind, floor, role, ex]) => ({ id, x0, x1, fy, h, kind, floor, role, ...(ex ?? {}) }));
+
+// ── g1_1 「드립스톤 · 수몰 사원」 손 설계: 자연 동굴이 주인공 ──
+//   가운데에 물에 잠긴 석회 사원(5열 7층). 사원 정문 탑 꼭대기 = ▲ 하늘 구멍, 사원 서쪽 벽에서 동굴 갈래 다섯이 뻗는다
+//   서쪽 위: 천장을 덮은 종유석 대공동 / 서쪽 가운데: 박쥐 둥지·석회 다락·물웅덩이(입구 길) / 서쪽 아래: 지하 호수 → 검은 물가
+//   동쪽: 메아리 굴 · 동쪽 입구 · 협곡 어귀 → 중턱 → 바닥(폭포처럼 구멍 셋) / 바닥: 심연 입구(▼) 와 바닥 보물굴
+//   위아래는 사원 탑과 떨어지는 구멍으로, 동굴은 비탈 굴로만 (사다리·세로 갱도 없음)
+BLUEPRINTS.g1_1 = {
+  cave: { style: "drip" },
+  caves: cvR([
+    // 꼭대기
+    ["T0", 80, 440, 2500, 240, "small", "flat", "treasure"], // 천장 보물굴
+    ["GR", 600, 2900, 2600, 620, "grand", "basin", "vista"], // 종유석 대공동
+    ["PK", 4272, 5100, 2880, 300, "hall", "flat", "rest", { peak: 1 }], // ▲ 하늘 구멍 (사원 정문 탑 꼭대기)
+    ["T1", 5600, 6900, 2500, 340, "tiered", "steps", "arena"], // 고드름 회랑
+    ["T2", 7400, 8050, 2100, 260, "small", "flat", "treasure"], // 얼음 틈
+    // 서쪽 갈래
+    ["W1a", 2500, 3300, 3700, 340, "tiered", "steps", "arena"], // 물방울 회랑
+    ["W1b", 900, 2000, 3400, 340, "hall", "mound", "arena"], // 박쥐 둥지
+    ["W2a", 2700, 3350, 4250, 300, "hall", "flat", "rest"], // 흐름돌 계단참
+    ["W2b", 1000, 2200, 4150, 340, "pillared", "flat", "arena"], // 석회 다락
+    ["W3a", 2700, 3350, 4800, 300, "hall", "steps", "arena"], // 첫 갈림굴
+    ["W3m", 1300, 2200, 4850, 300, "lake", "basin", "rest"], // 석회 물웅덩이
+    ["EL", 64, 800, 4800, 300, "hall", "flat", "rest", { entry: "L" }],
+    ["W4a", 2400, 3350, 5350, 380, "pillared", "mound", "arena"], // 흰 기둥 홀
+    ["W4b", 500, 1800, 5500, 340, "hall", "flat", "arena"], // 젖은 굴
+    ["W5a", 1700, 3300, 6050, 440, "lake", "basin", "treasure"], // 지하 호수 (물 건너 보물)
+    ["W5b", 200, 1200, 6350, 320, "hall", "steps", "rest"], // 검은 물가
+    // 바닥
+    ["B1", 150, 1300, 7000, 340, "tiered", "steps", "arena"], // 가라앉은 계단
+    ["B2", 1760, 2500, 7400, 320, "hall", "mound", "arena"], // 갑충 굴
+    ["DP", 3150, 4400, 7950, 380, "hall", "flat", "rest", { deep: 1 }], // ▼ 심연 입구
+    ["B3", 4900, 5800, 7900, 280, "small", "flat", "treasure"], // 바닥 보물굴
+    ["B4", 6300, 7400, 7500, 360, "hall", "flat", "arena"], // 협곡 바닥
+    // 동쪽
+    ["E2", 6950, 7900, 3300, 340, "hall", "steps", "rest"], // 메아리 굴
+    ["ER", 6950, 8100, 4800, 340, "hall", "mound", "rest", { entry: "R" }],
+    ["E3", 6950, 8050, 6000, 380, "tiered", "steps", "arena"], // 협곡 어귀
+    ["E4", 6950, 8050, 6700, 340, "hall", "flat", "arena"], // 협곡 중턱
+  ]),
+  // 수몰 사원: 5열 7층 (x 3840~6400, y 3200~5888). 정문 탑(VG)은 ▲ 방 높이에서 1층으로, 서쪽 벽엔 대공동으로 난 문
+  dungeon: {
+    x0: 3840, y0: 3200, cols: 5, stories: 7, wall: "brick", step: 6, stairs: 1,
+    gate: { col: 0, row: 2880, door: 4272, up: "WE", down: "E", cave: "up" },
+    towers: [
+      { id: "TA", col: 2, s: 0, up: "WE", down: "WE", pat: "zig" },
+      { id: "TB", col: 4, s: 1, up: "W", down: "W", pat: "float" },
+      { id: "TC", col: 0, s: 2, up: "WE", down: "WE", pat: "ring", cave: "both" },
+      { id: "TD", col: 3, s: 3, up: "WE", down: "WE", pat: "pillar" },
+      { id: "TE", col: 1, s: 4, up: "WE", down: "WE", pat: "zig" },
+      { id: "TF", col: 4, s: 5, up: "W", down: "W", pat: "float", caveE: "down" },
+    ],
+    rooms: [
+      { id: "R01", c0: 1, c1: 1, s: 0, type: "guard", role: "arena" }, // 물에 잠긴 문간
+      { id: "R03", c0: 3, c1: 4, s: 0, type: "colonnade", role: "arena", cave: "E" }, // 위 회랑 (메아리 굴로)
+      { id: "R10", c0: 0, c1: 1, s: 1, type: "vault", role: "treasure", cave: 1 }, // 보물실 (물방울 회랑으로)
+      { id: "R13", c0: 3, c1: 3, s: 1, type: "shrine", role: "rest" }, // 샘 쉼터
+      { id: "R21", c0: 1, c1: 2, s: 2, type: "arena", role: "arena" }, // 투기장
+      { id: "R23", c0: 3, c1: 3, s: 2, type: "guard", role: "arena" }, // 초소
+      { id: "R31", c0: 1, c1: 2, s: 3, type: "trap", role: "trap" }, // 물 고인 함정 복도
+      { id: "R34", c0: 4, c1: 4, s: 3, type: "vault", role: "treasure", cave: "E" }, // 동쪽 보물실 (동쪽 입구로)
+      { id: "R40", c0: 0, c1: 0, s: 4, type: "guard", role: "arena", cave: 1 }, // 서쪽 초소 (흰 기둥 홀로)
+      { id: "R42", c0: 2, c1: 2, s: 4, type: "shrine", role: "rest" }, // 샘 쉼터 2
+      { id: "R44", c0: 4, c1: 4, s: 4, type: "colonnade", role: "arena" }, // 아래 회랑
+      { id: "R50", c0: 0, c1: 0, s: 5, type: "vault", role: "treasure" }, // 깊은 보물실
+      { id: "R52", c0: 2, c1: 3, s: 5, type: "arena", role: "arena" }, // 투기장 2
+      { id: "R60", c0: 0, c1: 3, s: 6, type: "sanctum", role: "arena", cave: 1 }, // 성소 (지하 호수로)
+    ],
+  },
+  links: [
+    ["T0", "GR"], ["GR", "VG"], ["PK", "T1"], ["T1", "T2"],
+    ["W1b", "W1a"], ["W1a", "R10"], ["W2b", "W2a"], ["W2a", "TC"],
+    ["EL", "W3m"], ["W3m", "W3a"], ["W3a", "TC_d"], ["W4b", "W4a"], ["W4a", "R40"],
+    ["W5b", "W5a"], ["W5a", "R60"], ["B1", "B2"], ["B2", "DP"], ["DP", "B3"], ["B3", "B4"],
+    ["R03", "E2"], ["R34", "ER"], ["TF", "E3"],
+  ],
+  // 떨어지는 구멍: 대공동 → 박쥐 둥지 → 석회 다락 → 물웅덩이 / 젖은 굴 → 검은 물가 → 가라앉은 계단 / 협곡 폭포 둘
+  drops: [["GR", "W1b"], ["W1b", "W2b"], ["W2b", "W3m"], ["W4b", "W5b"], ["W5b", "B1"], ["E3", "E4"], ["E4", "B4"]],
+};
 BLUEPRINTS.g0_1 = { cave: { style: "mine" } };
 BLUEPRINTS.gm1_1 = { cave: { style: "root" } };
