@@ -2,6 +2,7 @@
 import { pxGoat, pxQueen, pxShaman, pxMole } from "./pgm3.js";
 import * as SB from "./px_sb.js";
 import * as DS from "./px_ds.js";
+import * as MB from "./px_mb.js";
 export const NEW_MODELS = {
   gm_goat: pxGoat, gm_queen: pxQueen, gm_shaman: pxShaman, gm_mole: pxMole,
   // 스톤브리지
@@ -12,4 +13,8 @@ export const NEW_MODELS = {
   ds_bat: DS.pxCaveBat, ds_mimic: DS.pxStalMimic, ds_drop: DS.pxDrop, ds_giant: DS.pxLimeGiant,
   ds_newt: DS.pxNewt, ds_leech: DS.pxLeech, ds_moss: DS.pxGlowMoss, ds_eel: DS.pxEel,
   ds_beetle: DS.pxRockBeetle, ds_echo: DS.pxEcho, ds_centipede: DS.pxCentipede, ds_basilisk: DS.pxBasilisk,
+  // 모스바크
+  mb_turtle: MB.pxTurtle, mb_thorn: MB.pxThorn, mb_beetle: MB.pxStag, mb_troll: MB.pxTroll,
+  mb_owl: MB.pxOwl, mb_squirrel: MB.pxSquirrel, mb_moth: MB.pxMoth, mb_mantis: MB.pxMantis,
+  mb_toad: MB.pxToad, mb_firefly: MB.pxFirefly, mb_crayfish: MB.pxCrayfish, mb_toadking: MB.pxToadKing,
 };
