@@ -5,6 +5,7 @@ import * as DS from "./px_ds.js";
 import * as MB from "./px_mb.js";
 import * as GS from "./px_gs.js";
 import * as IV from "./px_iv.js";
+import * as LC from "./px_lc.js";
 export const NEW_MODELS = {
   gm_goat: pxGoat, gm_queen: pxQueen, gm_shaman: pxShaman, gm_mole: pxMole,
   // 스톤브리지
@@ -27,4 +28,8 @@ export const NEW_MODELS = {
   iv_rat: IV.pxRats, iv_kobold: IV.pxKobold, iv_moth: IV.pxLampMoth, iv_foreman: IV.pxForeman,
   iv_pillbug: IV.pxPillbug, iv_rustbug: IV.pxRustbug, iv_oregolem: IV.pxOreGolem, iv_drill: IV.pxDrill,
   iv_gasshroom: IV.pxGasShroom, iv_ghost: IV.pxGhostMiner, iv_scorpion: IV.pxCrystalScorp, iv_worm: IV.pxMineWorm,
+  // 리프크라운
+  lc_larva: LC.pxLarva, lc_chameleon: LC.pxChameleon, lc_hedgehog: LC.pxHedgehog, lc_spider: LC.pxSpider,
+  lc_magpie: LC.pxMagpie, lc_butterfly: LC.pxButterfly, lc_chick: LC.pxChicks, lc_mother: LC.pxMother,
+  lc_amber: LC.pxAmber, lc_archer: LC.pxArcher, lc_woodpecker: LC.pxWoodpecker, lc_guardian: LC.pxGuardian,
 };
