@@ -81,7 +81,7 @@ function build(A, P) {
     if (p.k === "p_stalac" && p.fall > 40 && !p.bg) drips.push({ x: p.x + (hash(p.x, 3) - 0.5) * 6, y: p.y + h * 0.9, fall: p.fall - h * 0.9, t: 1 + hash(p.x, p.y) * 4 });
   }
   for (const T of P.trees ?? []) trees.push({ x: T.x, y: T.y - 40, w: T.w, t: hash(T.x, T.y) * 6 });
-  const water = (P.spec ?? []).filter((r) => r.t === 3 && r.x1 - r.x0 >= 24).map((r) => ({ ...r, n: Math.max(1, Math.floor((r.x1 - r.x0) / 46)) }));
+  const water = (P.spec ?? []).filter((r) => (r.t === 3 || r.t === 11 || r.t === 12) && r.x1 - r.x0 >= 24).map((r) => ({ ...r, n: Math.max(1, Math.floor((r.x1 - r.x0) / 46)) }));
   lights.sort((a, b) => a.x - b.x);
   Object.assign(A, { lights, drips, wins, trees, water });
 }

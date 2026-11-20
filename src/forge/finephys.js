@@ -15,6 +15,9 @@ export function installFinePhysics(proto, K) {
   // 전역 픽셀 (gx, py)가 바위인가
   proto.fsolid = function (gx, py) {
     if (py < 0 || py >= Oe) return false;
+    // 움직이는 장치 (무너지는 발판·금 간 벽·승강기 발판): 전역 픽셀 사각형
+    const DY = this.dyn;
+    if (DY && DY.length) for (let i = 0; i < DY.length; i++) { const r = DY[i]; if (r.on && gx >= r.x0 && gx < r.x1 && py >= r.y0 && py < r.y1) return true; }
     const tx = Math.floor(gx / gt);
     if (tx < 0 || this.gates.has(tx) || SKY_EDGE.has(tx)) return true;
     const C = Math.floor(tx / vt);
@@ -56,6 +59,31 @@ export function installFinePhysics(proto, K) {
     if (py % gt) return 0;
     const v = this.code(tx, py / gt);
     return v === plat || v === 3 || v === 6 ? v : 0;
+  };
+  // 몸 자리의 장치: 가운데가 든 매달림·바람·물살 칸, 머리 근처를 지나는 짚라인 (구역 좌표)
+  proto.devAt = function (S) {
+    const gx = Math.floor(S.x + this.originChunk * CPX), tx = Math.floor(gx / gt);
+    const out = { sp: 0, wind: null, cur: 0, zip: null, zx: 0 };
+    if (tx < 0) return out;
+    const C = Math.floor(tx / vt), f = this.gen.get(C)?.fine;
+    if (!f || !f.spec || !f.spec.length) return out;
+    const zx = f.x0 + (gx - C * CPX), h = S.h ?? 22, cy = S.y - h / 2, top = S.y - h;
+    out.zx = zx;
+    for (const r of f.spec) {
+      if (r.t === 9) {
+        if (r.ax == null) continue;
+        const lo = Math.min(r.ax, r.bx), hi = Math.max(r.ax, r.bx);
+        if (zx < lo || zx > hi) continue;
+        const ly = hi > lo ? r.ay + ((r.by - r.ay) * (zx - r.ax)) / (r.bx - r.ax) : r.ay;
+        top >= ly - 8 && top <= ly + 16 && (out.zip = r);
+        continue;
+      }
+      if (zx < r.x0 || zx >= r.x1 || cy < r.y0 || cy >= r.y1) continue;
+      if (r.t === 6 || r.t === 7 || r.t === 8) out.sp = r.t;
+      else if (r.t === 10) out.wind = r;
+      else if (r.t === 11 || r.t === 12) out.cur = r.t === 11 ? -1 : 1;
+    }
+    return out;
   };
   proto.solidAtPx = function (x, y) {
     return this.fsolid(Math.floor(x) + this.originChunk * CPX, Math.floor(y));
@@ -115,7 +143,8 @@ export function installFinePhysics(proto, K) {
     S._g = S.onGround;
     S.onGround = !1;
     // 물 속인가 (몸 가운데)
-    S.inWater = this.fspec(Math.floor(S.x + this.originChunk * CPX), Math.floor(S.y - (S.h ?? 16) / 2)) === 3;
+    const wsp = this.fspec(Math.floor(S.x + this.originChunk * CPX), Math.floor(S.y - (S.h ?? 16) / 2));
+    S.inWater = wsp === 3 || wsp === 11 || wsp === 12;
     for (let m = 0; m < R; m++) {
       this.moveX(S, S.vx * h);
       this.moveY(S, S.vy * h);

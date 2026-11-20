@@ -441,7 +441,63 @@ export function* pixFine(ch, base, region, S) {
   if (S.spec && S.spec.length) {
     const MX2 = S.ox ?? X0;
     const PL = rampOf(mix(0xa07040, P.soil, 0.2)), CL = rampOf(0xf4f8ff), WA = mix(0x3a8ad8, P.sky ? P.sky[0] ?? 0x3a8ad8 : 0x3a8ad8, 0.25);
+    const LAD = rampOf(mix(0x9a6a3a, P.soil, 0.15)), ROPE = rampOf(0xc8a870), VIN = rampOf(mix(P.top ?? 0x4a9a3a, 0x2e7a30, 0.4)), RAIL = rampOf(0x8a8c96);
+    const ap = (k, c, al) => (buf[k] = ((al << 24) | ((c & 255) << 16) | (c & 0xff00) | ((c >> 16) & 255)) >>> 0);
     for (const r of S.spec) {
+      if (r.t >= 6 && r.t !== 11 && r.t !== 12) {
+        const x0 = Math.max(0, Math.floor(r.x0 - MX2)), x1 = Math.min(PW, Math.ceil(r.x1 - MX2));
+        const y0 = Math.max(0, Math.floor(r.y0 - OY)), y1 = Math.min(PH, Math.ceil(r.y1 - OY));
+        if (x0 >= x1 || y0 >= y1) continue;
+        const cx = (r.x0 + r.x1) / 2;
+        for (let x = x0; x < x1; x++) {
+          const wx = MX2 + x, dx = wx - r.x0, dr = r.x1 - 1 - wx;
+          if (r.t === 9) {
+            // 짚라인: 줄 (어두운 줄 + 위 밝은 줄), 양 끝 쇠고리
+            if (r.ax == null) continue;
+            const lo = Math.min(r.ax, r.bx), hi = Math.max(r.ax, r.bx);
+            if (wx < lo - 4 || wx > hi + 4) continue;
+            const ly = Math.round(hi > lo ? r.ay + ((r.by - r.ay) * (Math.min(hi, Math.max(lo, wx)) - r.ax)) / (r.bx - r.ax) : r.ay) - OY;
+            if (wx >= lo && wx <= hi) {
+              ly - 1 >= 0 && ly - 1 < PH && put(x, ly - 1, RAIL[1]);
+              ly >= 0 && ly < PH && put(x, ly, RAIL[3]);
+            }
+            if (Math.abs(wx - lo) <= 3 || Math.abs(wx - hi) <= 3) for (let yy = ly - 4; yy <= ly + 3; yy++) yy >= 0 && yy < PH && put(x, yy, RAIL[(yy - ly + 4) % 3 === 0 ? 4 : 2]);
+            continue;
+          }
+          for (let y = y0; y < y1; y++) {
+            const yw = OY + y, dy = yw - r.y0, k = y * PW + x;
+            if (r.t === 6) {
+              // 사다리: 양옆 기둥 + 8px마다 가로대
+              if (dx <= 1 || dr <= 1) put(x, y, LAD[dx === 0 || dr === 0 ? 3 : 1]);
+              else if (dy % 8 === 2) put(x, y, LAD[1]);
+              else if (dy % 8 === 3) put(x, y, LAD[4]);
+            } else if (r.t === 7) {
+              // 밧줄: 꼬인 줄 3px, 24px마다 매듭
+              const off = Math.abs(wx - Math.round(cx)), knot = dy % 24 < 3;
+              if (off <= (knot ? 2 : 1)) put(x, y, ROPE[knot ? (off === 2 ? 4 : 2) : (yw + wx) % 4 < 2 ? 1 : 3]);
+            } else if (r.t === 8) {
+              // 덩굴: 구불구불한 줄기 여러 가닥 + 잎
+              const sx = Math.round(Math.sin(yw * 0.09 + Math.floor(wx / 7) * 1.7) * 1.5);
+              const stem = (wx + sx) % 7 === 0, leaf = !stem && H(wx >> 1, yw >> 2, 91) > 0.82 && (wx + sx) % 7 <= 2;
+              if (stem) put(x, y, VIN[3]);
+              else if (leaf) put(x, y, VIN[H(wx, yw, 92) > 0.5 ? 0 : 1]);
+            } else if (r.t === 10) {
+              // 바람 기둥: 옅은 흰 결 (뒷그림이 비치게)
+              if (wx % 11 === 0 && (yw + wx * 3) % 26 < 9) ap(k, 0xf4fbff, 38);
+              else if (wx % 11 === 5 && (yw + wx * 5) % 34 < 6) ap(k, 0xffffff, 24);
+            } else if (r.t === 15) {
+              // 승강기 길: 양옆 쇠 레일 + 64px마다 버팀목
+              if (dx <= 2 || dr <= 2) put(x, y, RAIL[dx === 0 || dr === 0 ? 4 : dx === 1 || dr === 1 ? 2 : 1]);
+              else if (dy % 64 < 4 && dy > 8) put(x, y, LAD[dy % 64 === 0 ? 1 : 3]);
+            } else if (r.t === 17) {
+              // 간헐천 구멍: 바닥 가운데 광물 테
+              const off = Math.abs(wx - cx);
+              if (r.y1 - yw <= 3 && off < 14) put(x, y, off < 6 ? 0x2a3a48 : mix(0xd8e0c0, 0xa8b890, off / 14));
+            }
+          }
+        }
+        continue;
+      }
       const x0 = Math.max(0, Math.floor(r.x0 - MX2)), x1 = Math.min(PW, Math.ceil(r.x1 - MX2));
       const y0 = Math.max(0, Math.floor(r.y0 - OY) - (r.t === 2 ? 6 : 0)), y1 = Math.min(PH, Math.ceil(r.y1 - OY));
       if (x0 >= x1 || y0 >= y1) continue;
@@ -461,7 +517,7 @@ export function* pixFine(ch, base, region, S) {
             const edge = dy === -bump || dx === 0 || dr === 0 || dy === r.y1 - r.y0 - 1;
             const L = edge ? 3 : dy < -bump + 3 ? 0 : dy > 10 ? 2 : 1;
             put(x, y, CL[L]);
-          } else if (r.t === 3) {
+          } else if (r.t === 3 || r.t === 11 || r.t === 12) {
             // 물: 반투명 파랑, 수면은 밝은 줄
             const k = y * PW + x;
             if (buf[k] && dy > 0) continue;
@@ -476,6 +532,8 @@ export function* pixFine(ch, base, region, S) {
               cs > 1.9 && (c = mix(c, 0xd8f0ff, 0.22 * (1 - depth)));
               H(wx >> 2, yw >> 1, 72) > 0.975 && (c = mix(c, 0xffffff, 0.3));
             }
+            // 물살: 흐르는 쪽으로 기운 밝은 결
+            if (r.t !== 3 && dy > 4 && (wx - (r.t === 12 ? 1 : -1) * Math.floor(dy / 3) * 2 + 400) % 22 < 6 && dy % 7 === 3) c = mix(c, 0xe8f8ff, 0.4);
             const al = dy < 2 ? 235 : Math.round(150 + depth * 70);
             buf[k] = ((al << 24) | ((c & 255) << 16) | (c & 0xff00) | ((c >> 16) & 255)) >>> 0;
           }
@@ -506,7 +564,7 @@ export function* pixFine(ch, base, region, S) {
         // 띠 맨 위부터 공기인 동굴(지표 없음)은 위가 바위로 덮여 있다고 본다
         const y0 = a > 0 ? Math.max(a, Math.ceil(wallTop)) : SP ? Math.max(0, Math.ceil(deep)) : OY > 0 && ug.top <= 0 ? 0 : PH;
         if (y0 < b)
-          for (let y = y0; y < b && (a <= 0 || y - a < 960); y++) {
+          for (let y = y0; y < b && (a <= 0 || y - a < 960 || S.kind === "cave"); y++) {
             const L0 = lvq(wx * 0.8 + 3000, (y + OY) * 0.8, 18);
             let L = Math.min(5, Math.max(2, L0 + 1));
             vn2(wx / 100, (y + OY) / 80, 143) > 0.7 && L < 5 && (L = Math.min(5, L + 1));

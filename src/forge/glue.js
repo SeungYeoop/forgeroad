@@ -5,6 +5,7 @@ import * as VFX from "./vfx.js";
 import * as ATMO from "./atmo.js";
 import * as DEPTH from "./depth.js";
 import * as NATANIM from "./natanim.js";
+import * as DEV from "./devices.js";
 import { showLoad } from "./loadscreen.js";
 import { warmProps, prepaintStep } from "./terrain.js";
 import * as PROPS from "./props3d.js";
@@ -54,6 +55,7 @@ export function bind(refs) {
   LOOK.bindLook(R);
   ATMO.bindAtmo(R);
   NATANIM.bindAnim(R);
+  DEV.bindDevices(R);
   DEPTH.bindDepth(R);
   FOES.bindFoes(R);
   for (const w of R.ce) ORIG_W[w.id] = structuredClone(w);
@@ -1719,6 +1721,7 @@ export function update(sc, dt) {
   VFX.updateVfx(sc, dt);
   ATMO.update(sc, dt);
   NATANIM.update(sc, dt, natAnimSrc(sc));
+  DEV.update(sc, dt, devSrc(sc));
   R.j.setSpace && R.j.setSpace(audioSpace(sc));
   updateEnts(sc, dt);
   updatePickups(sc, dt);
@@ -4445,6 +4448,15 @@ function audioSpace(sc) {
   if ((P.walls ?? []).some((w) => px >= w.x0 && px < w.x1 && py >= w.y0 && py < w.y1)) return 1;
   const surf = P.h ? P.h[Math.max(0, Math.min(P.h.length - 1, Math.round(px / 4)))] : 1e9;
   return py > surf + 24 ? 0.8 : 0;
+}
+// 장치(사다리·승강기·무너지는 판…)가 있는 구역 플랜
+export const devMove = DEV.devMove;
+function devSrc(sc) {
+  const z = zoneOfPlayer(sc);
+  if (!z || !planReady(sc, z)) return null;
+  const P = ZG.planOf(z, planOpts(sc, z));
+  if (!P || !P.spec || !P.spec.some((r) => r.t >= 13)) return null;
+  return { key: z.id + ":" + P.seed, P, ox: sc.world.lx(z.c0 * 32), gx0: z.c0 * 512 };
 }
 function natAnimSrc(sc) {
   const z = zoneOfPlayer(sc);

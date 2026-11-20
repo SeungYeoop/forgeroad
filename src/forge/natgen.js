@@ -11,6 +11,7 @@
 //  하늘: 윗면은 평평하고 아래로 좁아지는 바위섬, 지역마다 모양 규칙이 다르다
 //  끝으로 길찾기 검사: 입구에서 모든 출구에 닿고, 빠져나올 수 없는 구덩이가 없을 때까지
 //        자연스러운 바위 턱·굴을 덧붙여 고친다 (사각형·45° 경사로 단순화하지 않는다)
+import { ARCHI, kit } from "./archi.js";
 import { decoKinds, decoKey, decoHeight, decoWidth } from "./natdeco.js";
 import { makeNoise, rng, strHash, clamp, lerp, smooth } from "./noise.js";
 import { propSize } from "./natprops.js";
@@ -168,8 +169,8 @@ export function makePlan(z, o, attempt) {
   P.kind === "ground" && P.h && clipWalls(P);
   placeDeco(P);
   P.bp && placeProps(P);
-  for (const r of P.spec) if (r.t <= 2) cutShape(P, r.x0 - 4, r.y0 - 4, r.x1 + 4, r.y1 + 4, (px, py) => Math.min(px - r.x0, r.x1 - px, py - r.y0, r.y1 - py) + 0.5);
-  P.spec.some((r) => r.t <= 2) && blockSnap(P);
+  for (const r of P.spec) if (DYN_SPEC.has(r.t)) cutShape(P, r.x0 - 4, r.y0 - 4, r.x1 + 4, r.y1 + 4, (px, py) => Math.min(px - r.x0, r.x1 - px, py - r.y0, r.y1 - py) + 0.5);
+  P.spec.some((r) => DYN_SPEC.has(r.t)) && blockSnap(P);
   return P;
 }
 // 지표를 가로지르는 뒷벽은 지표선 아래(언덕 속)만 남긴다.
@@ -209,21 +210,27 @@ function clipWalls(P) {
   P.walls = out;
 }
 // ── 특수 블럭: 1 나무판 2 구름 3 물 4 얼음 5 튕김 버섯 ──
-const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5 };
-function spec(P, x0, y0, x1, y1, kind) {
+//   매달려 오르내리는 곳: 6 사다리 7 밧줄 8 덩굴 (위아래 키) · 9 짚라인(줄, ax·ay→bx·by) · 10 바람 기둥(떠오른다)
+//   11·12 물살(왼쪽·오른쪽으로 미는 물) · 13 무너지는 발판 · 14 금 간 벽(때려 부순다) · 15 승강기 길(발판이 오르내린다)
+//   13·14는 검사 때는 바위, 마지막에 장에서 빼고 장치(gizmo.js)가 그리고 막는다
+export const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5, ladder: 6, rope: 7, vine: 8, zip: 9, wind: 10, curL: 11, curR: 12, crumble: 13, crack: 14, lift: 15, fall: 16, geyser: 17 };
+const SOLID_SPEC = new Set([1, 2, 4, 5, 13, 14]);
+export const CLIMB_SPEC = new Set([6, 7, 8, 10, 15, 17]);
+const DYN_SPEC = new Set([1, 2, 13, 14]);
+function spec(P, x0, y0, x1, y1, kind, ex) {
   const sn = (v) => Math.round(v / BLK) * BLK;
   [x0, y0, x1, y1] = [sn(x0), sn(y0), sn(x1), sn(y1)];
   if (x1 <= x0 || y1 <= y0) return;
   const t = SPEC[kind];
-  P.spec.push({ x0, y0, x1, y1, t });
-  // 물 말고는 검사·충돌용으로 장에 바위로 넣는다 (나무판·구름은 마지막에 뺀다)
-  t !== 3 && addShape(P, x0 - 4, y0 - 4, x1 + 4, y1 + 4, (px, py) => Math.min(px - x0, x1 - px, py - y0, y1 - py) + 0.5);
+  P.spec.push(ex ? { x0, y0, x1, y1, t, ...ex } : { x0, y0, x1, y1, t });
+  // 막는 것만 검사·충돌용으로 장에 바위로 넣는다 (나무판·구름·무너지는 판·금 간 벽은 마지막에 뺀다)
+  SOLID_SPEC.has(t) && addShape(P, x0 - 4, y0 - 4, x1 + 4, y1 + 4, (px, py) => Math.min(px - x0, x1 - px, py - y0, y1 - py) + 0.5);
   t === 4 && P.mats.push({ x0, y0, x1, y1, m: "ice" });
   t === 5 && P.mats.push({ x0, y0, x1, y1, m: "jelly" });
 }
-// 동굴 방에서 정한 특수 블럭 (칸 좌표 → px)
+// 동굴 방에서 정한 특수 블럭 (칸 좌표 → px). 짚라인은 ex에 끝점(px)
 function applySpecReq(P) {
-  for (const q of P.specReq) spec(P, q.x0 * BLK, q.y0 * BLK, q.x1 * BLK, q.y1 * BLK, q.k);
+  for (const q of P.specReq) spec(P, q.x0 * BLK, q.y0 * BLK, q.x1 * BLK, q.y1 * BLK, q.k, q.ex);
   P.specReq = [];
 }
 // 나무·폐허: 하늘이 트인 평평한 윗면(땅·섬)에. 숲(무리)과 드문드문 한 그루가 번갈아 나온다
@@ -277,7 +284,7 @@ function placeProps(P) {
   const wallAt = (x, y) => (P.walls ?? []).some((w) => w.m !== "stem" && x >= w.x0 && x < w.x1 && y >= w.y0 && y < w.y1);
   const avoid = [P.peak, P.deep, ...(P.mouths ?? [])].filter(Boolean);
   const pads = P.pads ?? [];
-  const water = (P.spec ?? []).filter((r) => r.t === 3);
+  const water = (P.spec ?? []).filter((r) => r.t === 3 || r.t === 11 || r.t === 12);
   const tres = (P.roomTags ?? []).filter((t) => t.role === "treasure").map((t) => ({ x: (t.x0 + t.x1) / 2, y: t.y1 }));
   const free = (x, y, w) => !avoid.some((a) => Math.abs(a.x - x) < 70 + w / 2 && Math.abs(a.y - y) < 120) && !pads.some((p) => x + w / 2 > p.xa - 16 && x - w / 2 < p.xb + 16 && Math.abs((p.y ?? y) - y) < 40) && !water.some((r) => x + w / 2 > r.x0 - 12 && x - w / 2 < r.x1 + 12 && y > r.y0 - 24 && y < r.y1 + 24) && !tres.some((t) => Math.abs(t.x - x) < 26 + w / 2 && Math.abs(t.y - y) < 60);
   // ── 기둥: 뒷벽에 칠하던 기둥 띠 → 3D 기둥 그림 (뒷벽 층). 기둥 머리·받침 띠는 지운다 ──
@@ -2718,7 +2725,9 @@ function buildCave(P) {
   const ST = CAVE_STYLE[P.bp?.cave?.style] ?? null;
   // 손 설계 동굴 구역: 방·입구·▲▼ 방을 설계도대로, 위아래는 비탈 굴과 떨어지는 구멍만 (세로 갱도·오르는 방 없음)
   const DS = P.bp?.caves ? P.bp : null;
-  if (DS) {
+  const AR = ARCHI[P.z.id];
+  if (AR) AR(kit(P, C));
+  else if (DS) {
     const dg = DS.dungeon ? dungeonWorld(P, C, DS.dungeon) : null;
     caveWorld(P, C, { y0: 14, y1: bot, anchor: base / BLK, gap: [96, 124], lim: NXl, topAt: () => 14, design: DS, extern: dg, style: ST, noClimb: 1, shafts: 0, deepX: -1, peakX: -1, arena: -1 });
   }
@@ -5020,6 +5029,68 @@ export function analyze(P) {
   goals.push({ id: "R", n: near(P.WP - 56, base, 24, 40) });
   P.peak && goals.push({ id: "U", n: near(P.peak.x, P.peak.y, 16, 6) });
   P.deep && goals.push({ id: "D", n: near(P.deep.x, P.deep.y, 16, 6) });
+  // ── 매달려 오르내리는 곳(사다리·밧줄·덩굴·바람·승강기)과 짚라인: 거기 붙을 수 있는 마디 → 거기서 내리거나 뛰어 닿는 마디 ──
+  const EXTRA = new Array(NN);
+  {
+    const nodesIn = (x0, x1, y0, y1) => {
+      const r = [];
+      const c0 = Math.max(0, Math.floor(x0 / CW)), c1 = Math.min(NC - 1, Math.floor(x1 / CW));
+      for (let c = c0; c <= c1; c++) for (let n = colN[c]; n < colN[c + 1]; n++) nY[n] >= y0 && nY[n] <= y1 && r.push(n);
+      return r;
+    };
+    // 공중 점(발 높이 yv)에서 뛰거나 떨어져 닿는 마디
+    const fromAir = (cv, yv, set) => {
+      if (!bodyAir(cv, yv)) return;
+      for (let cb = Math.max(0, cv - 18); cb <= Math.min(NC - 1, cv + 18); cb++) {
+        if (cb === cv) continue;
+        for (let b = colN[cb]; b < colN[cb + 1]; b++) {
+          if (set.has(b)) continue;
+          const rise = yv - nY[b];
+          if (rise > H1 + H2 - 20) continue;
+          for (const m of rise > 0 ? UP_MODES : DN_MODES)
+            if (tryMode(cv, yv, cb, nY[b], m)) {
+              set.add(b);
+              break;
+            }
+        }
+      }
+    };
+    const link = (E, X) => {
+      if (!X.size) return;
+      const xs = [...X];
+      for (const a of E) (EXTRA[a] ??= []).push(...xs.filter((b) => b !== a));
+    };
+    for (const r of P.spec ?? []) {
+      // 물(3·11·12)도: 점프 키로 헤엄쳐 올라 물 밖으로 뛰어나온다
+      if (CLIMB_SPEC.has(r.t) || r.fallw || ((r.t === 3 || r.t === 11 || r.t === 12) && r.y1 - r.y0 >= 16)) {
+        const X = new Set(nodesIn(r.x0 - 12, r.x1 + 12, r.y0 - 6, r.y1 + 24));
+        const cols = [];
+        if (r.x1 - r.x0 <= 32) cols.push(Math.floor((r.x0 + r.x1) / 2 / CW));
+        else for (let x = r.x0 + 8; x < r.x1 - 4; x += 16) cols.push(Math.floor(x / CW));
+        for (const cv of cols) for (let y = r.y0 + 12; y <= r.y1 + 11; y += 20) fromAir(cv, Math.round(y), X);
+        // 붙을 수 있는 곳: 그 안·위·아래에 서 있거나, 옆에서 뛰어 닿는다
+        const E = new Set([...nodesIn(r.x0 - 12, r.x1 + 12, r.y0 - 6, r.y1 + 24), ...nodesIn(r.x0 - 72, r.x1 + 72, r.y0 + 8, r.y1 + 100)]);
+        link(E, X);
+      } else if (r.t === 9 && r.ax != null) {
+        const n = Math.max(1, Math.ceil(Math.abs(r.bx - r.ax) / 32)), dir = Math.sign(r.by - r.ay);
+        const pts = [];
+        for (let k = 0; k <= n; k++) pts.push([r.ax + ((r.bx - r.ax) * k) / n, r.ay + ((r.by - r.ay) * k) / n]);
+        // 줄은 낮은 쪽으로만 간다 (평평하면 양쪽): 붙은 곳에서 아래쪽 점들로
+        for (let i = 0; i <= n; i++) {
+          const [x, y] = pts[i];
+          const E = nodesIn(x - 24, x + 24, y + 18, y + 110);
+          if (!E.length) continue;
+          const X = new Set();
+          for (let k = 0; k <= n; k++) {
+            if (dir > 0 && k < i) continue;
+            if (dir < 0 && k > i) continue;
+            fromAir(Math.floor(pts[k][0] / CW), Math.round(pts[k][1] + 26), X);
+          }
+          link(E, X);
+        }
+      }
+    }
+  }
   // 앞으로 (입구에서)
   const adj = new Array(NN);
   const reach = new Uint8Array(NN);
@@ -5027,7 +5098,7 @@ export function analyze(P) {
   if (start >= 0) ((reach[start] = 1), q.push(start));
   while (q.length) {
     const a = q.pop();
-    const o = (adj[a] = out(a));
+    const o = (adj[a] = EXTRA[a] ? out(a).concat(EXTRA[a]) : out(a));
     for (const b of o) reach[b] || ((reach[b] = 1), q.push(b));
   }
   const miss = goals.filter((g) => g.n < 0 || !reach[g.n]).map((g) => g.id);

@@ -12601,6 +12601,8 @@ class Ws {
         C.vx = Math.max(-ms, Math.min(ms, C.vx));
         this.airJumps = Math.max(this.airJumps, 1);
       }
+      // 장치: 사다리·밧줄·덩굴 매달리기 · 짚라인 · 바람 기둥 · 물살 (forge/devices.js)
+      FG.devMove && FG.devMove(this, C, T, S, a, h);
     }
     if (!E && this.hurtT <= 0) {
       (T.swap >= 0 && this.weapons.swap(T.swap), this.weapons.update(S, T));
@@ -18631,6 +18633,7 @@ class Er extends zt.Scene {
       S: m.S,
       LEFT: m.LEFT,
       RIGHT: m.RIGHT,
+      UP: m.UP,
       DOWN: m.DOWN,
       SPACE: m.SPACE,
       SHIFT: m.SHIFT,
@@ -19522,6 +19525,7 @@ class Er extends zt.Scene {
     ((h.left = T.A.isDown || T.LEFT.isDown),
       (h.right = T.D.isDown || T.RIGHT.isDown),
       (h.down = T.S.isDown),
+      (h.up = T.W.isDown || (T.UP ? T.UP.isDown : !1)),
       (h.jump = R(T.SPACE) || R(T.W)),
       (h.jumpHeld = T.SPACE.isDown || T.W.isDown),
       (h.dash = R(T.SHIFT)));
@@ -19546,6 +19550,7 @@ class Er extends zt.Scene {
         (h.left || (h.left = o.axis.x < -0.35),
         h.right || (h.right = o.axis.x > 0.35),
         h.down || (h.down = o.axis.y > 0.6),
+        h.up || (h.up = o.axis.y < -0.6),
         h.jump || (h.jump = o.justDown(Mt.A)),
         h.jumpHeld || (h.jumpHeld = o.down(Mt.A)),
         h.dash || (h.dash = o.justDown(Mt.B)),
