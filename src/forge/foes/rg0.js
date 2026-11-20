@@ -246,7 +246,7 @@ register("gm_goblin", {
         continue;
       }
       // ── 가까우면: 칼 젖혔다가 돌진 찌르기 (+ 가끔 내려베기 연타) → 뒤로 깡충 ──
-      if (d < 54 && ay < 30 && now() >= M.atkT && A.ground) {
+      if (d < 46 && ay < 28 && now() >= M.atkT && A.ground) {
         A.face(), A.stop(1);
         A.tele(0.28);
         yield A.once("wind");
@@ -256,10 +256,10 @@ register("gm_goblin", {
         A.sound("swing", 0.6);
         let hit = !1;
         for (let t = 0; t < 0.2; t += DT) {
-          !hit && A.melee(26, 22, 1, { knock: 0.8 }) && ((hit = !0), A.burst("spark", 18, -16, 6, 0xfff0c0));
+          !hit && A.melee(22, 18, 1, { knock: 0.8 }) && ((hit = !0), A.burst("spark", 15, -12, 6, 0xfff0c0));
           yield 0;
         }
-        A.fxSlash(14, -16, 0.7, 0xf0f0e0);
+        A.fxSlash(12, -12, 0.55, 0xf0f0e0);
         A.stop(0.6);
         if (Math.random() < 0.4) {
           // 연타: 칼을 머리 위로 → 내려베기
@@ -270,10 +270,10 @@ register("gm_goblin", {
           A.sound("swing", 0.7);
           hit = !1;
           for (let t = 0; t < 0.16; t += DT) {
-            !hit && A.melee(30, 30, 1.15, { knock: 1.1 }) && ((hit = !0), A.burst("spark", 18, -12, 8, 0xfff0c0), A.shake(1));
+            !hit && A.melee(26, 24, 1.15, { knock: 1.1 }) && ((hit = !0), A.burst("spark", 15, -10, 8, 0xfff0c0), A.shake(1));
             yield 0;
           }
-          A.fxHeavy(14, -14, 0.6, 0xf0f0e0);
+          A.fxHeavy(12, -11, 0.48, 0xf0f0e0);
           yield 0.12;
         }
         yield A.once("rec") * 0.6;
@@ -296,7 +296,7 @@ register("gm_goblin", {
           k === 0 && A.tele(0.3);
           A.once("throw");
           yield 3 / 15;
-          const p = A.p, ox = e.cx + e.facing * 4, oy = e.body.y - 26, g = 560;
+          const p = A.p, ox = e.cx + e.facing * 4, oy = e.body.y - 20, g = 560;
           const tx = p.cx + (p.body.vx ?? 0) * 0.3 + (k ? (Math.random() - 0.5) * 30 : 0);
           const T = Math.max(0.5, Math.min(0.95, Math.abs(tx - ox) / 260));
           A.shoot({ sprite: "p_rock", speed: 0, gravity: g, life: 2.4, radius: 5 }, ox, oy, 0, 0.7, {

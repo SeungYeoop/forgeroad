@@ -45,13 +45,20 @@ const BAY = [0, 2, 3, 1];
 const LX = -0.55, LY = -0.68, LZ = 0.48, LN = Math.hypot(LX, LY, LZ);
 
 // 그림판 + 부위별 외곽색 기록
-function board(W, H) {
+// DW×DH 설계 좌표로 그리고, k배 크기의 픽셀 칸에 직접 찍는다 (발밑 가운데 기준). 늘리고 줄인 그림이 아니라 작은 칸에 다시 그림
+function board(DW, DH, k = 1) {
+  const W = Math.round(DW * k), H = Math.round(DH * k);
   const C = canvas(W, H), oc = new Int32Array(W * H).fill(-1);
+  const DX = (x) => DW / 2 + (x - W / 2) / k, DY = (y) => DH + (y - H) / k;
+  const PX = (x) => W / 2 + (x - DW / 2) * k, PY = (y) => H + (y - DH) * k;
+  const px0 = C.px, over0 = C.over;
+  C.px = (x, y, c) => (px0(PX(x + 0.5) - 0.5, PY(y + 0.5) - 0.5, c), C);
+  C.over = (x, y, c) => (over0(PX(x + 0.5) - 0.5, PY(y + 0.5) - 0.5, c), C);
   // 부위 칠하기. o: shine 반짝 허용 · flat 둥근 정도(작을수록 납작) · sep 겹침 선(기본 켬) · lv 밝기 보정
   C.part = (f, R, o = {}) => {
     const n = W * H, m = new Uint8Array(n), dist = new Float32Array(n);
     let any = 0;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) f(x + 0.5, y + 0.5) && ((m[y * W + x] = 1), (any = 1));
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) f(DX(x + 0.5), DY(y + 0.5)) && ((m[y * W + x] = 1), (any = 1));
     if (!any) return C;
     for (let i = 0; i < n; i++) dist[i] = m[i] ? 1e9 : 0;
     const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : dist[y * W + x]);
@@ -107,8 +114,9 @@ function ik(a, b, l1, l2, bend) {
 //   정통 RPG 고블린: 키 ≈ 42px(귀 포함, 플레이어보다 조금 큼) · 약 3.5등신 · 살짝 굽은 등 · 똥배 · 휜 다리
 //   크고 뾰족한 귀(뒤 위로) · 큰 매부리코 · 심술궂게 찡그린 눈썹 아래 노란 눈 · 히죽 웃는 입과 송곳니
 //   가죽 조끼 + 어깨판 · 허리띠·주머니 · 해진 반바지 · 천 감은 발 · 단검
+export const GK = 0.76; // 크기 (설계 64×56 → 실제 49×43)
 export function goblinFrame(p = {}) {
-  const W = 64, H = 56, G = H - 1, C = board(W, H);
+  const W = 64, H = 56, G = H - 1, C = board(W, H, GK);
   const b = p.bob ?? 0, ln = p.lean ?? 0, jw = p.jaw ?? 0, ea = p.ear ?? 0;
   const S = p.hurt ? HURT : SK, SF = p.hurt ? HURT : SKF;
   const hip = [29 + ln * 2, 42 + b];
@@ -239,7 +247,7 @@ const run = (f, n, A, lift, lean) => {
 };
 const L = (a, b, t) => a + (b - a) * t;
 export const pxGoblin = {
-  fw: 64, fh: 56, w: 16, h: 28,
+  fw: Math.round(64 * GK), fh: Math.round(56 * GK), w: 13, h: 22,
   anims: {
     idle: [8, 10], walk: [8, 10], move: [8, 15], alert: [5, 12, !1], wind: [4, 14, !1], atk: [4, 20, !1],
     wind2: [3, 14, !1], atk2: [4, 20, !1], rec: [3, 12, !1], throw: [6, 15, !1], hop: [4, 12, !1], hurt: [3, 14, !1], laugh: [6, 11],
