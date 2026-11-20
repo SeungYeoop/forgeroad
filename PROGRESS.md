@@ -159,3 +159,21 @@
 - 던전 정문 뒷벽 버그: 지표를 가로지르는 뒷벽은 지표선 아래만 남김(natgen.js clipWalls), 정문 복도 뒷벽을 문 칸까지
 - 미니맵 확대·축소: +/− 단추, 마우스 휠, 키보드 +/− → ×2 · ×1 · ×1/2 · 구역 전체
 - 검사: `node --import ./tools/json-hook.mjs tools/natenc.mjs g1_0 [세계 시드] [탐험 시드]`, 상자 그림 `node tools/chestsheet.mjs out.json`, 실게임 `node --import ./tools/json-hook.mjs tools/leashtest.mjs <폴더>`
+
+## 파랑 8지역 리메이크 · 몬스터 96종 (2026-11-20, blue-remake 가지)
+- 몬스터 목록 한 곳: src/forge/bestiary.js `BESTIARY[구역] = { page, name, bands: { 층: [몬스터] } }` (지역마다 12종 = 일반 9 + 정예 3).
+  옛 몬스터(그래스메어 빼고)는 모두 지움. 노랑·빨강 바깥 지역은 같은 방향의 파랑 지역 몬스터를 빌려 씀. 보스 12는 그대로
+  - 그래스메어 g1_0 · 모스바크 gm1_0 · 그린스텝 g0_m1 · 스톤브리지 g1_m1 · 리프크라운 gm1_m1 · 아이언베인 g0_1 · 드립스톤 g1_1 · 루트홀로우 gm1_1
+- 그림 도구 둘: 작은 몬스터 = foes/pgob.js `board`(부위별 6단 명암), 큰 몬스터(정예 전부) = foes/px3.js `sculpt`(높이 조각 · 구석 어둠 · 그림자 · 질감)
+  - 그림 파일(px_*.js, pgm3.js) → 행동 파일(r*.js, foes/bkit.js 공용 행동) → newmodels.js가 시트로 묶음
+  - 정예 24종 모두 sculpt. 반투명 날개는 조각 뒤 kit.js `glass`로 덧입힘(말벌 여왕)
+  - 확인 도구: `node tools/foegrid.mjs out.png 2 px_ds pxEel,...`(동작마다 한 장) · `node tools/foeanim.mjs out.png 3 px_ds pxEel idle,atk`(동작 전체 장면) ·
+    `node --import ./tools/json-hook.mjs tools/foestep.mjs ds_eel,...`(두뇌·동작 이름 검사)
+- 맵:
+  - 하늘 3지역(g0_m1·g1_m1·gm1_m1): 섬 걷는 길 + 구름 다리, natbp.js 하늘 설계(그래스메어 하늘을 옮기고 고친 것) — moveSky/editSky
+  - 모스바크 gm1_0: 그래스메어 지표를 뒤집은 설계(산 560 · 골짜기 연못 · 굴 입구 둘)
+  - 동굴 3지역: natbp.js `cave.style` → natgen.js CAVE_STYLE (같은 생성기, 짜임이 다름)
+    드립스톤 drip = 큰 공동 많음 · 매달린 종유 바위 · 호수 바닥 / 아이언베인 mine = 반듯한 갱도 · 세로 갱도 넷 · 나무 판자 벽과 횃불 / 루트홀로우 root = 둥근 굴방 · 뿌리 기둥
+    지역 팔레트 ugRock·ugWall = 땅속 바위·뒷벽 색. 설계도가 있으니 3D 소품도 깔림(지역별 소품표)
+  - 설계 고르기: 출구가 다 이어져도 갇힘이 12칸 넘으면 다른 시도로(최대 3번)
+- 배포: 사용자 확인 뒤 blue-remake → main 합쳐 한 번에
