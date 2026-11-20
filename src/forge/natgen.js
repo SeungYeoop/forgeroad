@@ -179,6 +179,11 @@ function clipWalls(P) {
   const S = 4, hAt = (x) => P.h[clamp(Math.round(x / Q), 0, P.h.length - 1)];
   const out = [];
   for (const w of P.walls ?? []) {
+    // 지표 구조물(통나무 다리·그루터기·거목 속)의 뒷벽은 그대로
+    if (w.keep) {
+      out.push(w);
+      continue;
+    }
     let cross = !1;
     for (let x = w.x0; x < w.x1 && !cross; x += S) {
       const h = Math.max(hAt(x), hAt(Math.min(w.x1, x + S)));
@@ -1210,9 +1215,9 @@ function featKit(P, R) {
   const cut = (x0, y0, x1, y1, wall) => {
     [x0, y0, x1, y1] = [sn(x0), sn(y0), sn(x1), sn(y1)];
     cutShape(P, x0 - 4, y0 - 4, x1 + 4, y1 + 4, rs(x0, y0, x1, y1));
-    wall && P.walls.push({ x0, y0, x1, y1, m: wall });
+    wall && P.walls.push({ x0, y0, x1, y1, m: wall, keep: 1 });
   };
-  const back = (x0, y0, x1, y1, m) => P.walls.push({ x0: sn(x0), y0: sn(y0), x1: sn(x1), y1: sn(y1), m });
+  const back = (x0, y0, x1, y1, m) => P.walls.push({ x0: sn(x0), y0: sn(y0), x1: sn(x1), y1: sn(y1), m, keep: 1 });
   const W = {
     tree: th === "desert" || th === "fortress" ? 0 : th === "forest" ? 4 : 3,
     arch: th === "forest" ? 1 : th === "desert" ? 3 : 2,
