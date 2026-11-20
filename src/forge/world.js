@@ -257,6 +257,23 @@ REGIONS.forEach((r, ri) => {
   });
 });
 
+// ── 그래스메어 몬스터 (새 지역 설계 첫 구역) — 그림·행동은 foes/mg0.js·rg0.js. 체력으로 세기를 천차만별로 ──
+//   [id, 이름, 엔진 원형(공격·방어·골드 기준), 체력, 종류, 패턴]
+for (const [id, name, tpl, hp, type, pattern] of [
+  ["gm_slime", "풀잎 슬라임", "hound", 9, "근접", "통통 튀어 다가와 박치기. 터지면 꼬마 슬라임 둘로 갈라짐"],
+  ["gm_slime_mini", "꼬마 슬라임", "hound", 4, "근접", "작고 빠른 박치기"],
+  ["gm_mandrake", "맨드레이크", "hound", 14, "고정", "풀잎으로 숨어 있다가 튀어나와 비명 (가까우면 잠깐 굳음)"],
+  ["gm_goblin", "고블린 정찰병", "kobold", 18, "근접", "멀면 돌팔매, 가까우면 단검 찌르기 후 뒤로 깡충"],
+  ["gm_wasp", "거대 말벌", "wasp", 15, "공중", "위에서 맴돌다 독침 급강하 (중독)"],
+  ["gm_wolf", "초원 회색늑대", "wolf", 28, "돌진", "울부짖어 무리를 깨우고, 맴돌다 덮쳐 문다"],
+  ["gm_boar", "뿔멧돼지", "scorpion", 48, "돌진", "땅을 긁고 일직선 돌진. 벽에 박으면 어지러워 1.5배 피해"],
+])
+  FR_MONSTERS.push({ id, name, tpl, sprite: tpl, tint: 0xffffff, amt: 0, hp, weak: null, resist: null, region: 0, pattern, drop: null, type });
+FR_ELITES.push(
+  { id: "gm_ogre", name: "초원 오우거", tpl: "rotbear", sprite: "rotbear", tint: 0xffffff, amt: 0, scale: 1, hp: 130, region: 0, pattern: "몽둥이 내려찍기·땅울림 · 발구르기 · 체력 절반에 포효하고 빨라짐", tip: "", drop: null },
+  { id: "gm_centaur", name: "켄타우로스 사냥꾼", tpl: "xbowman", sprite: "xbowman", tint: 0xffffff, amt: 0, scale: 1, hp: 100, region: 0, pattern: "화살 세 발 · 가까우면 짓밟기 · 들판을 가로질러 돌진", tip: "", drop: null },
+);
+
 // ∞ 재련의 회랑: 지나온 지역이 뒤틀린 모습으로 반복 (색조 변이)
 export const FR_ENDLESS = FR_REGIONS.map((r, i) => ({
   name: `재련의 회랑 · ${r.name}`,

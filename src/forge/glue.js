@@ -11,6 +11,7 @@ import * as PROPS from "./props3d.js";
 import * as FOES from "./foes/core.js";
 import { bindR0 } from "./foes/r0.js";
 import "./foes/r1.js";
+import "./foes/rg0.js";
 import "./foes/r6.js";
 import { sahar } from "./foes/m6.js";
 import "./foes/r5.js";
@@ -2457,44 +2458,68 @@ function miniCreate(hud) {
   hud.frMiniG = hud.add.graphics().setDepth(2);
   hud.events.once("shutdown", () => (hud.frMini = null));
 }
-// 구역 지형을 미니맵 크기로 (2×2 표본 중 3개 이상 바위면 바위 — 좁은 굴도 보이게), 윗면은 밝게
-function miniTexture(hud, sc, z) {
+// 미니맵: 구역 전체를 24px 칸 격자로 한 번 만들어 두고(0 하늘 · 1 바위 · 2 굴·방 속 · 3 물), 플레이어 둘레 104칸만 그린다
+const MINI_S = 24;
+function miniGrid(sc, z) {
   const P = ZG.planOf(z, { seed: sc.world.gen.seed, Ft: R.Ft, up: z.kind === "zone" ? ZN.upChunk(z) : -1, down: z.kind === "zone" ? ZN.downChunk(z) : -1 });
-  const sx = P.WP / MINI_W, sy = P.HP / MINI_H;
+  const S = MINI_S, GW = Math.ceil(P.WP / S), GH = Math.ceil(P.HP / S), g = new Uint8Array(GW * GH);
+  for (let gy = 0; gy < GH; gy++)
+    for (let gx = 0; gx < GW; gx++) {
+      let n = 0;
+      for (const [ox, oy] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) P.F.solid((gx + ox) * S, (gy + oy) * S) && n++;
+      g[gy * GW + gx] = n >= 2 ? 1 : 0;
+    }
+  const fill = (r, v) => {
+    for (let gy = Math.max(0, Math.round(r.y0 / S)); gy < Math.min(GH, Math.round(r.y1 / S)); gy++)
+      for (let gx = Math.max(0, Math.round(r.x0 / S)); gx < Math.min(GW, Math.round(r.x1 / S)); gx++) g[gy * GW + gx] === 0 && (g[gy * GW + gx] = v);
+  };
+  for (const w of P.walls ?? []) fill(w, 2);
+  for (const r of P.spec ?? []) r.t === 3 && fill(r, 3);
+  const surf = new Float32Array(GW);
+  for (let gx = 0; gx < GW; gx++) surf[gx] = P.h ? P.h[Math.min(P.h.length - 1, Math.round(((gx + 0.5) * S) / 4))] : 0;
+  return { P, g, GW, GH, surf };
+}
+function miniDraw(hud, M, cx, cy) {
+  const S = MINI_S, { g, GW, GH, surf } = M.grid, z = M.z;
+  const vw = MINI_W * S, vh = MINI_H * S;
+  M.ox = Math.max(0, Math.min(GW * S - vw, Math.round((cx - vw / 2) / S) * S));
+  M.oy = Math.max(0, Math.min(GH * S - vh, Math.round((cy - vh / 2) / S) * S));
+  M.sx = M.sy = S;
+  M.cx = cx;
+  M.cy = cy;
   const key = "fr_minimap";
   let tex = hud.textures.exists(key) ? hud.textures.get(key) : null;
   if (!tex || tex.width !== MINI_W || tex.height !== MINI_H) (tex && hud.textures.remove(key), (tex = hud.textures.createCanvas(key, MINI_W, MINI_H)));
   const ctx = tex.getContext(), im = ctx.createImageData(MINI_W, MINI_H), d = im.data;
-  const solid = new Uint8Array(MINI_W * MINI_H);
-  for (let my = 0; my < MINI_H; my++)
-    for (let mx = 0; mx < MINI_W; mx++) {
-      let n = 0;
-      for (const [ox, oy] of [[0.28, 0.28], [0.72, 0.28], [0.28, 0.72], [0.72, 0.72]]) P.F.solid((mx + ox) * sx, (my + oy) * sy) && n++;
-      solid[my * MINI_W + mx] = n >= 3 ? 1 : 0;
-    }
   const pal = z.reg?.pal ?? {};
-  const base = z.y > 0 ? pal.rock ?? 0x6a6070 : z.y < 0 ? pal.rock ?? 0x9a8a7a : pal.soil ?? 0x8a6a50;
-  const top = z.y > 0 ? 0xc8b8a0 : pal.top ?? 0x9ad060;
   const rgb = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
   const shade = (c, f) => rgb(c).map((v) => Math.max(0, Math.min(255, Math.round(f > 0 ? v + (255 - v) * f : v * (1 + f)))));
-  // 지표 위: 바위 + 밝은 윗면, 땅속(동굴 구역 전체): 어두운 바위 + 은은한 바닥 — 땅 모양과 굴이 섞여 보이지 않게
-  const B = rgb(base), Tp = rgb(top), UB = shade(base, -0.45), UT = shade(base, 0.18);
-  const ugAt = (mx, my) => z.y > 0 || (P.h && (my + 0.5) * sy > P.h[Math.min(P.h.length - 1, Math.round(((mx + 0.5) * sx) / 4))] + 40);
+  const base = z.y > 0 ? pal.rock ?? 0x6a6070 : pal.soil ?? 0x8a6a50;
+  const B = shade(base, -0.1), Tp = rgb(z.y > 0 ? 0xc8b8a0 : pal.top ?? 0x9ad060), UB = shade(pal.rock ?? base, -0.4), UT = shade(pal.rock ?? base, 0.2);
+  const IN = [44, 36, 52], WA = [58, 120, 192], WT = [140, 200, 240];
+  const gx0 = M.ox / S, gy0 = M.oy / S;
   for (let my = 0; my < MINI_H; my++)
     for (let mx = 0; mx < MINI_W; mx++) {
-      const k = my * MINI_W + mx;
-      if (!solid[k]) continue;
-      const surf = my > 0 && !solid[k - MINI_W];
-      const c = ugAt(mx, my) ? (surf ? UT : UB) : surf ? Tp : B;
-      d[k * 4] = c[0];
-      d[k * 4 + 1] = c[1];
-      d[k * 4 + 2] = c[2];
-      d[k * 4 + 3] = 255;
+      const gx = gx0 + mx, gy = gy0 + my;
+      if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
+      const v = g[gy * GW + gx];
+      if (!v) continue;
+      let c;
+      if (v === 1) {
+        const top = gy > 0 && g[(gy - 1) * GW + gx] !== 1;
+        const ug = z.y > 0 || (gy + 0.5) * S > surf[gx] + 40;
+        c = ug ? (top ? UT : UB) : top ? Tp : B;
+      } else if (v === 2) c = IN;
+      else c = gy > 0 && g[(gy - 1) * GW + gx] !== 3 ? WT : WA;
+      const k = (my * MINI_W + mx) * 4;
+      d[k] = c[0];
+      d[k + 1] = c[1];
+      d[k + 2] = c[2];
+      d[k + 3] = 255;
     }
   ctx.putImageData(im, 0, 0);
   tex.refresh();
   hud.frMiniImg.setTexture(key).setVisible(!0);
-  return { P, sx, sy };
 }
 function miniUpdate(hud) {
   const M = hud.frMini, sc = hud.run;
@@ -2506,12 +2531,12 @@ function miniUpdate(hud) {
   const show = !!z && !hud.frBag && !hud.frMap;
   for (const o of [hud.frMiniFrame, hud.frMiniBg, hud.frMiniImg, hud.frMiniG]) o?.setVisible(show && (o !== hud.frMiniImg || M.zid === z?.id));
   if (!show) return;
-  if (M.zid !== z.id) {
-    Object.assign(M, miniTexture(hud, sc, z), { zid: z.id, z });
-    hud.frMiniImg.setVisible(!0);
-  }
   const W = sc.world, g0 = W.originChunk * 512 - z.c0 * 512;
-  const toM = (lx, y) => [M.x + (lx + g0) / M.sx, M.y + y / M.sy];
+  const pzx = sc.player.x + g0, pzy = sc.player.body.y;
+  if (M.zid !== z.id) Object.assign(M, { grid: miniGrid(sc, z), zid: z.id, z, cx: -1e9 });
+  if (Math.abs(pzx - M.cx) > MINI_S * 4 || Math.abs(pzy - M.cy) > MINI_S * 4) miniDraw(hud, M, pzx, pzy);
+  const toM = (lx, y) => [M.x + (lx + g0 - M.ox) / M.sx, M.y + (y - M.oy) / M.sy];
+  const inM = (x, y) => x >= M.x + 2 && x < M.x + MINI_W - 2 && y >= M.y + 2 && y < M.y + MINI_H - 2;
   const G = hud.frMiniG.clear();
   // 지금 화면 범위
   const cam = sc.cameras.main, [cx0, cy0] = toM(cam.scrollX, cam.scrollY);
@@ -2523,6 +2548,7 @@ function miniUpdate(hud) {
     if (!p || p.row <= 0) continue;
     const lx = W.lx(p.tile) + 8, y = p.py > 0 ? p.py : p.row * 16;
     const [ex, ey] = toM(lx, y);
+    if (!inM(ex, ey)) continue;
     const col = e.at === "U" ? 0x7ae8ff : e.at === "D" ? 0xffa040 : e.at === "DG" ? 0xc080ff : 0xffe08a;
     const X = Math.round(ex), Y = Math.round(ey) - 2;
     G.fillStyle(0x140e18, 1).fillRect(X - 2, Y - 2, 5, 5);

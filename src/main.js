@@ -9659,7 +9659,8 @@ class Xn {
         abyss: ["d_voidcrystal", "d_tendril", "d_tendril", "d_bones"],
         kingdom: ["d_statue", "d_lamp_arcane", "d_column", "d_grass"],
       },
-      a = FRDECOR[R.bgId ?? R.id] ?? t[m] ?? t.plains;
+      a = FRDECOR[R.look ?? R.bgId ?? R.id] ?? t[m] ?? t.plains;
+    if (a.length)
     for (let v = 1; v < vt - 1; v++)
       T[v] <= 0 ||
         E.hazards.some((o) => v >= o.x && v < o.x + o.w) ||

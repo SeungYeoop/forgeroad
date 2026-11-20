@@ -187,7 +187,7 @@ function critter(sc, A, anywhere) {
   const n = fly ? 1 : Math.random() < 0.5 ? Math.floor(rnd(3, 7)) : 1;
   const x0 = anywhere ? rnd(40, W - 40) : dir > 0 ? -20 : W + 20;
   const y0 = fly ? rnd(H * 0.3, H * 0.8) : rnd(30, H * 0.45);
-  const depth = fly ? 41 : Math.random() < 0.6 ? -96 : 41;
+  const depth = fly ? 41 : -96; // 새는 배경 (지형 앞으로 날지 않게)
   const sc2 = fly ? 1 : depth < 0 ? rnd(0.7, 1) : rnd(1.2, 1.6);
   for (let i = 0; i < n; i++) {
     const s = sc.add.sprite(x0 - dir * i * rnd(8, 14), y0 + rnd(-10, 10) + (i % 2) * 6, key).setScrollFactor(0).setDepth(depth).setTint(col).setScale(sc2).play(key + "_a").setFlipX(dir < 0);

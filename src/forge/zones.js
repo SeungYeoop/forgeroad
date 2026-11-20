@@ -34,6 +34,9 @@ const REMADE = {
       name: "그래스메어",
       look: "grassmere",
       particle: "pollen",
+      // 이 구역 전용 몬스터 (세기 천차만별: 슬라임 < 맨드레이크 < 고블린 < 말벌 < 늑대 < 멧돼지 ≪ 정예)
+      enemies: [{ id: "gm_slime", w: 5 }, { id: "gm_goblin", w: 4 }, { id: "gm_wolf", w: 3 }, { id: "gm_wasp", w: 3 }, { id: "gm_mandrake", w: 2 }, { id: "gm_boar", w: 2 }],
+      elites: ["gm_ogre", "gm_centaur"],
       pal: { sky: [0x3f86d6, 0xcdeaf8], far: 0x7f9cc4, mid: 0x5f9a5c, near: 0x355f3c, top: 0x6aaf48, topHi: 0xb6e070, soil: 0x86684a, soilDark: 0x46342a, soilHi: 0xa8885e, rock: 0x9c9686, accent: 0xffe08a, fog: 0xeaf6ff, glow: 0xfff2c8 },
     },
   },

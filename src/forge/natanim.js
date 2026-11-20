@@ -136,6 +136,7 @@ export function update(sc, dt, src) {
   if (!src) {
     if (A.key) {
       for (const o of [...A.halos, ...A.rays, ...A.lines]) o && o.setVisible(false);
+      A.wg && A.wg.clear();
       for (const p of A.parts) ((p.on = false), p.img.setVisible(false));
       A.key = null;
     }
@@ -189,6 +190,16 @@ export function update(sc, dt, src) {
       },
     });
   }
+  // ── 물 덮개: 캐릭터(깊이 20)·적보다 앞에 반투명 물빛 → 물에 들어가면 잠겨 보인다 ──
+  A.wg ??= sc.add.graphics().setDepth(22.5);
+  A.wg.clear();
+  for (const r of A.water) {
+    if (r.x1 < vx0 || r.x0 > vx1 || r.y1 < vy0 || r.y0 > vy1) continue;
+    const X = ox + r.x0, Wd = r.x1 - r.x0, Hd = r.y1 - r.y0;
+    A.wg.fillStyle(0x2f6fb8, 0.34).fillRect(X, r.y0 + 3, Wd, Hd - 3);
+    A.wg.fillStyle(0x7fc4f0, 0.35).fillRect(X, r.y0 + 2, Wd, 2);
+    A.wg.fillStyle(0x0c2448, 0.18).fillRect(X, r.y0 + Math.min(Hd, 26), Wd, Math.max(0, Hd - 26));
+  }
   // ── 수면 반짝임 (흘러가는 밝은 줄) ──
   let nl = 0;
   for (const r of A.water) {
@@ -196,7 +207,7 @@ export function update(sc, dt, src) {
     const W = r.x1 - r.x0;
     for (let k = 0; k < r.n; k++) {
       const sp = 8 + (k % 3) * 5, u = ((k / r.n) * W + t * sp * (k % 2 ? 1 : -1)) % W, x = r.x0 + (u < 0 ? u + W : u);
-      const o = pool(sc, A.lines, nl++, "na_line", 2.4);
+      const o = pool(sc, A.lines, nl++, "na_line", 22.6);
       o.setTint(0xffffff).setAlpha(0.35 + 0.3 * Math.sin(t * 2.3 + k * 1.9)).setScale(1 + (k % 2), 1).setPosition(ox + x, r.y0 + 2 + (k % 3));
     }
   }

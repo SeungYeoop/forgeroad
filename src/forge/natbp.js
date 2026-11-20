@@ -17,7 +17,7 @@ export const BLUEPRINTS = {
       { kind: "flat", a: 7300, b: 8192 }, // 출구 들판
     ],
     // 지표 함정 (평평한 자리)
-    pads: [{ xa: 6300, xb: 6460 }, { xa: 2020, xb: 2120 }],
+    pads: [],
     // 지표 보물: 산 서쪽 중턱 작은 굴 (막다른 곳에 상자)
     spots: [{ xa: 4960, xb: 5160, role: "treasure" }, { xa: 6300, xb: 6900, role: "arena" }, { xa: 1000, xb: 1700, role: "arena" }],
     // 지표 굴 입구 (→ 입구 동굴): 골짜기 서쪽 비탈 (연못 옆)

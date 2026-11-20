@@ -220,10 +220,10 @@ export function ensure(scene, id) {
 }
 // 지역 몬스터를 뒤에서 미리 만든다
 const ASKED = new Set();
-export function preloadRegion(scene, ri) {
-  if (ri < 0 || ASKED.has(ri)) return;
-  ASKED.add(ri);
-  const ids = [0, 1, 2, 3, 4, 5].map((k) => `fr${ri}_${k}`).concat([`fr${ri}_e0`, `fr${ri}_e1`, `frb${ri}`]).filter((id) => SPECS[id]?.model);
+export function preloadRegion(scene, ri, list = null) {
+  if (!list && (ri < 0 || ASKED.has(ri))) return;
+  list || ASKED.add(ri);
+  const ids = (list ?? [0, 1, 2, 3, 4, 5].map((k) => `fr${ri}_${k}`).concat([`fr${ri}_e0`, `fr${ri}_e1`, `frb${ri}`])).filter((id) => SPECS[id]?.model);
   const w = worker(scene);
   for (const id of ids) {
     if (BUILT.has(id) || PENDING.has(id)) continue;
@@ -268,6 +268,8 @@ export function bootFoeArt(scene) {
   // 부팅 때는 렌더하지 않는다: 1·2지역을 뒤에서 미리 만들어 둔다
   preloadRegion(scene, 0);
   preloadRegion(scene, 1);
+  // 그래스메어 몬스터 (첫 구역)
+  preloadRegion(scene, -1, ["gm_slime", "gm_slime_mini", "gm_goblin", "gm_wolf", "gm_boar", "gm_wasp", "gm_mandrake", "gm_ogre", "gm_centaur"]);
 }
 // 엔진 정의에 새 적 표시
 export function foeDef(d) {

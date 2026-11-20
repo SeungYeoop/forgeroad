@@ -714,6 +714,7 @@ Object.assign(FRBG, {
     }
   },
 });
+FRDECOR.grassmere = [];
 FRDECOR.mistwood = ["d_mushroom", "d_glowshroom", "d_darktree", "d_grass", "d_glowshroom", "d_flower"];
 FRDECOR.blazefort = ["d_torch", "d_barrel", "d_bannerpole", "d_torch", "d_bones"];
 FRDECOR.frostgorge = ["d_pine", "d_snowrock", "d_crystal", "d_pine", "d_snowrock"];

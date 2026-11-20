@@ -294,6 +294,10 @@ function placeProps(P) {
     return true;
   };
   const CRY = [0x60d0ff, 0xc080ff, 0xffd070], SHR = [0xc060e0, 0x40e0c0, 0xffa040];
+  // 구름 디딤돌: 위에도 아래에도 아무것도 두지 않는다
+  const CL = (P.spec ?? []).filter((s) => s.t === 2);
+  const onCloud = (x, y) => CL.some((s) => x >= s.x0 - 8 && x < s.x1 + 8 && y >= s.y0 - 14 && y <= s.y1 + 14);
+  P.trees = (P.trees ?? []).filter((T) => !onCloud(T.x, T.y + 2));
   // ── 나무: 옛 그림(natdeco) 대신 3D 픽셀 나무 ──
   for (const T of P.trees ?? []) {
     const [, kind, sS, vS] = T.key.split(":");
@@ -316,13 +320,16 @@ function placeProps(P) {
       let yy = y;
       while (yy > y - 4 && solid(x, yy - 1) === sd) yy--;
       const ug = yy > surf(x) + 24, brk = brickAt(x, sd ? yy + 6 : yy - 6);
+      if (onCloud(x, yy)) continue;
       if (sd) {
         // ── 바닥 ──
         let clear = 0;
         for (let q = yy - 4; q > yy - 320 && !solid(x, q); q -= 4) clear += 4;
         let open = clear >= 316;
         for (let q = yy - 320; q > Math.max(0, yy - 520) && open; q -= 16) solid(x, q) && (open = false);
-        const ctx = brk ? (ug ? "ugb" : "skb") : open && !ug ? "open" : "cave";
+        // 동굴 소품은 땅속이거나 섬 속(뒷벽이 있는 곳)만. 위에 하늘섬이 있어도 트인 땅은 바깥 소품
+        const ctx = brk ? (ug ? "ugb" : "skb") : ug || wallAt(x, yy - 24) ? "cave" : "open";
+        void open;
         const deep = ug && yy > surf(x) + 1400;
         // 뒷벽 장식 (뒷벽 층): 하늘 신전은 창·걸개, 땅속 던전은 벽감·때 낀 걸개, 큰 동굴은 흐릿한 큰 종유석·수정
         if (ctx === "skb" && clear >= 170 && wallAt(x, yy - 90) && !bgAt.some((q) => Math.abs(q.x - x) < 320 && Math.abs(q.y - yy) < 120) && free(x, yy, 40)) {
@@ -353,6 +360,8 @@ function placeProps(P) {
         let below = 0;
         for (let q = yy + 4; q < yy + 260 && !solid(x, q); q += 4) below += 4;
         if (below < 100) continue;
+        // 바깥 하늘의 섬 밑면(뒷벽 없는 곳)에는 종유석·사슬을 달지 않는다
+        if (!ug && !brk && !wallAt(x, yy + 30)) continue;
         const ctx = brk ? (ug ? "ugb" : "skb") : "cave";
         // 큰 동굴 천장 뒷벽: 흐릿한 큰 종유석 (바위에 묻혀 붙는다)
         if (ctx === "cave" && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < 190 && Math.abs(q.y - yy) < 120) && R() < 0.8 && ceilOK(x, yy, 30, 60))
@@ -5136,7 +5145,7 @@ export function drawChunk(P, z, S, r, l, s, o) {
       entrances: [],
       surface: Array.from({ length: vt }, (_, x) => Math.floor(P.h[Math.min(P.h.length - 1, ((x0 + x * TS + 8) / Q) | 0)] / TS)),
       // 4px마다 지표 높이(px): 뒷벽은 지표 아래 덮인 곳에만, 땅속 암석은 지표에서 일정 깊이 아래부터
-      surfPx: Array.from({ length: (vt * TS) / Q + 1 }, (_, k) => Math.round(P.h[Math.min(P.h.length - 1, x0 / Q + k)])),
+      surfPx: Array.from({ length: (vt * TS) / Q + 1 }, (_, k) => Math.round((P.hu ??= ugSurf(P))[Math.min(P.h.length - 1, x0 / Q + k)])),
     };
   else out.ug = { top: Ft + 20, biome: null, entrances: [], surface: [] };
   // 적·보물 자리
@@ -5205,5 +5214,29 @@ export function drawChunk(P, z, S, r, l, s, o) {
   return out;
 }
 
+// 땅속 뒷벽이 시작하는 높이 (4px 칸마다): 지표선(P.h) 아래라도 옆으로 176px 안에서 하늘과 트인 공기(처마·문간·굴 입구 지붕 밑)는
+// 바깥으로 보고 그 아래부터 뒷벽을 칠한다 (하늘에 네모난 벽이 생기지 않게)
+function ugSurf(P) {
+  const hu = Float32Array.from(P.h), sol = (x, y) => P.F.solid(x, y), H = (x) => P.h[Math.max(0, Math.min(P.h.length - 1, Math.round(x / Q)))];
+  for (let i = 0; i < P.h.length; i++) {
+    const x = i * Q + 2, h = P.h[i];
+    let low = h;
+    for (let y = h + 8; y < h + 960; y += 8) {
+      if (sol(x, y)) continue;
+      let open = !1;
+      for (const d of [-1, 1]) {
+        for (let k = 8; k <= 176 && !open; k += 8) {
+          const xx = x + d * k;
+          if (sol(xx, y)) break;
+          y < H(xx) - 4 && (open = !0);
+        }
+        if (open) break;
+      }
+      open && (low = y + 8);
+    }
+    hu[i] = low;
+  }
+  return hu;
+}
 // ── 엔진 바깥(도구·검사)용 ───────────────────────────
 export const sampleSolid = (P, x, y) => P.F.solid(x, y);
