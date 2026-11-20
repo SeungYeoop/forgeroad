@@ -153,6 +153,21 @@ export const SFX = {
     nz(E, o, t, { type: "lowpass", dur: 0.08, g: 0.2 * a, f0: 700, f1: 150, q: 0.7 });
     tn(E, o, t, { f0: 130 * h, f1: 60, dur: 0.07, g: 0.18 * a });
   },
+  // 젤리 철퍽: 젖은 마찰음(좁은 띠 잡음이 아래로) + 물렁한 저음이 휘어 오름
+  splat(E, t, a, h) {
+    const o = out(E, 1, { verb: 0.08 });
+    nz(E, o, t, { dur: 0.12, a: 0.004, g: 0.22 * a, f0: 1600 * h, f1: 380, q: 4 });
+    nz(E, o, t + 0.015, { type: "lowpass", dur: 0.1, g: 0.16 * a, f0: 900, f1: 200, q: 0.8 });
+    tn(E, o, t, { f0: 90 * h, f1: 190 * h, dur: 0.09, g: 0.22 * a });
+    tn(E, o, t + 0.05, { f0: 260 * h, f1: 420 * h, dur: 0.05, g: 0.05 * a });
+  },
+  // 거품 퐁: 뱉을 때 (짧은 사인 두 번 위로 휘기)
+  blub(E, t, a, h) {
+    const o = out(E, 1, { verb: 0.12 });
+    tn(E, o, t, { f0: 180 * h, f1: 520 * h, dur: 0.07, g: 0.14 * a });
+    tn(E, o, t + 0.07, { f0: 240 * h, f1: 760 * h, dur: 0.06, g: 0.1 * a });
+    nz(E, o, t + 0.06, { dur: 0.08, g: 0.08 * a, f0: 2200, f1: 900, q: 3 });
+  },
   dash(E, t, a, h) {
     const d = E.rnd() < 0.5 ? -1 : 1, o = out(E, 1, { verb: 0.1 }), p = E.ctx.createStereoPanner ? E.ctx.createStereoPanner() : null;
     let dst = o;
@@ -348,7 +363,7 @@ export const SFX = {
   },
 };
 // 같은 소리를 너무 촘촘히 내지 않는 최소 간격 (초)
-export const GAP = { coin: 0.035, hit: 0.03, thud: 0.04, explosion: 0.06, magic: 0.04, swing: 0.03, click: 0.02 };
+export const GAP = { splat: 0.05, blub: 0.05, coin: 0.035, hit: 0.03, thud: 0.04, explosion: 0.06, magic: 0.04, swing: 0.03, click: 0.02 };
 // 소리별 크기 보정 (측정해서 맞춤: 자주 나는 작은 소리도 묻히지 않게)
 export const LVL = { swing: 2.5, jump: 2, dash: 2.8, coin: 2.5, magic: 3.2, open: 2, close: 2, ice: 2, buff: 1.8, portal: 2.2, charge: 1.6, warn: 1.8, swingHeavy: 1.4, heal: 1.4, levelup: 1.4, coinBig: 1.4, buy: 1.4, chest: 1.4, error: 1.25, block: 1.4, hit: 0.9, crit: 0.9, lightning: 0.8 };
 export const SFX_NAMES = Object.keys(SFX);

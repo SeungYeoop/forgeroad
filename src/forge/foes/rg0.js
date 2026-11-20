@@ -3,6 +3,7 @@
 //   · 멧돼지(강함, 돌진) · [정예] 오우거(매우 강함) · [정예] 켄타우로스(매우 강함, 원거리)
 import { register } from "./core.js";
 import { pxSlime, pxSlimeMini } from "./pg0.js";
+import { slimeFx, splash, puddle, groundBelow } from "./slimefx.js";
 import { goblin, plainsWolf, tuskBoar, giantWasp, mandrake, meadowOgre, centaur } from "./mg0.js";
 
 const DT = 1 / 60;
@@ -12,56 +13,155 @@ const SLIME = 0x7ae060;
 const hop = (e, dir, vx, vy) => ((e.body.vy = -vy), (e.body.vx = dir * vx), (e.facing = dir));
 const near = (e, A, w, h) => Math.abs(A.dx) < w && Math.abs(A.dy) < h;
 
-// ════ 풀잎 슬라임 ════ 통통 튀어 다가와 몸통 박치기. 큰 것은 터지면 작은 슬라임 둘로 갈라진다
+// ════ 풀잎 슬라임 ════ 통통 튀어 다가와 덮친다. 큰 것은 산성 덩이를 뱉고(맞은 자리엔 끈적한 웅덩이 = 느려짐),
+//   덮치고 착지하면 주변이 출렁 철퍽. 체력이 줄면 더 빨라지고, 큰 것은 터지면 작은 슬라임 둘로 갈라진다
+//   한 번 뛸 때: 웅크림(예비) → 공중(늘어남, 방울 뚝뚝) → 착지(납작 출렁 + 방울 튐)
 function slimeBrain(mini) {
+  const S = mini ? 0.62 : 1;
   return function* (e, A) {
-    const M = e.fz.mem;
-    M.cd = 0.5 + Math.random() * 0.6;
+    const M = e.fz.mem, host = e.host;
+    const rage = () => e.hp < e.maxHp * 0.4;
+    const now = () => e.life;
+    M.atkT = now() + 0.6 + Math.random() * 0.6;
+    M.spitT = now() + 0.4 + Math.random() * 0.8;
+    e.opts?.summoned && (M.seen = 1); // 갈라져 나온 것은 바로 덤빈다
+    // 한 번 뛰기 (o.atk: 덮치기 자세 · o.skip: 웅크림 생략 · o.during: 공중에서 매 프레임 · o.land: 착지 순간)
+    function* jump(dir, vx, vy, o = {}) {
+      A.face(dir);
+      if (!o.skip) {
+        A.stop(1);
+        yield A.once("crouch", rage() ? 26 : void 0);
+      }
+      if (!A.ground) return;
+      hop(e, dir, vx, vy);
+      A.play(o.atk ? "atk" : "air");
+      splash(host, e.cx, e.body.y, Math.round(2 + 2 * S));
+      A.sound("jump", 0.25 * S);
+      yield 0.06;
+      for (let t = 0; !A.ground && t < 2.5; t += DT) {
+        o.during && o.during();
+        yield 0;
+      }
+      // 착지: 납작 → 출렁
+      A.once("land");
+      splash(host, e.cx, e.body.y, Math.round(3 + 4 * S), { dust: Math.round(2 + 3 * S) });
+      A.sound("splat", 0.35 * S);
+      o.land && o.land();
+      A.stop(0.85);
+      yield o.wait ?? 0.14;
+    }
     for (;;) {
-      M.cd -= DT;
+      // ── 평소: 숨쉬며 가끔 어슬렁 한 번 ──
       if (!e.aggro) {
         A.play("idle");
         A.stop(0.15);
-        if (A.ground && Math.random() < 0.006) (A.once("move"), hop(e, Math.random() < 0.5 ? -1 : 1, 40, 170));
+        if (A.ground && Math.random() < 0.005) yield* jump(Math.random() < 0.5 ? -1 : 1, 35, 150, { wait: 0.3 });
         yield 0;
         continue;
       }
-      if (A.ground && near(e, A, mini ? 46 : 64, 40) && M.cd <= 0) {
-        // 몸을 납작하게 웅크렸다가 → 앞으로 뛰어들어 박치기
+      // ── 처음 알아챔: 눈을 부릅뜨고 제자리에서 움찔 뛴다 ──
+      if (!M.seen) {
+        M.seen = 1;
         A.face(), A.stop(1);
-        A.tele(mini ? 0.25 : 0.35);
-        yield A.once("wind");
-        A.once("atk");
-        hop(e, e.facing, mini ? 170 : 200, mini ? 240 : 280);
-        A.sound("jump", 0.4);
-        for (let t = 0; t < 0.5; t += DT) {
-          if (A.melee(mini ? 14 : 20, mini ? 12 : 18, 1, { knock: 0.6 })) break;
-          yield 0;
-        }
-        while (!A.ground) yield 0;
-        A.burst("dust", 0, -2, 4, SLIME);
-        yield A.once("rec");
-        M.cd = 1.2 + Math.random() * 0.6;
+        A.once("alert");
+        yield 0.08;
+        A.ground && hop(e, e.facing, 0, 150 * (mini ? 0.9 : 1));
+        A.sound("blub", 0.3);
+        yield 0.06;
+        for (let t = 0; !A.ground && t < 1.5; t += DT) yield 0;
+        splash(host, e.cx, e.body.y, 3);
+        yield 0.28;
         continue;
       }
-      if (A.ground) {
-        A.face();
-        A.once("move");
-        hop(e, Math.sign(A.dx) || 1, e.speed, mini ? 190 : 230);
-        yield mini ? 0.42 : 0.55;
-        A.ground && A.burst("dust", 0, -2, 2, SLIME);
-      } else yield 0;
+      if (!A.ground) {
+        A.play("air");
+        yield 0;
+        continue;
+      }
+      const ax = Math.abs(A.dx), ay = Math.abs(A.dy), fast = rage() ? 1.35 : 1;
+      // ── 덮치기: 몸을 바짝 웅크렸다가 앞으로 날아들고, 착지하면 양옆으로 철퍽 ──
+      if (ax < (mini ? 52 : 76) && ay < 40 && now() >= M.atkT) {
+        A.face(), A.stop(1);
+        A.tele(mini ? 0.25 : 0.34);
+        yield A.once("wind");
+        M.hit = 0;
+        yield* jump(e.facing, (mini ? 185 : 235) * Math.min(1.2, fast), mini ? 205 : 245, {
+          atk: 1,
+          skip: 1,
+          wait: 0.05,
+          during: () => !M.hit && A.melee(mini ? 16 : 22, mini ? 14 : 20, 1, { knock: 0.7 }) && (M.hit = 1),
+          land: () => {
+            const R = mini ? 22 : 36;
+            splash(host, e.cx, e.body.y, mini ? 6 : 12, { ring: mini ? 0.8 : 1.4, dust: mini ? 3 : 6, glow: mini ? 2 : 4 });
+            A.shake(mini ? 0.6 : 1.4);
+            A.sound("thud", 0.3 * S);
+            !mini && puddle(host, e.cx, e.body.y, { scale: 0.9, dur: 1.6 });
+            !M.hit && e.playerInRect(e.cx - R, e.body.y - 14, R * 2, 14) && ((M.hit = 1), e.hit(0.5, !0, void 0, void 0, 0.6));
+          },
+        });
+        yield A.once("rec", rage() ? 18 : void 0);
+        M.atkT = now() + (1.1 + Math.random() * 0.6) / fast;
+        continue;
+      }
+      // ── 산성 뱉기 (큰 것만): 앞쪽이 부풀어 모았다가 퉤! → 포물선 → 맞은 자리에 끈적한 웅덩이 ──
+      if (!mini && ax > 90 && ax < 230 && ay < 90 && now() >= M.spitT) {
+        A.face(), A.stop(1);
+        A.once("spit");
+        A.sound("blub", 0.35);
+        yield 4 / 14;
+        const p = A.p, ox = e.cx + e.facing * 15, oy = e.body.y - 12;
+        const tx = p.cx + (p.body.vx ?? 0) * 0.35, g = 520, T = Math.max(0.45, Math.min(0.85, Math.abs(tx - ox) / 220));
+        const vx = (tx - ox) / T, vy = (p.body.y - 6 - oy - 0.5 * g * T * T) / T;
+        splash(host, ox, oy, 2);
+        A.shoot({ sprite: "sl_glob", speed: 0, gravity: g, life: 3, radius: 5, trail: 0x8ee048 }, ox, oy, Math.atan2(vy, vx), 0.6, {
+          el: "poison",
+          st: { type: "chill", chance: 1, dur: 1.5, power: 0.4 },
+          opts: {
+            vx, vy,
+            onDone: (pr) => {
+              const gy = groundBelow(host, pr.x, pr.y, 48);
+              splash(host, pr.x, gy ?? pr.y, 8, { glow: 3 });
+              A.sound("splat", 0.4);
+              if (gy == null || e.dead) return;
+              puddle(host, pr.x, gy, { scale: 1.1, dur: 3.2 });
+              A.zone(pr.x, gy, 34, 3.2, 0.08, { el: "poison", st: { type: "chill", chance: 1, dur: 1.2, power: 0.4 }, kind: "slime" });
+            },
+          },
+        });
+        yield 2 / 14 + 0.25;
+        M.spitT = now() + (2.8 + Math.random() * 1.6) / fast;
+        M.atkT = Math.max(M.atkT, now() + 0.4);
+        continue;
+      }
+      // ── 쫓아가기: 크고 작은 뜀을 섞어서 (가끔 크게 한 번) ──
+      const big = Math.random() < 0.22, r = 0.85 + Math.random() * 0.3;
+      yield* jump(Math.sign(A.dx) || 1, e.speed * fast * r * (big ? 1.25 : 1), (mini ? 185 : 220) * r * (big ? 1.3 : 1), { wait: (0.08 + Math.random() * 0.18) / fast });
     }
   };
 }
+const slimeArt = (spec) => ({
+  ...spec,
+  // 공중에 있을 때 방울이 뚝뚝
+  tick(e, A, dt) {
+    !e.body.onGround && Math.random() < dt * 7 && slimeFx(e.host).burst("sl_fine", e.cx + (Math.random() - 0.5) * 14 * (spec.fw / 64), e.body.y - 2, 1, 0xffffff);
+  },
+  // 맞으면 젤리가 튄다
+  damage(e, dmg) {
+    splash(e.host, e.cx, e.body.y - spec.h * 0.6, spec.fw > 50 ? 6 : 4);
+    e.fA?.sound("splat", 0.3);
+    return dmg;
+  },
+});
 register("gm_slime", {
   atkMul: 0.7,
-  ...pxSlime, speed: 70, sight: 200,
+  ...slimeArt(pxSlime), speed: 70, sight: 200,
   brain: slimeBrain(!1),
-  die(e) {
-    if (e.opts.summoned) return;
+  die(e, A) {
     const host = e.host, x = e.cx, y = e.body.y;
-    host.fx.burst("glow", x, y - 8, 10, SLIME);
+    splash(host, x, y - 8, 16, { ring: 1.6, dust: 6, glow: 8 });
+    puddle(host, x, y, { scale: 1.2, dur: 5 });
+    A.sound("splat", 0.6);
+    if (e.opts.summoned) return;
     for (const d of [-1, 1]) {
       const z = host.spawnEnemy("gm_slime_mini", x + d * 10, y - 4, { summoned: !0, noGold: !0 });
       z && ((z.aggro = !0), (z.body.vx = d * 120), (z.body.vy = -200));
@@ -69,7 +169,14 @@ register("gm_slime", {
   },
 });
 register("gm_slime_mini", {
-  atkMul: 0.5, ...pxSlimeMini, speed: 85, sight: 220, brain: slimeBrain(!0) });
+  atkMul: 0.5, ...slimeArt(pxSlimeMini), speed: 85, sight: 220,
+  brain: slimeBrain(!0),
+  die(e, A) {
+    splash(e.host, e.cx, e.body.y - 5, 9, { ring: 0.9, glow: 4 });
+    puddle(e.host, e.cx, e.body.y, { scale: 0.6, dur: 3.5 });
+    A.sound("splat", 0.4);
+  },
+});
 
 // ════ 고블린 정찰병 ════ 멀면 돌팔매, 가까우면 단검으로 재빨리 찌르고 뒤로 깡충
 register("gm_goblin", {

@@ -445,7 +445,10 @@ export function updateZones(host, dt) {
     z.t -= dt;
     z.cd -= dt;
     z.fxT -= dt;
-    if (z.fxT <= 0) {
+    if (z.kind === "slime") {
+      // 슬라임 웅덩이: 가끔 초록 거품이 올라온다
+      if (z.fxT <= 0) (z.fxT = 0.14), host.fx.burst("glow", z.x + (Math.random() - 0.5) * z.w * 0.8, z.y - 2, 1, 0x7ad040), Math.random() < 0.4 && host.fx.burst("rise", z.x + (Math.random() - 0.5) * z.w * 0.8, z.y - 3, 1, 0xc8ff90);
+    } else if (z.fxT <= 0) {
       z.fxT = 0.06;
       const ice = z.kind === "ice", sand = z.kind === "sand";
       host.fx.burst("glow", z.x + (Math.random() - 0.5) * z.w, z.y - 2, 1, z.kind === "fire" ? 0xff7a20 : ice ? 0x9ad8ff : sand ? 0xe0b870 : 0xa0ff60);

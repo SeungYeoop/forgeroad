@@ -117,20 +117,22 @@ export function goblinFrame(p = {}) {
   return C;
 }
 
-// ════ 풀잎 슬라임 ════ 반투명한 초록 젤리 덩어리. 삼킨 뼈·돌·풀잎이 비쳐 보이고, 속 깊이 두 눈이 빛난다. 가장자리는 흘러내린다
-const JL = [0x173a2c, 0x23603a, 0x3a8e44, 0x6cc25a, 0xb4f08a]; // 젤리 (깊음 → 밝음, 반짝)
+// ════ 풀잎 슬라임 ════ 반투명한 초록 젤리 덩어리. 삼킨 뼈·돌·풀잎이 비쳐 보이고, 속 깊이 두 눈이 빛난다
+export const JL = [0x173a2c, 0x23603a, 0x3a8e44, 0x6cc25a, 0xb4f08a]; // 젤리 (깊음 → 밝음, 반짝)
 const JIN = 0x2c7440;
 const TINT = (c, k = 0.45) => {
   const m = (s) => Math.round(((c >> s) & 255) * (1 - k) + ((0x3a8e44 >> s) & 255) * k);
   return (m(16) << 16) | (m(8) << 8) | m(0);
 };
-// p: scale 크기 배율 · sq 세로 늘임(1 기본, <1 납작) · lift 뜬 높이 · lean 앞으로 쏠림 · blink 눈 감김(0~1) · rip 출렁임 위상 · hurt
+// p: scale 크기 · sq 세로 늘임(<1 납작) · lean 앞쏠림 · rip 출렁임 · blink 눈 감음 · wide 눈 부릅뜸 · hurt 번쩍
+//    bulge 앞쪽이 부풀어 오름(침 뱉기) · air 공중(바닥에서 떨어져 아래로 방울이 매달림)
+//    땅에 있을 때는 몸 아래 자락이 그림 맨 아래 줄까지 닿는다 (그림 바닥 = 땅 높이라서 뜨지 않음)
 export function slimeFrame(p = {}) {
-  const k = p.scale ?? 1, sq = p.sq ?? 1, q = Math.sqrt(sq), lift = (p.lift ?? 0) * k, ln = p.lean ?? 0, rip = p.rip ?? 0;
-  const W = Math.round(60 * k), H = Math.round(48 * k), C = canvas(W, H);
-  const G = H - 3 - lift, rx = (21 * k) / q, ry = 13 * k * sq, cx = 29 * k + ln * 3 * k, cy = G - ry + 1;
+  const k = p.scale ?? 1, sq = p.sq ?? 1, q = Math.sqrt(sq), ln = p.lean ?? 0, rip = p.rip ?? 0, air = !!p.air, bg = p.bulge ?? 0;
+  const W = Math.round(64 * k), H = Math.round(50 * k), C = canvas(W, H);
+  const G = air ? H - 1 - Math.max(2, Math.round(4 * k)) : H - 1;
+  const rx = (21 * k) / q, ry = 13 * k * sq, cx = 32 * k + ln * 3 * k, cy = G - ry + 1;
   const X = (dx) => cx + (dx * k) / q, Y = (dy) => cy + dy * k * sq;
-  // 몸 모양: 큰 덩이 + 위의 울퉁불퉁한 혹 둘(출렁임) + 땅에 닿을 때 흘러내린 자락
   const r1 = Math.sin(rip) * 0.9 * k, r2 = Math.sin(rip + 2.1) * 0.9 * k;
   const inside = (x, y) => {
     if (y > G) return !1;
@@ -140,7 +142,8 @@ export function slimeFrame(p = {}) {
       e(cx, cy, rx, ry) ||
       e(cx - (7 * k) / q, cy - ry * 0.45 + r1, 8.5 * k, 7 * k * sq) ||
       e(cx + (6 * k) / q, cy - ry * 0.55 + r2, 9.5 * k, 7.5 * k * sq) ||
-      (lift < 1 && y > G - 2 * k && e(cx, G - 0.2, rx + 1.2 * k, 2.2 * k))
+      (bg > 0 && e(cx + rx * 0.72, cy + ry * 0.05, (4 + bg * 5) * k, (3.5 + bg * 3.5) * k)) ||
+      (!air && y > G - 2.4 * k && e(cx, G + 0.6, rx + 1.6 * k, 2.6 * k))
     );
   };
   for (let y = 0; y < H; y++)
@@ -151,13 +154,15 @@ export function slimeFrame(p = {}) {
       for (let r = 1; r <= 3 && edge === 9; r++) for (const [dx, dy] of [[r, 0], [-r, 0], [0, -r], [r, -r], [-r, -r]]) !inside(x + dx, y + dy) && (edge = r);
       const lit = -u * 0.6 - v * 0.8;
       let c;
-      if (edge <= 1) c = lit > 0.1 || y > G - 3 ? JL[3] : JL[2];
+      if (edge <= 1) c = lit > 0.1 ? JL[3] : JL[2];
       else if (edge <= 2) c = lit > 0.35 ? JL[3] : JL[2];
       else {
         const cu = (x + 0.5 - (cx + 3 * k)) / (rx * 0.78), cv = (y + 0.5 - (cy + 3 * k * sq)) / (ry * 0.7), cr = cu * cu + cv * cv;
         c = lit > 0.55 ? JL[2] : cr < 0.45 && cv > 0.1 ? JL[1] : cr < 1 ? JIN : JL[2];
       }
-      y >= G - 1 && edge <= 2 && (c = JL[3]);
+      // 땅에 닿은 아랫단: 밝은 반사광 한 줄 + 맨 아래는 땅 그늘에 묻힌 어두운 줄
+      if (!air && y === G - 1 && edge <= 3) c = JL[3];
+      if (!air && y === G) c = JL[1];
       p.hurt && edge <= 2 && (c = JL[4]);
       C.px(x, y, c);
     }
@@ -171,48 +176,74 @@ export function slimeFrame(p = {}) {
     C.ell(X(3), Y(8), 1.6, 1.2, TINT(0x8a8070, 0.5), true);
   }
   C.ell(X(9), Y(5), 2.6 * k, 2 * k, TINT(0x7a7468, 0.5), true).over(X(8), Y(4), TINT(0xb0a898, 0.5));
-  // 기포
+  // 기포 (출렁임에 따라 오르내림)
   for (const [bx, by, r] of [[-15, -2, 1.4], [14, -6, 1], [-4, 4, 1], [10, 9, 1.2]]) {
-    const xx = X(bx), yy = Y(by + Math.sin(rip + bx) * 0.6), rr = Math.max(1, r * k);
+    const xx = X(bx), yy = Y(by + Math.sin(rip + bx) * 0.9), rr = Math.max(1, r * k);
     C.over(xx, yy - rr, JL[3]).over(xx - rr, yy, JL[3]).over(xx + rr, yy, JL[1]).over(xx, yy + rr, JL[1]);
   }
-  // ── 속 깊은 곳의 두 눈: 홈 속에서 반쯤 감긴 째진 빛 ──
-  const ey = Y(-2), bl = p.blink ?? 0;
+  // 침 뱉기: 앞쪽 부푼 곳에 모인 산성 덩이
+  if (bg > 0.3) C.ell(cx + rx * 0.8, cy + ry * 0.05, 2.6 * bg * k, 2.2 * bg * k, 0x8ee048, true).over(cx + rx * 0.74, cy - ry * 0.08, 0xe8ffb0);
+  // ── 눈: 홈 속 째진 빛 (부릅뜨면 크고 밝게, 감으면 가는 선) ──
+  const ey = Y(-2), bl = p.blink ?? 0, wd = p.wide ?? 0;
   for (const [ex, sz] of [[6, 1], [12.5, 0.8]]) {
-    const xx = X(ex), z = sz * Math.max(0.7, k);
-    C.ell(xx, ey, 2.8 * z, 1.7 * Math.max(0.7, k), JL[0], true);
+    const xx = X(ex), z = sz * Math.max(0.7, k), kk = Math.max(0.7, k);
+    C.ell(xx, ey, (2.8 + wd * 0.5) * z, (1.7 + wd * 0.8) * kk, JL[0], true);
     if (bl > 0.6 || p.hurt) C.over(xx - 1.5 * z, ey, 0x8ac04a).over(xx - 0.5 * z, ey, 0x8ac04a).over(xx + 0.5 * z, ey, 0x8ac04a).over(xx + 1.5 * z, ey + (p.hurt ? 0.6 : 0), 0x8ac04a);
-    else C.over(xx - 1.5 * z, ey + 0.4, 0xc8f05a).over(xx - 0.5 * z, ey, 0xf0ffb0).over(xx + 0.5 * z, ey - 0.2, 0xffffe0).over(xx + 1.5 * z, ey - 0.6, 0xc8f05a);
+    else if (wd > 0.5) {
+      C.over(xx - 1.2 * z, ey - 0.7, 0xc8f05a).over(xx - 0.2 * z, ey - 0.7, 0xffffe0).over(xx + 0.8 * z, ey - 0.9, 0xe0ff70);
+      C.over(xx - 1.2 * z, ey + 0.4, 0xa8e050).over(xx - 0.2 * z, ey + 0.4, 0xf0ffb0).over(xx + 0.8 * z, ey + 0.2, 0xc8f05a);
+    } else C.over(xx - 1.5 * z, ey + 0.4, 0xc8f05a).over(xx - 0.5 * z, ey, 0xf0ffb0).over(xx + 0.5 * z, ey - 0.2, 0xffffe0).over(xx + 1.5 * z, ey - 0.6, 0xc8f05a);
   }
   // ── 윤기 ──
   C.over(X(-13), Y(-6), JL[4]).over(X(-12), Y(-7), JL[4]).over(X(-11), Y(-8), JL[4]).over(X(-14), Y(-5), JL[3]);
   C.over(X(-8), Y(-10), JL[4]).over(X(-7), Y(-10.5), JL[4]).over(X(3), Y(-11.5), JL[4]);
-  // ── 흘러내리는 방울 ──
-  if (lift < 1)
-    for (const [dx, L] of [[-17, 2], [-8, 1], [15, 3]]) {
+  // ── 공중: 아래로 매달린 방울 ──
+  if (air)
+    for (const [dx, L] of [[-13, 2], [-3, 1], [9, 3], [15, 1]]) {
       const xx = Math.round(X(dx)), n = Math.max(1, Math.round(L * k));
       for (let j = 0; j < n; j++) C.px(xx, G + 1 + j, j === n - 1 ? JL[2] : JL[3]);
     }
   C.outline(OUT);
   return C;
 }
-// 동작 → 자세 (행동 AI가 쓰는 이름 그대로: idle·move·wind·atk·rec·hurt)
+// 동작 → 자세. 프레임을 넉넉히(숨쉬기 8장) + 빠른 재생으로 매끄럽게
+//   idle 숨쉬기 · move(예비) · alert 알아챔 · crouch 뛰기 전 웅크림 · air 공중 · land 착지 출렁
+//   wind 덮치기 준비 · atk 덮치기(공중) · spit 산성 뱉기 · hurt 맞음 · rec 회복
 function slimeSpec(k) {
+  const T = Math.PI * 2;
   return {
-    fw: Math.round(60 * k), fh: Math.round(48 * k), w: Math.round(26 * k), h: Math.round(18 * k),
-    anims: { idle: [6, 7], move: [6, 11], wind: [3, 8, !1], atk: [3, 14, !1], rec: [3, 10, !1], hurt: [2, 10, !1] },
+    fw: Math.round(64 * k), fh: Math.round(50 * k), w: Math.round(26 * k), h: Math.round(18 * k),
+    anims: {
+      idle: [8, 10], move: [6, 12], alert: [5, 12, !1], crouch: [3, 18, !1], air: [3, 12], land: [4, 18, !1],
+      wind: [4, 12, !1], atk: [3, 14], spit: [6, 14, !1], hurt: [3, 14, !1], rec: [4, 12, !1],
+    },
     px(nm, f, n) {
-      const t = f / n;
-      const P = { scale: k };
-      if (nm === "idle") Object.assign(P, { sq: 1 + Math.sin(t * Math.PI * 2) * 0.04, rip: t * Math.PI * 2, blink: f === 4 ? 1 : 0 });
-      if (nm === "move") Object.assign(P, { sq: [0.8, 1.12, 1.2, 1.12, 0.95, 0.84][f], lift: [0, 5, 9, 9, 4, 0][f], lean: [0, 0.6, 0.4, 0, -0.4, 0][f], rip: f });
-      if (nm === "wind") Object.assign(P, { sq: [0.86, 0.74, 0.64][f], rip: f * 2, lean: -0.3 * f });
-      if (nm === "atk") Object.assign(P, { sq: [1.25, 1.18, 1.02][f], lift: [6, 11, 5][f], lean: [1.2, 1, 0.2][f] });
-      if (nm === "rec") Object.assign(P, { sq: [0.72, 0.9, 1][f], rip: f * 2 });
-      if (nm === "hurt") Object.assign(P, { sq: [0.7, 0.9][f], hurt: f === 0, blink: 1, lean: -0.6 });
+      const t = f / n, P = { scale: k };
+      if (nm === "idle") Object.assign(P, { sq: 1 + Math.sin(t * T) * 0.05, rip: t * T, blink: f === 6 ? 1 : 0, lean: Math.sin(t * T + 1) * 0.08 });
+      if (nm === "move") Object.assign(P, { sq: [0.86, 0.94, 1.05, 1.1, 1.02, 0.92][f], rip: f * 1.1 });
+      if (nm === "alert") Object.assign(P, { sq: [0.78, 1.24, 1.1, 0.9, 1][f], wide: 1, rip: f * 2, lean: [0, -0.3, -0.1, 0.15, 0][f] });
+      if (nm === "crouch") Object.assign(P, { sq: [0.88, 0.78, 0.72][f], lean: -0.15 * (f + 1), rip: f });
+      if (nm === "air") Object.assign(P, { sq: [1.22, 1.14, 1.08][f], air: 1, rip: f * 1.4, lean: 0.2 });
+      if (nm === "land") Object.assign(P, { sq: [0.64, 0.8, 1.1, 0.97][f], rip: f * 1.6, lean: [-0.15, 0, 0.1, 0][f] });
+      if (nm === "wind") Object.assign(P, { sq: [0.9, 0.8, 0.72, 0.66][f], lean: -0.22 * f, wide: f >= 2 ? 1 : 0, rip: f * 2 });
+      if (nm === "atk") Object.assign(P, { sq: [1.3, 1.22, 1.12][f], lean: [1.3, 1.1, 0.8][f], air: 1, wide: 1 });
+      if (nm === "spit") Object.assign(P, { sq: [1.04, 1.1, 1.16, 1.18, 0.9, 0.98][f], bulge: [0.2, 0.5, 0.8, 1, 0.15, 0][f], lean: [0, -0.2, -0.35, -0.45, 0.8, 0.2][f], wide: f < 4 ? 1 : 0, rip: f });
+      if (nm === "hurt") Object.assign(P, { sq: [0.66, 1.14, 0.92][f], hurt: f === 0, blink: 1, lean: [-0.7, 0.3, -0.1][f], rip: f * 3 });
+      if (nm === "rec") Object.assign(P, { sq: [0.78, 1.08, 0.96, 1][f], rip: f * 2 });
       return slimeFrame(P);
     },
   };
 }
 export const pxSlime = slimeSpec(1);
 export const pxSlimeMini = slimeSpec(0.62);
+
+// ── 이펙트용 작은 그림 (젤리 방울 · 바닥 자국 · 산성 덩이) ──
+export function slimeFxArt() {
+  const drop = canvas(4, 4).px(1, 0, JL[4]).px(2, 0, JL[3]).rect(0, 1, 4, 2, JL[3]).px(1, 1, JL[4]).rect(1, 3, 2, 1, JL[2]);
+  const drop2 = canvas(2, 2).rect(0, 0, 2, 2, JL[3]).px(0, 0, JL[4]);
+  const puddle = canvas(34, 7);
+  puddle.ell(17, 4, 16, 3, JL[2]).ell(16, 3.5, 13, 2, JL[3], true).ell(11, 3, 4, 0.8, JL[4], true).ell(22, 4.8, 6, 0.9, JL[1], true);
+  puddle.outline(OUT);
+  const glob = canvas(10, 10).ell(5, 5, 4, 4, 0x5ec03c).ell(4.6, 4.4, 2.8, 2.6, 0x9ae84a, true).px(3, 3, 0xe8ffb0).px(4, 2, 0xe8ffb0).outline(OUT);
+  return { drop, drop2, puddle, glob };
+}
