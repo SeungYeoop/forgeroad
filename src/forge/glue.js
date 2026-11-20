@@ -2449,14 +2449,56 @@ export function hudUpdate(hud) {
 // ── 미니맵 (오른쪽 아래) ─────────────────────────────
 // 지금 구역 전체를 실제 지형 장(natgen)에서 줄여 그린다. 구역이 바뀔 때만 다시 만들고, 표시는 1초에 10번 갱신
 const MINI_W = 104, MINI_H = 104;
+// 확대·축소: 미니맵 한 점 = 격자 몇 칸 (0.5 = 2배 확대 · 1 = 기본 · 2 = 절반 · 4 = 구역 전체)
+const MINI_Z = [0.5, 1, 2, 4], MINI_ZK = "fr_minizoom";
 function miniCreate(hud) {
   const x = R.ot - MINI_W - 7, y = R.xt - MINI_H - 7;
-  hud.frMini = { x, y, zid: null, t: 0, blink: 0 };
+  let zi = 1;
+  try {
+    const v = +localStorage.getItem(MINI_ZK);
+    v >= 0 && v < MINI_Z.length && localStorage.getItem(MINI_ZK) != null && (zi = v);
+  } catch {}
+  hud.frMini = { x, y, zid: null, t: 0, blink: 0, zi };
   hud.frMiniFrame = hud.add.nineslice(x - 3, y - 3, "ui_hud_panel", void 0, MINI_W + 6, MINI_H + 6, 6, 6, 6, 6).setOrigin(0).setDepth(-1).setAlpha(0.88);
   hud.frMiniBg = hud.add.rectangle(x, y, MINI_W, MINI_H, 0x0a0812, 0.72).setOrigin(0).setDepth(0);
   hud.frMiniImg = hud.add.image(x, y, "__DEFAULT").setOrigin(0).setDepth(1).setVisible(!1);
   hud.frMiniG = hud.add.graphics().setDepth(2);
+  // 확대(+)·축소(−) 단추: 미니맵 왼쪽 위 (마우스 휠, 키보드 +/− 도 된다)
+  const btn = (bx, label, d) => {
+    const b = R.ct(hud, bx, y + 1, label, "small", "#e8e0f0", { backgroundColor: "#140e18cc", padding: { x: 2, y: 0 } }).setOrigin(0).setDepth(3).setAlpha(0.8);
+    b.setInteractive({ useHandCursor: !0 }).on("pointerdown", (p, lx, ly, ev) => (ev?.stopPropagation?.(), miniZoom(hud, d)));
+    b.on("pointerover", () => b.setAlpha(1)).on("pointerout", () => b.setAlpha(0.8));
+    return b;
+  };
+  hud.frMiniIn = btn(x + 1, "+", -1);
+  hud.frMiniOut = btn(x + 12, "−", 1);
+  hud.frMiniTag = R.ct(hud, x + MINI_W - 2, y + MINI_H - 2, "", "tiny", "#ffe08a", { stroke: "#140e18", strokeThickness: 3 }).setOrigin(1).setDepth(3).setAlpha(0);
+  const kb = hud.input.keyboard;
+  for (const k of ["PLUS", "NUMPAD_ADD"]) kb.on(`keydown-${k}`, () => miniZoom(hud, -1));
+  for (const k of ["MINUS", "NUMPAD_SUBTRACT"]) kb.on(`keydown-${k}`, () => miniZoom(hud, 1));
+  hud.input.on("wheel", (p, objs, dx, dy) => {
+    const M = hud.frMini;
+    if (!M || !hud.frMiniBg.visible || hud.frBag || hud.frMap) return;
+    p.x >= M.x - 3 && p.x < M.x + MINI_W + 3 && p.y >= M.y - 3 && p.y < M.y + MINI_H + 3 && dy && miniZoom(hud, dy > 0 ? 1 : -1);
+  });
   hud.events.once("shutdown", () => (hud.frMini = null));
+}
+function miniZoom(hud, d) {
+  const M = hud.frMini;
+  if (!M || hud.frBag || hud.frMap) return;
+  const zi = Math.max(0, Math.min(MINI_Z.length - 1, M.zi + d));
+  if (zi === M.zi) return;
+  M.zi = zi;
+  M.cx = -1e9; // 다음 갱신에 다시 그림
+  M.t = 0;
+  try {
+    localStorage.setItem(MINI_ZK, String(zi));
+  } catch {}
+  const z = MINI_Z[zi], T = hud.frMiniTag;
+  T.setText(z === 4 ? "구역 전체" : z < 1 ? `×${1 / z}` : z === 1 ? "×1" : `×1/${z}`).setAlpha(1);
+  hud.tweens.killTweensOf(T);
+  hud.tweens.add({ targets: T, alpha: 0, delay: 900, duration: 400 });
+  R.j.play("click", 0.4);
 }
 // 미니맵: 구역 전체를 24px 칸 격자로 한 번 만들어 두고(0 하늘 · 1 바위 · 2 굴·방 속 · 3 물), 플레이어 둘레 104칸만 그린다
 const MINI_S = 24;
@@ -2481,10 +2523,13 @@ function miniGrid(sc, z) {
 }
 function miniDraw(hud, M, cx, cy) {
   const S = MINI_S, { g, GW, GH, surf } = M.grid, z = M.z;
-  const vw = MINI_W * S, vh = MINI_H * S;
-  M.ox = Math.max(0, Math.min(GW * S - vw, Math.round((cx - vw / 2) / S) * S));
-  M.oy = Math.max(0, Math.min(GH * S - vh, Math.round((cy - vh / 2) / S) * S));
-  M.sx = M.sy = S;
+  const k = MINI_Z[M.zi ?? 1], sx = S * k;
+  const vw = MINI_W * sx, vh = MINI_H * sx;
+  // 구역이 미니맵보다 작으면 가운데에 (축소했을 때)
+  const fit = (c, full, v) => (full <= v ? Math.round((full - v) / 2 / sx) * sx : Math.max(0, Math.min(full - v, Math.round((c - v / 2) / sx) * sx)));
+  M.ox = fit(cx, GW * S, vw);
+  M.oy = fit(cy, GH * S, vh);
+  M.sx = M.sy = sx;
   M.cx = cx;
   M.cy = cy;
   const key = "fr_minimap";
@@ -2497,20 +2542,32 @@ function miniDraw(hud, M, cx, cy) {
   const base = z.y > 0 ? pal.rock ?? 0x6a6070 : pal.soil ?? 0x8a6a50;
   const B = shade(base, -0.1), Tp = rgb(z.y > 0 ? 0xc8b8a0 : pal.top ?? 0x9ad060), UB = shade(pal.rock ?? base, -0.4), UT = shade(pal.rock ?? base, 0.2);
   const IN = [44, 36, 52], WA = [58, 120, 192], WT = [140, 200, 240];
-  const gx0 = M.ox / S, gy0 = M.oy / S;
+  // 한 점에 격자 여러 칸이 들어가면(축소) 가장 많은 것으로
+  const n = Math.max(1, k), cnt = new Uint8Array(4);
+  const cellAt = (gx, gy) => {
+    if (n === 1) return gx < 0 || gy < 0 || gx >= GW || gy >= GH ? -1 : g[gy * GW + gx];
+    cnt.fill(0);
+    let any = 0;
+    for (let yy = gy; yy < gy + n; yy++)
+      for (let xx = gx; xx < gx + n; xx++) xx >= 0 && yy >= 0 && xx < GW && yy < GH && (cnt[g[yy * GW + xx]]++, any++);
+    if (!any) return -1;
+    let b = 0;
+    for (let q = 1; q < 4; q++) cnt[q] > cnt[b] && (b = q);
+    return b;
+  };
   for (let my = 0; my < MINI_H; my++)
     for (let mx = 0; mx < MINI_W; mx++) {
-      const gx = gx0 + mx, gy = gy0 + my;
-      if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) continue;
-      const v = g[gy * GW + gx];
-      if (!v) continue;
+      const gx = Math.floor((M.ox + mx * sx) / S), gy = Math.floor((M.oy + my * sx) / S);
+      const v = cellAt(gx, gy);
+      if (v <= 0) continue;
       let c;
       if (v === 1) {
-        const top = gy > 0 && g[(gy - 1) * GW + gx] !== 1;
-        const ug = z.y > 0 || (gy + 0.5) * S > surf[gx] + 40;
+        const up = cellAt(gx, gy - n);
+        const top = gy > 0 && up !== 1;
+        const ug = z.y > 0 || (gy + 0.5) * S > surf[Math.max(0, Math.min(GW - 1, gx))] + 40;
         c = ug ? (top ? UT : UB) : top ? Tp : B;
       } else if (v === 2) c = IN;
-      else c = gy > 0 && g[(gy - 1) * GW + gx] !== 3 ? WT : WA;
+      else c = gy > 0 && cellAt(gx, gy - n) !== 3 ? WT : WA;
       const k = (my * MINI_W + mx) * 4;
       d[k] = c[0];
       d[k + 1] = c[1];
@@ -2529,12 +2586,12 @@ function miniUpdate(hud) {
   M.t = now;
   const z = zoneOfPlayer(sc);
   const show = !!z && !hud.frBag && !hud.frMap;
-  for (const o of [hud.frMiniFrame, hud.frMiniBg, hud.frMiniImg, hud.frMiniG]) o?.setVisible(show && (o !== hud.frMiniImg || M.zid === z?.id));
+  for (const o of [hud.frMiniFrame, hud.frMiniBg, hud.frMiniImg, hud.frMiniG, hud.frMiniIn, hud.frMiniOut, hud.frMiniTag]) o?.setVisible(show && (o !== hud.frMiniImg || M.zid === z?.id));
   if (!show) return;
   const W = sc.world, g0 = W.originChunk * 512 - z.c0 * 512;
   const pzx = sc.player.x + g0, pzy = sc.player.body.y;
   if (M.zid !== z.id) Object.assign(M, { grid: miniGrid(sc, z), zid: z.id, z, cx: -1e9 });
-  if (Math.abs(pzx - M.cx) > MINI_S * 4 || Math.abs(pzy - M.cy) > MINI_S * 4) miniDraw(hud, M, pzx, pzy);
+  if (Math.abs(pzx - M.cx) > M.sx * 4 || Math.abs(pzy - M.cy) > M.sx * 4 || !M.sx) miniDraw(hud, M, pzx, pzy);
   const toM = (lx, y) => [M.x + (lx + g0 - M.ox) / M.sx, M.y + (y - M.oy) / M.sy];
   const inM = (x, y) => x >= M.x + 2 && x < M.x + MINI_W - 2 && y >= M.y + 2 && y < M.y + MINI_H - 2;
   const G = hud.frMiniG.clear();
@@ -3797,6 +3854,62 @@ FOES.register("frb2", grauk);
 FOES.register("frb3", globrak);
 export const foeDef = (d) => FOES.foeDef(d);
 export const foeThink = (e, dt) => FOES.think(e, dt);
+// ── 몬스터 영역: 태어난 구역 + 층(하늘섬·땅·지하) + 집에서 가로 480px(정예 600px) ──
+// 플레이어가 영역을 벗어나면 쫓기를 그만두고 집으로 돌아가며, 그동안(그리고 플레이어가 밖에 있는 동안) 체력이 차오른다
+const LEASH = 480, LEASH_ELITE = 600;
+function planIfReady(sc, z) {
+  const o = planOpts(sc, z);
+  return ZG.hasPlan(z, o.seed) ? ZG.planOf(z, o) : null;
+}
+function layerOfPos(sc, x, y) {
+  const W = sc.world, z = ZN.zoneAtTile(W.gtx(x));
+  if (!z) return null;
+  const P = planIfReady(sc, z);
+  return { z, lay: P ? ZG.layerAt(P, x + W.originChunk * 512 - z.c0 * 512, y) : null };
+}
+// 플레이어 층: 땅을 밟고 있을 때만 바꾼다 (뛰는 중에 하늘섬으로 잘못 세지 않게). 한 프레임에 한 번만 계산
+function playerLayer(sc) {
+  const f = sc.game.loop.frame;
+  if (sc._plL?.f === f) return sc._plL.v;
+  const p = sc.player;
+  let v = sc._plL?.v ?? null;
+  if (p.body.onGround || !v) {
+    const L = layerOfPos(sc, p.x, p.body.y);
+    L?.lay && (v = { z: L.z.id, lay: L.lay });
+  } else {
+    const z = ZN.zoneAtTile(sc.world.gtx(p.x));
+    z && z.id !== v.z && (v = { z: z.id, lay: v.lay });
+  }
+  sc._plL = { f, v };
+  return v;
+}
+export function inTerritory(e, p) {
+  if (e.opts?.midBoss || e.opts?.summoned || e.def.ai === "golden" || !e.host?.world || !p || p.dead) return !0;
+  const sc = e.host;
+  if (!e._terr) {
+    const L = layerOfPos(sc, e.homeX, e._hy ?? e.body.y);
+    if (!L?.lay) return !0;
+    e._terr = { z: L.z.id, lay: e.opts?.layer ?? L.lay };
+  }
+  const pl = playerLayer(sc);
+  if (!pl) return !0;
+  if (pl.z !== e._terr.z || pl.lay !== e._terr.lay) return !1;
+  return Math.abs(p.cx - e.homeX) <= (e.isElite ? LEASH_ELITE : LEASH);
+}
+// 플레이어가 영역 밖일 때 매 프레임
+export function leashTick(e, dt) {
+  if (e.aggro) {
+    e.aggro = !1;
+    e.def.foe ? FOES.goHome(e) : e.state === "chase" && e.setState("return", 5);
+  }
+  e.hp > 0 && e.hp < e.maxHp && (e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.15 * dt));
+}
+// 집에서 너무 멀리 떨어져(낭떠러지에서 떨어지는 등) 돌아갈 수 없으면 지금 자리를 새 집으로
+export function rehome(e) {
+  e.homeX = e.cx;
+  e._hy = e.body.y;
+  e._terr = null;
+}
 export const foeAnim = (e) => FOES.anim(e);
 export const foeBlocks = (e, S) => FOES.blocks(e, S);
 export const foeDamage = (e, dmg, C) => FOES.damage(e, dmg, C);
@@ -3986,7 +4099,7 @@ export function zoneGen(S, r, l, s, o) {
   if (!z) return null;
   const isZone = z.kind === "zone";
   const biome = biomeOf(z);
-  const out = ZG.chunk(z, S, r, l, s, { ...o, Ft: R.Ft, up: isZone ? ZN.upChunk(z) : -1, down: isZone ? ZN.downChunk(z) : -1, biome, patterns: z.y === 0 ? z.reg?.patterns : null });
+  const out = ZG.chunk(z, S, r, l, s, { ...o, Ft: R.Ft, up: isZone ? ZN.upChunk(z) : -1, down: isZone ? ZN.downChunk(z) : -1, biome, patterns: z.y === 0 ? z.reg?.patterns : null, runSeed: ZN.runSeed() });
   out.keepHazards = z.y === 0;
   return out;
 }
@@ -4122,7 +4235,7 @@ export function zoneObjs(evm, S, T, traits) {
   const fr = sc.fr;
   if (pc === S.index && fr && !(fr.packs ??= {})[z.id]) {
     fr.packs[z.id] = 1;
-    const pool = S.region?.enemies ?? [];
+    const pool = S.region?.layers?.ground?.enemies ?? S.region?.enemies ?? [];
     if (pool.length) {
       const pick = () => {
         let t = pool.reduce((s, x) => s + (x.w ?? 1), 0) * Math.random();

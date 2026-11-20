@@ -5157,17 +5157,30 @@ export function drawChunk(P, z, S, r, l, s, o) {
     const spots = P.spots.filter((p) => inC(p.x) && (P.kind !== "ground" || Math.abs(p.y - P.gy[Math.floor(p.x / TS)]) > 20) && !["rest", "sanctum"].includes(tagOf(p)?.role) && (!P.bp || ["arena", "vista", "treasure", "trap"].includes(tagOf(p)?.role)));
     const pick = () => spots.splice(Math.floor(R() * spots.length), 1)[0];
     const mk = (p) => ({ x: Math.floor((p.x - x0) / TS), row: Math.floor((p.y - 1) / TS), py: p.y });
-    for (let k = 0, n = P.kind === "ground" ? 2 : 4; k < n && spots.length; k++) {
+    // 층별 몬스터가 정해진 구역(그래스메어): 구역 전체를 한 번에 짠 배치에서 이 조각 몫만 꺼낸다
+    const L = z.reg?.layers;
+    if (L) {
+      const rs = o.runSeed >>> 0;
+      P.enc?.rs === rs || (P.enc = planEnc(P, z, rs));
+      out.planned = 1;
+      for (const c of P.enc.camps)
+        c.pts.forEach((p, k) => {
+          if (!inC(p.x)) return;
+          out.spawns.push({ ...mk(p), fy: flyY(F, p.x, p.y), layer: c.lay, enemy: c.type, lead: k === 0, big: c.big ? 1 : 0, camp: c.id });
+        });
+      for (const c of P.enc.chests) inC(c.x) && out.chests.push({ ...mk(c), tier: c.tier });
+    }
+    for (let k = 0, n = P.kind === "ground" ? 2 : 4; k < n && spots.length && !L; k++) {
       const p = mk(pick());
       p && !near(out.peak, p) && !near(out.deep, p) && out.spawns.push(p);
     }
     // 설계도 구역: 상자는 보물 방에만 (아래)
-    for (let k = 0; k < 2 && spots.length && !P.bp; k++) {
+    for (let k = 0; k < 2 && spots.length && !P.bp && !L; k++) {
       const p = mk(pick());
       p && !near(out.peak, p) && !near(out.deep, p) && R() < 0.12 && out.chests.push({ ...p, tier: R() < 0.12 ? 2 : R() < 0.45 ? 1 : 0 });
     }
     for (const t of tags) {
-      if (t.role === "arena" && t.x1 > x0 && t.x0 < x0 + vt * TS) {
+      if (!L && t.role === "arena" && t.x1 > x0 && t.x0 < x0 + vt * TS) {
         const c = spots.filter((p) => tagOf(p) === t);
         if (c.length) {
           const p = mk(c[Math.floor(R() * c.length)]);
@@ -5179,7 +5192,7 @@ export function drawChunk(P, z, S, r, l, s, o) {
       const c = P.spots.filter((p) => p.x >= t.x0 && p.x < t.x1 && p.y >= t.y0 && p.y <= t.y1).sort((a, b) => Math.abs(a.x - cx) - Math.abs(b.x - cx))[0];
       c && inC(c.x) && out.chests.push({ ...mk(c), tier: t.big ? 2 : R() < 0.4 ? 2 : 1 });
     }
-    P.kind === "sky" && R() < 0.7 && out.spawns.push({ x: 4 + Math.floor(R() * 24), row: 50 + Math.floor(R() * 40), fly: 1 });
+    P.kind === "sky" && !L && R() < 0.7 && out.spawns.push({ x: 4 + Math.floor(R() * 24), row: 50 + Math.floor(R() * 40), fly: 1 });
     // 지상 함정: 평평한 자리에만 (분지는 웅덩이·늪, 언덕 위는 가시·불기둥·얼음)
     if (P.kind === "ground" && o.patterns) {
       const pool = Object.entries(o.patterns).filter(([k]) => HZ[k]);
@@ -5212,6 +5225,125 @@ export function drawChunk(P, z, S, r, l, s, o) {
     }
   }
   return out;
+}
+
+// ── 층 (하늘섬 · 땅 · 지하) ─────────────────────────
+// 지상 구역: 지표(P.h)보다 120px(약 7칸) 넘게 위면 하늘섬, 64px(4칸) 넘게 아래면 지하
+export function layerAt(P, x, y) {
+  if (P.kind === "sky") return "sky";
+  if (P.kind === "cave" || !P.h) return "under";
+  const h = P.h[Math.max(0, Math.min(P.h.length - 1, Math.round(x / Q)))];
+  return y < h - 120 ? "sky" : y > h + 64 ? "under" : "ground";
+}
+// 나는 몬스터가 떠 있을 높이: 머리 위가 트인 만큼 (최대 64px)
+function flyY(F, x, y) {
+  let top = y;
+  for (let yy = y - 8; yy >= y - 104; yy -= 8) {
+    if (F.solid(x, yy)) break;
+    top = yy;
+  }
+  return Math.round(y - Math.min(64, Math.max(0, y - top - 32)));
+}
+// ── 구역 단위 적·상자 배치 ──────────────────────────
+// 층마다 사는 몬스터가 다르고(z.reg.layers), 몬스터는 무리(진영) 단위로 서로 떨어뜨려 놓는다.
+//   - 입구·출구 둘레, ▲·▼ 문 둘레, 쉼터·성소, 보스 방 앞은 비운다
+//   - 전투 방(arena)에는 먼저 큰 무리를 둔다
+//   - 상자: 땅은 무리 뒤(지키는 상자), 하늘섬은 가장 높은 섬, 지하는 가장 깊은 굴 — 층마다 고르게
+// 탐험마다(rs) 무리 자리·종류·상자 자리가 바뀐다. 지형은 그대로
+const ENC_GAP = { ground: 480, sky: 500, under: 520 };
+// 구역(8192px) 하나에 무리 수 상한 — 예전 무작위 배치의 마릿수(지표 ~30 · 하늘 ~45 · 지하 ~60)에 맞춤
+const CAMP_N = { ground: 13, sky: 18, under: 24 };
+const CHEST_N = { ground: 2, sky: 2, under: 2 };
+function planEnc(P, z, rs) {
+  const R = rng((P.seed ^ Math.imul((rs ^ 0x51ed27) + 1, 0x27d4eb2d)) >>> 0);
+  const L = z.reg.layers, ring = z.ring ?? 1, dg = z.kind === "dungeon";
+  const tags = P.roomTags ?? [];
+  const tagOf = (p) => tags.find((t) => p.x >= t.x0 && p.x < t.x1 && p.y >= t.y0 && p.y <= t.y1);
+  const safe = dg ? 360 : 760, end = Math.min(P.WP - safe, P.arenaFrom - 260);
+  const doors = [P.peak, P.deep].filter(Boolean);
+  const cand = { ground: [], sky: [], under: [] };
+  for (const p of P.spots) {
+    if (p.x < safe || p.x > end) continue;
+    if (doors.some((d) => Math.abs(d.x - p.x) < 180 && Math.abs(d.y - p.y) < 140)) continue;
+    const role = tagOf(p)?.role;
+    if (role === "rest" || role === "sanctum") continue;
+    cand[layerAt(P, p.x, p.y)].push({ x: p.x, y: p.y, role });
+  }
+  // 언덕진 지표는 "평평한 자리"가 드물다: 완만한 주 지면 칸도 지표 후보로 (머리 위 40px 트임)
+  if (P.kind === "ground" && P.gy)
+    for (let t = 1; t < P.W - 1; t++) {
+      const y = P.gy[t], x = t * TS + 8;
+      if (y <= 0 || x < safe || x > end || Math.abs(P.gy[t - 1] - P.gy[t + 1]) > 8 || P.F.solid(x, y - 40) || P.F.solid(x, y - 20) || P.F.solid(x, y - 6) || !P.F.solid(x, y + 3)) continue;
+      if (doors.some((d) => Math.abs(d.x - x) < 180 && Math.abs(d.y - y) < 140) || layerAt(P, x, y) !== "ground") continue;
+      const role = tagOf({ x, y })?.role;
+      role !== "rest" && role !== "sanctum" && cand.ground.push({ x, y, role });
+    }
+  const shuffle = (a) => {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(R() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const far = (list, p, d) => list.every((q) => Math.hypot(q.x - p.x, (q.y - p.y) * 1.4) >= d);
+  const pickW = (list) => {
+    let t = list.reduce((s, e) => s + (e.w ?? 1), 0) * R();
+    for (const e of list) if ((t -= e.w ?? 1) <= 0) return e;
+    return list[0];
+  };
+  const camps = [], chests = [];
+  for (const lay of ["ground", "sky", "under"]) {
+    const pool = L[lay]?.enemies, C = cand[lay];
+    if (!pool?.length || !C.length) continue;
+    const gap = dg ? 340 : ENC_GAP[lay], mine = [];
+    const order = shuffle(C.slice()).sort((a, b) => (b.role === "arena") - (a.role === "arena"));
+    for (const p of order) far(mine, p, gap) && mine.push(p);
+    // 상한을 넘으면 전투 방 무리는 남기고, 나머지는 가로로 고르게 솎는다
+    const cap = Math.max(2, Math.round(CAMP_N[lay] * (P.WP / 8192) * (dg ? 1.6 : 1)));
+    if (mine.length > cap) {
+      const keep = mine.filter((p) => p.role === "arena").slice(0, cap), rest = mine.filter((p) => p.role !== "arena").sort((a, b) => a.x - b.x);
+      const need = cap - keep.length;
+      for (let i = 0; i < need; i++) keep.push(rest[Math.floor(((i + R() * 0.8 + 0.1) * rest.length) / need)]);
+      mine.length = 0;
+      mine.push(...keep);
+    }
+    for (const p of mine) {
+      const big = p.role === "arena", E = pickW(pool);
+      const [a, b] = E.pack ?? [1, 2];
+      let n = a + Math.floor(R() * (b - a + 1)) + (big || dg ? 1 : 0);
+      ring >= 2 && R() < 0.3 && n++;
+      // 무리: 같은 턱 위(높이 차 6px 안), 22px 넘게 서로 떨어진 자리
+      const pts = [p];
+      for (const q of shuffle(C.filter((q) => Math.abs(q.y - p.y) <= 6 && Math.abs(q.x - p.x) <= 120)))
+        if (pts.length < n && pts.every((r) => Math.abs(r.x - q.x) >= 22)) pts.push(q);
+      camps.push({ id: camps.length, lay, type: E.id, pts, big });
+    }
+    // 상자
+    if (dg) continue;
+    const tres = tags.filter((t) => t.role === "treasure").map((t) => ({ x: (t.x0 + t.x1) / 2, y: t.y1 }));
+    const taken = () => [...chests, ...tres, ...doors];
+    let list;
+    if (lay === "ground") {
+      // 무리 뒤 40~110px (지키는 상자)
+      list = [];
+      for (const c of shuffle(camps.filter((c) => c.lay === "ground"))) {
+        const h = c.pts[0], q = C.filter((q) => Math.abs(q.y - h.y) <= 10 && Math.abs(q.x - h.x) >= 40 && Math.abs(q.x - h.x) <= 110 && c.pts.every((r) => Math.abs(r.x - q.x) >= 18));
+        q.length && list.push(q[Math.floor(R() * q.length)]);
+      }
+    } else {
+      // 하늘섬은 높은 곳부터, 지하는 깊은 곳부터 (위·아래 30% 안에서 고른다)
+      const s2 = C.slice().sort((a, b) => (lay === "sky" ? a.y - b.y : b.y - a.y));
+      list = shuffle(s2.slice(0, Math.max(6, Math.ceil(s2.length * 0.3))));
+    }
+    let n = 0;
+    for (const q of list) {
+      if (n >= CHEST_N[lay]) break;
+      if (!far(taken(), q, 1300)) continue;
+      chests.push({ x: q.x, y: q.y, tier: lay === "ground" ? (R() < 0.3 ? 1 : 0) : R() < 0.35 ? 2 : 1 });
+      n++;
+    }
+  }
+  return { rs, camps, chests };
 }
 
 // 땅속 뒷벽이 시작하는 높이 (4px 칸마다): 지표선(P.h) 아래라도 옆으로 176px 안에서 하늘과 트인 공기(처마·문간·굴 입구 지붕 밑)는

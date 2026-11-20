@@ -35,8 +35,18 @@ const REMADE = {
       look: "grassmere",
       particle: "pollen",
       // 이 구역 전용 몬스터 (세기 천차만별: 슬라임 < 맨드레이크 < 고블린 < 말벌 < 늑대 < 멧돼지 ≪ 정예)
-      enemies: [{ id: "gm_slime", w: 5 }, { id: "gm_goblin", w: 4 }, { id: "gm_wolf", w: 3 }, { id: "gm_wasp", w: 3 }, { id: "gm_mandrake", w: 2 }, { id: "gm_boar", w: 2 }],
-      elites: ["gm_ogre", "gm_centaur"],
+      // 층마다 사는 몬스터가 다르다 (pack = 한 무리 마릿수 [최소, 최대])
+      //   땅(초원 지표): 슬라임 · 늑대 · 멧돼지, 정예 켄타우로스 사냥꾼 (탁 트인 들판)
+      //   하늘섬: 거대 말벌 · 맨드레이크 (섬 꽃밭에 숨어 있음)
+      //   지하(동굴·고대 던전): 고블린 정찰병 무리, 정예 초원 오우거
+      layers: {
+        ground: { enemies: [{ id: "gm_slime", w: 5, pack: [1, 3] }, { id: "gm_wolf", w: 3, pack: [2, 3] }, { id: "gm_boar", w: 2, pack: [1, 1] }], elites: ["gm_centaur"] },
+        sky: { enemies: [{ id: "gm_wasp", w: 5, pack: [2, 3] }, { id: "gm_mandrake", w: 3, pack: [1, 2] }], elites: [] },
+        under: { enemies: [{ id: "gm_goblin", w: 1, pack: [2, 3] }], elites: ["gm_ogre"] },
+      },
+      // 지표 기준 목록 (떠도는 정예 무리·매복 행사 등 엔진이 쓰는 곳)
+      enemies: [{ id: "gm_slime", w: 5 }, { id: "gm_wolf", w: 3 }, { id: "gm_boar", w: 2 }],
+      elites: ["gm_centaur"],
       pal: { sky: [0x3f86d6, 0xcdeaf8], far: 0x7f9cc4, mid: 0x5f9a5c, near: 0x355f3c, top: 0x6aaf48, topHi: 0xb6e070, soil: 0x86684a, soilDark: 0x46342a, soilHi: 0xa8885e, rock: 0x9c9686, accent: 0xffe08a, fog: 0xeaf6ff, glow: 0xfff2c8 },
     },
   },
@@ -178,6 +188,7 @@ export const downChunk = (z) => z.c0 + 6;
 // 이번 탐험의 무작위 내용물
 let RUN_SEED = 0;
 export const setRunSeed = (s) => (RUN_SEED = s >>> 0);
+export const runSeed = () => RUN_SEED;
 // 숨은 던전: 바깥 고리일수록 잘 나온다
 export const hasDungeon = (z) => z.kind === "zone" && roll(RUN_SEED, "dg", z.id) < 0.12 + z.ring * 0.06;
 // 숨은 던전 입구는 위·아래 문 사이 조각에
@@ -189,7 +200,8 @@ export function chestRoll(c, k, tier) {
   if (!z) return tier;
   if (z.kind === "dungeon") return Math.max(1, tier);
   if (roll(RUN_SEED, "ch", c, k) < 0.3) return null;
-  const q = roll(RUN_SEED, "ct", c, k) + (z.ring - 1) * 0.06;
+  // 구역 설계가 놓은 상자는 tier가 곧 "찾기 어려운 정도" (하늘 꼭대기·깊은 지하는 좋은 상자가 잘 나온다)
+  const q = roll(RUN_SEED, "ct", c, k) + (z.ring - 1) * 0.06 + (z.reg?.layers ? tier * 0.14 : 0);
   return q > 0.95 ? 2 : q > 0.68 ? 1 : 0;
 }
 // 구역의 출구 목록: [{at: "L"|"R"|"U"|"D"|"DG", to: 구역 id | HUB_ID, back: 도착할 자리}]

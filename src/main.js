@@ -9102,7 +9102,9 @@ class Xn {
       }
     }
     const d = [];
-    if (!e && S > 0) {
+    // 구역 설계가 무리·상자를 직접 놓은 구역(층별 몬스터)은 무작위 배치를 쓰지 않는다
+    const planned = !!zg?.planned;
+    if (!e && S > 0 && !planned) {
       const y = m.density * a.densityMult * (R < 60 ? 0.7 : 1.7) * 0.55;
       let x = Math.floor(y) + (E.chance(y - Math.floor(y)) ? 1 : 0);
       R < 30 && (x = Math.min(x, 2));
@@ -9156,6 +9158,23 @@ class Xn {
     // 하늘섬·동굴 층 위의 적
     if (!e && zg?.spawns)
       for (const sp of zg.spawns) {
+        if (sp.enemy) {
+          // 설계된 무리: 우두머리만 정예가 될 수 있다 (정예 종류는 그 층 목록에서)
+          const LP = m.layers?.[sp.layer] ?? m;
+          let id = sp.enemy;
+          const tr = [];
+          if (sp.lead && E.chance(m.eliteChance + a.eliteBonus + (sp.big ? 0.15 : 0))) {
+            LP.elites?.length && E.chance(0.6) && (id = E.pick(LP.elites));
+            tr.push(E.pick(Ye));
+            if (E.chance(0.12 + a.tier * 0.02)) {
+              const V = E.pick(Ye);
+              V !== tr[0] && tr.push(V);
+            }
+          }
+          const fl = !!se[id]?.flying;
+          d.push({ id: `${S}:${d.length}`, enemy: id, x: sp.x, row: fl ? Math.floor(sp.fy / gt) : sp.row, py: fl ? sp.fy : sp.py, traits: tr, layer: sp.layer });
+          continue;
+        }
         const pool = m.enemies.filter((V) => !!se[V.id]?.flying === !!sp.fly);
         if (!pool.length) continue;
         const P = E.weighted(pool, (V) => V.w);
@@ -9215,7 +9234,7 @@ class Xn {
     }
     // 추가 보물 상자
     const chests = [];
-    if (!e && !c && S > 1) {
+    if (!e && !c && S > 1 && !planned) {
       const want = (E.chance(0.55) ? 1 : 0) + (E.chance(0.2) ? 1 : 0);
       for (let k = 0; k < want; k++)
         for (let M = 0; M < 14; M++) {
@@ -16369,6 +16388,7 @@ class Cs {
     if (
       ((this.body = Je(C, E, m.w * v, m.h * v)),
       (this.homeX = C),
+      (this._hy = E),
       (FG.foeEnsure(S, T), (this.sprite = S.add.sprite(C, E, `e_${T}`, 0).setOrigin(0.5, 1).setDepth(10).setScale(v))),
       (this.cd = 0.5 + Math.random() * this.cooldown),
       m.ai === "ambush" && (this.state = "hidden"),
@@ -16601,9 +16621,12 @@ class Cs {
       t = C.cx - this.cx,
       a = C.body.y - R.y,
       v = Math.hypot(t, a),
-      o = !C.dead && v < E.sight * (this.aggro ? 1.6 : 1) && Math.abs(a) < 140;
+      // 자기 영역(태어난 구역·층·둘레)을 벗어난 플레이어는 보지도 쫓지도 않는다
+      inT = FG.inTerritory(this, C),
+      o = inT && !C.dead && v < E.sight * (this.aggro ? 1.6 : 1) && Math.abs(a) < 140;
     if (
-      (o && this.state !== "hidden" && this.state !== "burrowed" && (this.aggro = !0),
+      (inT || FG.leashTick(this, S),
+      o && this.state !== "hidden" && this.state !== "burrowed" && (this.aggro = !0),
       this.isElite && this.aggro && !h && this.updateTraits(S, v),
       this.stunT > 0 || h)
     ) {
@@ -16692,7 +16715,7 @@ class Cs {
       }
       case "chase": {
         if (!this.aggro) {
-          this.setState("idle", 1);
+          Math.abs(R.x - this.homeX) > 24 ? this.setState("return", 5) : this.setState("idle", 1);
           break;
         }
         if (Math.abs(R.x - this.homeX) > 520 && v > 160) {
@@ -18716,6 +18739,7 @@ class Er extends zt.Scene {
           homeChunk: T.index,
           hpRatio: this.enemyHp.get(R.id),
           midBoss: R.mid,
+          layer: R.layer,
         });
       R.mid && FG.makeMidBoss(this, a);
       this.enemies.push(a);

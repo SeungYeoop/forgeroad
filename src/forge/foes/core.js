@@ -487,6 +487,11 @@ export function think(e, dt) {
   fz.anim.t += dt * ts;
   fz.teleT > 0 && (fz.teleT -= dt);
   s.tick && s.tick(e, e.fA, dt);
+  // 영역 밖으로 나간 플레이어를 놓쳤다: 집으로 돌아간다 (다시 알아채면 그만두고 싸운다)
+  if (e._home) {
+    if (e.aggro) e._home = null;
+    else return homeStep(e, e.fA, dt), "foe";
+  }
   if (fz.wait > 0) fz.wait -= dt * ts;
   else {
     fz.gen = fz.gen ?? s.brain(e, e.fA);
@@ -495,6 +500,41 @@ export function think(e, dt) {
     else fz.wait = r.value ?? 0;
   }
   return "foe";
+}
+// 하던 행동을 버리고 집으로
+export function goHome(e) {
+  const fz = e.fz;
+  if (fz) {
+    for (const t of fz.temp) t.active && t.destroy();
+    fz.temp = [];
+    fz.gen = null;
+    fz.wait = 0;
+    fz.teleT = 0;
+  }
+  e.clearWarn?.();
+  e._home = { t: 0 };
+}
+function homeStep(e, A, dt) {
+  const H = e._home, Rb = e.body;
+  H.t += dt;
+  const dx = e.homeX - e.cx, hy = e._hy ?? Rb.y;
+  let done = !1;
+  if (e.def.flying) {
+    A.flyTo(e.homeX, hy, e.speed * 0.8);
+    A.play("move");
+    done = Math.hypot(dx, hy - Rb.y) < 14;
+  } else if (Math.abs(dx) > 10) {
+    A.walk(Math.sign(dx), e.speed * 0.75);
+    A.play("move");
+  } else done = !0;
+  // 7초 안에 못 돌아가면(떨어져서 길이 막힘) 지금 자리를 새 집으로
+  if (!done && H.t > 7) ((e.homeX = e.cx), (e._hy = Rb.y), (e._terr = null), (done = !0));
+  if (done) {
+    e._home = null;
+    A.stop(1);
+    A.play("idle");
+    e.fz.wait = 0.4;
+  }
 }
 export function anim(e) {
   const fz = e.fz, s = SPECS[e.def.id];
