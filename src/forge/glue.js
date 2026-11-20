@@ -5,7 +5,8 @@ import * as VFX from "./vfx.js";
 import * as ATMO from "./atmo.js";
 import * as DEPTH from "./depth.js";
 import * as NATANIM from "./natanim.js";
-import { warmProps } from "./terrain.js";
+import { showLoad } from "./loadscreen.js";
+import { warmProps, prepaintStep } from "./terrain.js";
 import * as PROPS from "./props3d.js";
 import * as FOES from "./foes/core.js";
 import { bindR0 } from "./foes/r0.js";
@@ -4000,28 +4001,55 @@ export function travel(sc, to, back) {
   if (!z) return;
   sc.zoneBusy = 1;
   R.j.play("portal");
-  sc.cameras.main.fadeOut(160, 8, 6, 12);
   ensurePlan(sc, z);
-  sc.time.delayedCall(170, () =>
-    whenPlanned(sc, z, () => {
+  // 로딩 화면이 다 덮인 뒤 설계를 기다려 옮기고, 보이는 띠가 다 그려질 때까지 덮어 둔다 (그동안 게임은 멈춤)
+  const L = startLoad(sc, z, () => ((sc.zoneBusy = 0), arrive(sc, z)));
+  L.onOpaque.push(() =>
+    ensurePlan(sc, z).then(() => {
+      if (!sc.world || L.dead) return;
       const at = back ?? "L";
       const p = arrivePos(sc.world, z, at);
       sc.travelTo(p.tile, at === "R" ? -1 : 1, p.row > 0 ? p.row : null, p.py > 0 ? p.py : null);
-      // 보이는 지형 띠가 다 그려질 때까지 화면을 어둡게 둔다 (작업 스레드가 그리는 동안 빈 화면이 보이지 않게, 최대 4초)
-      const t0 = sc.time.now;
-      const done = () => (loadingNote(sc, !1), sc.cameras.main.fadeIn(260, 8, 6, 12), (sc.zoneBusy = 0), arrive(sc, z));
-      const wait = () => {
-        if (!sc.world) return;
-        const el = sc.time.now - t0;
-        let pend = 0, bands = 0;
-        for (const ch of sc.world.loaded?.values() ?? []) for (const B of ch.bands?.values() ?? []) (bands++, B.rt && B.rt._frJob && pend++);
-        if ((el > 150 && bands > 0 && pend === 0) || el > 4000) return done();
-        el > 600 && loadingNote(sc, !0);
-        sc.time.delayedCall(80, wait);
-      };
-      wait();
+      L.stage = "paint";
+      L.t0 = L.t;
     }),
   );
+}
+// 로딩 화면 띄우기 (sc.frLoad 동안 게임 진행을 멈추고 지형만 불러 그린다)
+function startLoad(sc, z, onDone, o = {}) {
+  sc.frLoad && sc.frLoad.destroy();
+  const L = showLoad(sc, z, { ct: R.ct, dangerOf: ZN.dangerOf, layerName: ZN.LAYER_NAME }, o);
+  L.onDone = onDone;
+  sc.frLoad = L;
+  return L;
+}
+// 게임 장면 update 맨 앞에서 부른다. 로딩 중이면 true (나머지 진행을 건너뛴다)
+export function loadGate(sc, dt) {
+  const L = sc.frLoad;
+  if (!L) return !1;
+  L.update(dt);
+  if (L.dead) return void (sc.frLoad = null), !1;
+  if (L.closing) return !1;
+  const p = sc.player;
+  if (p?.body) ((p.body.vx = 0), (p.body.vy = 0), (p.iframes = Math.max(p.iframes ?? 0, 0.6)));
+  if (L.stage === "paint" && sc.world) {
+    sc.world.update(p.x);
+    prepaintStep(8);
+    sc.updateCamera(1);
+    sc.updateParallax();
+    let pend = 0, bands = 0;
+    for (const ch of sc.world.loaded?.values() ?? []) for (const B of ch.bands?.values() ?? []) (bands++, B.rt && B.rt._frJob && pend++);
+    L.total = Math.max(L.total, bands);
+    L.painted = bands - pend;
+    const el = L.t - (L.t0 ?? 0);
+    // 보이는 띠가 다 그려지고 HUD가 떴으면 끝 (아무리 늦어도 8초)
+    if (((el > 0.25 && bands > 0 && pend === 0) || el > 8) && sc.hud?.()) {
+      const f = L.onDone;
+      L.close();
+      f && f();
+    }
+  }
+  return !0;
 }
 function arrive(sc, z) {
   const d = sd();
@@ -4043,22 +4071,14 @@ function arrive(sc, z) {
 export function zoneBegin(sc) {
   ZN.setRunSeed(sc.fr?.runSeed ?? (Math.random() * 4294967295) >>> 0);
   const z0 = ZN.cell(1, 0);
-  const go = () => {
+  // 첫 화면부터 로딩 화면으로 덮는다 (설계를 기다리는 동안 빈 시작 자리가 보이거나 움직이지 않게)
+  const L = startLoad(sc, z0, () => arrive(sc, z0), { instant: 1 });
+  ensurePlan(sc, z0).then(() => {
+    if (sc.sys?.isActive?.() === !1 || !sc.world || L.dead) return;
     const p0 = arrivePos(sc.world, z0, "L");
     sc.travelTo(p0.tile, 1, p0.row > 0 ? p0.row : null, p0.py > 0 ? p0.py : null);
-    const wait = (n = 0) => (sc.hud?.() ? arrive(sc, z0) : n < 40 && sc.time.delayedCall(150, () => wait(n + 1)));
-    sc.time.delayedCall(400, () => wait());
-  };
-  if (planReady(sc, z0)) return go();
-  // 첫 구역 설계를 기다리는 동안 화면을 어둡게 (안내 글은 HUD가 뜨면)
-  sc.cameras.main.fadeOut(1, 8, 6, 12);
-  const note = (n = 0) => (sc.hud?.() ? loadingNote(sc, !planReady(sc, z0)) : n < 40 && sc.time.delayedCall(100, () => note(n + 1)));
-  note();
-  ensurePlan(sc, z0).then(() => {
-    loadingNote(sc, !1);
-    if (sc.sys?.isActive?.() === !1 || !sc.world) return;
-    go();
-    sc.cameras.main.fadeIn(260, 8, 6, 12);
+    L.stage = "paint";
+    L.t0 = L.t;
   });
 }
 export const seenCount = () => Object.keys(sd().seen ?? {}).filter((k) => ZN.BY_ID[k]?.kind === "zone").length;

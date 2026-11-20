@@ -50,7 +50,7 @@ export function pluck(E, out, t, m, dur, v, o = {}) {
   }
   ga.connect(out);
   const b = mk("bright"), lb = filt(ctx, "lowpass", Math.min(15000, f * (o.bright ?? 7)), o.q ?? 0.9), gb = gainN(ctx);
-  const eb = envPerc(gb.gain, t, 0.001, pk * 0.55, o.fdec ?? 0.05, 0.3);
+  const eb = envPerc(gb.gain, t, 0.001, pk * (o.atk ?? 0.4), o.fdec ?? 0.05, 0.3);
   b.connect(lb);
   lb.connect(gb);
   gb.connect(out);

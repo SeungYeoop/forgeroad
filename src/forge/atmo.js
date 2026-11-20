@@ -112,6 +112,7 @@ function fgTex(sc, key, kind, col, top) {
 
 const CFG = {
   _: 0,
+  grassmere: { fg: "grass", critter: ["at_bird", 0x2a3a52, 1], rays: 0xfff4d0, sun: 0xfff2c8 },
   ashvillage: { fg: "rubble", critter: ["at_bird", 0x1a1418, 0.6], fog: [0x8a7a70, 0.25], glow: 0xff7a30, smoke: 1 },
   mistwood: { dark: 0.22, fg: "grass", top: "vines", critter: ["at_fly", 0xf0e870, 1], fog: [0xd8f4ec, 0.45], rays: 0xfff8d0 },
   echomine: { dark: 0.6, fg: "rubble", top: "stalac", critter: ["at_bat", 0x101018, 0.8], rays: 0x60e0d0, motes: 1 },
@@ -128,7 +129,7 @@ const CFG = {
 
 export function regionFx(sc, reg) {
   clear(sc);
-  const id = reg.bgId ?? reg.id;
+  const id = reg.look ?? reg.bgId ?? reg.id;
   const c = CFG[id];
   if (!c) return;
   const A = (sc.frAtmo = { objs: [], t: 0, c, reg, critT: 0, flashT: rnd(2, 5) });

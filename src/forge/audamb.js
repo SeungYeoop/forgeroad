@@ -3,6 +3,7 @@
 import { gainN, filt, panN, mulberry } from "./audcore.js";
 
 export const AMB = {
+  meadow: { wind: [0.05, 240, 650], birds: [0.12] },
   village: { wind: [0.09, 220, 650], crackle: [2, 0.02], birds: [0.05] },
   forest: { wind: [0.05, 300, 900], crickets: [1.4], owl: [0.04] },
   cave: { rumble: [0.1], drips: [0.7], clink: [0.05] },

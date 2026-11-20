@@ -9,7 +9,7 @@ import { Track, styleKey, STYLES } from "./audmusic.js";
 import { SFX, GAP, LVL } from "./audsfx.js";
 import { Ambience } from "./audamb.js";
 
-const MUSIC_K = 0.62, SFX_K = 1.0, AMB_K = 1.5, LOOK = 0.3;
+const MUSIC_K = 0.5, SFX_K = 1.0, AMB_K = 1.5, LOOK = 0.3;
 
 export class AudioEngine {
   constructor() {
@@ -72,9 +72,9 @@ export class AudioEngine {
     this.musicIn = g(1);
     // 마스터링 EQ: 저역 정리 · 존재감(3kHz) · 공기감(7kHz)
     const lowcut = filt(ctx, "highpass", 32, 0.7), ls = filt(ctx, "lowshelf", 160, 0.7), pk = filt(ctx, "peaking", 2800, 0.8), hs = filt(ctx, "highshelf", 6500, 0.7);
-    ls.gain.value = -3;
-    pk.gain.value = 2.5;
-    hs.gain.value = 5;
+    ls.gain.value = -2;
+    pk.gain.value = -1.5;
+    hs.gain.value = -3;
     this.musicIn.connect(lowcut);
     lowcut.connect(ls);
     ls.connect(pk);

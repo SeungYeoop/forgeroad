@@ -5,13 +5,14 @@ import { SFX_NAMES } from "./audsfx.js";
 import { AMB_NAMES } from "./audamb.js";
 import { FR_REGIONS } from "./world.js";
 
-const STYLE_KO = { folk: "민속 모험", forest: "밤숲 왈츠 (3박자)", cave: "동굴 울림", swamp: "늪", march: "행진", snow: "서리", desert: "사막", storm: "폭풍", sacred: "성소", sky: "하늘", abyss: "심연", epic: "결전", boss: "보스", hub: "거점", result: "결과", rift: "변이" };
+const STYLE_KO = { meadow: "초원 (잔잔함)", folk: "민속 모험", forest: "밤숲 왈츠 (3박자)", cave: "동굴 울림", swamp: "늪", march: "행진", snow: "서리", desert: "사막", storm: "폭풍", sacred: "성소", sky: "하늘", abyss: "심연", epic: "결전", boss: "보스", hub: "거점", result: "결과", rift: "변이" };
 const SFX_KO = { swing: "휘두르기", swingHeavy: "묵직한 휘두르기", punch: "주먹", hit: "타격", crit: "치명타", block: "막기", thud: "쿵", playerHurt: "피격", jump: "점프", land: "착지", dash: "대시", charge: "기 모으기", coin: "동전", coinBig: "큰 돈", buy: "구매", chest: "상자", enemyDie: "적 처치", bossRoar: "보스 포효", warn: "경고", explosion: "폭발", shoot: "발사", bow: "활", magic: "마법", ice: "얼음", lightning: "번개", heal: "회복", buff: "강화", click: "클릭", open: "창 열기", close: "창 닫기", error: "실패", levelup: "레벨 업", record: "보스 격파", death: "죽음", portal: "포털" };
-const AMB_KO = { village: "재의 마을", forest: "밤숲", cave: "동굴", swamp: "늪", fire: "요새", snow: "설원", desert: "사막", storm: "뇌운 첨탑", sanctum: "성소", sky: "하늘", abyss: "심연", forge: "용암 핵", hub: "거점", rift: "변이의 길" };
+const AMB_KO = { meadow: "초원", village: "재의 마을", forest: "밤숲", cave: "동굴", swamp: "늪", fire: "요새", snow: "설원", desert: "사막", storm: "뇌운 첨탑", sanctum: "성소", sky: "하늘", abyss: "심연", forge: "용암 핵", hub: "거점", rift: "변이의 길" };
 
 // 게임과 같은 곡 키·설정
 const TRACKS = [
   { key: "hub", spec: { root: 62, scale: [0, 2, 4, 5, 7, 9, 11], tempo: 92, wave: "triangle", mood: 9, hub: true }, name: "거점", sub: "대장간 마을" },
+  { key: "region_w_g1_0", spec: { ...FR_REGIONS[0].music, region: "grassmere" }, name: "그래스메어", sub: "새 지역 설계" },
   ...FR_REGIONS.map((r) => ({ key: `region_${r.id}`, spec: { ...r.music, region: r.id }, name: r.name, sub: r.id, boss: { key: `boss_${r.boss}`, spec: { ...r.music, tempo: r.music.tempo + 24, boss: true, wave: "sawtooth", seed: 7, region: r.id } } })),
   { key: "region_endless_0", spec: { root: 53, scale: [0, 2, 4, 6, 8, 10], tempo: 118, wave: "square", mood: 8 }, name: "변이의 길", sub: "끝없는 길" },
   { key: "result", spec: { root: 57, scale: [0, 2, 3, 5, 7, 8, 10], tempo: 70, wave: "triangle", mood: 10, hub: true }, name: "결과 화면", sub: "" },

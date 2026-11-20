@@ -23,6 +23,19 @@ const HP_V = new Set(["pad", "choir", "strings", "brass"]);
 //  drums: 타악 표, fill: 구간 끝 채우기, crash/rev: 구간 시작 심벌·거꾸로 심벌, amb: 환경음
 const AMBIENT_PLAN = ["intro", "A", "break", "B", "A2", "break2"];
 const STY = {
+  // 그래스메어: 햇살 좋은 초원. 느리고 잔잔하게 — 부드러운 패드, 느린 하프, 낮은 피리, 북은 거의 없음
+  meadow: {
+    tempo: 76, root: 55, scale: SC.ION, maxE: 2, gain: 0.9,
+    progA: [[0, 3, 0, 4], [0, 5, 3, 4], [0, 3, 5, 4], [0, 4, 5, 3]],
+    progB: [[3, 4, 0, 5], [5, 3, 0, 4], [3, 0, 4, 4]],
+    pad: { v: "pad", o: { wave: "warm", cut: 950, a: 2, r: 2.4, g: 0.12, det: 5 }, oct: 60, g: 0.85, verb: 0.45 },
+    bass: { v: "bass", o: { kind: "upright", g: 0.28, decay: 0.8 }, pat: "ambient2", oct: 43 },
+    arp: { v: "pluck", o: { wave: "soft", bright: 3.5, decay: 1, g: 0.2, atk: 0.12 }, pat: "up8", brk: "quarter", oct: 60, g: 0.75, verb: 0.42, delay: 0.1, pan: -0.25 },
+    lead: { v: "flute", o: { g: 0.13, breath: 0.12, vib: 8, a: 0.1, r: 0.25 }, oct: 69, dens: 0.3, orn: 0.08, legato: 1, verb: 0.45, delay: 0.12, pan: 0.12 },
+    lead2: { v: "strings", o: { g: 0.09, bright: 3, a: 0.35, r: 0.6 }, oct: 69, dens: 0.3, legato: 1, verb: 0.48, pan: 0.1 },
+    counter: { v: "strings", o: { g: 0.06, a: 0.7, r: 1, bright: 2.6 }, oct: 60, verb: 0.48, pan: -0.15 },
+    drums: "meadow", drumG: 0.55, amb: "meadow",
+  },
   // 재의 마을·재의 들판: 쓸쓸하지만 발걸음을 재촉하는 민속풍 모험
   folk: {
     tempo: 96, root: 57, scale: SC.AEO,
@@ -237,7 +250,7 @@ const STY = {
 export const STYLES = STY;
 // 원래 지역 → 곡 성격
 export const REGION_STYLE = {
-  ashvillage: "folk", mistwood: "forest", echomine: "cave", rotmarsh: "swamp", blazefort: "march", frostgorge: "snow",
+  grassmere: "meadow", ashvillage: "folk", mistwood: "forest", echomine: "cave", rotmarsh: "swamp", blazefort: "march", frostgorge: "snow",
   glassdesert: "desert", thunderspire: "storm", crystalsanctum: "sacred", skyruins: "sky", shadowcapital: "abyss", forgeheart: "epic",
 };
 const MOOD_STYLE = { 0: "folk", 1: "forest", 2: "cave", 3: "desert", 4: "snow", 5: "march", 6: "abyss", 7: "storm", 8: "rift", 9: "hub", 10: "result" };
@@ -283,6 +296,7 @@ const AP = {
 // 타악 표: 세기 x=1 o=0.6 -=0.3 . 쉼. 문자열 길이가 마디 칸 수의 n배면 n마디 무늬
 const VEL = { x: 1, o: 0.6, "-": 0.3 };
 const DT = {
+  meadow: [null, {}, { sh: "-...-...-...-..." }, { sh: "o.-.o.-.o.-.o.-.", rim: "........-......." }],
   folk: [null, { k: "x.......x.......", sh: "..o...o...o...o." }, { k: "x.....o.x.......", sh: "o-o-o-o-o-o-o-o-", t1: "....x.......x..." }, { k: "x.....o.x.....o.", sh: "o-o-o-o-o-o-o-o-", t1: "....x..o....x.o.", riq: "....x.......x..." }],
   forest: [null, { sh: "o...o...o..." }, { k: "x...........", sh: "o.o-o.o-o.o-", rim: "........o..." }, { k: "x.......o...", sh: "o-o-o-o-o-o-", rim: "....o...o...", t1: "..........o." }],
   cave: [null, { t2: "x...............................", clk: "...........o..................-." }, { t2: "x.........o.....x...............", k: "x.......................x.......", clk: "...o.......o..........o........." }, { t2: "x.........o.....x.........o.....", k: "x.......x...............x.......", clk: "...o.......o..........o........." }],

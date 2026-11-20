@@ -27,6 +27,17 @@ const LAYER = {
   2: [ART.shadow, "그림자 심연", "깊은 지하"],
   3: [ART.core, "용암 핵", "땅의 핵"],
 };
+// 새 지역 설계로 다시 만든 구역 (하나씩 늘려 간다)
+const REMADE = {
+  g1_0: {
+    reg: {
+      name: "그래스메어",
+      look: "grassmere",
+      particle: "pollen",
+      pal: { sky: [0x3f86d6, 0xcdeaf8], far: 0x7f9cc4, mid: 0x5f9a5c, near: 0x355f3c, top: 0x6aaf48, topHi: 0xb6e070, soil: 0x86684a, soilDark: 0x46342a, soilHi: 0xa8885e, rock: 0x9c9686, accent: 0xffe08a, fog: 0xeaf6ff, glow: 0xfff2c8 },
+    },
+  },
+};
 export const LAYER_NAME = (y) => (y === 0 ? "지상" : LAYER[y][2]);
 // 보스가 사는 칸 (그림 지역마다 한 곳)
 const BOSS_AT = { "2,-2": ART.ash, "-2,2": ART.mist, "2,0": ART.glass, "-2,0": ART.marsh, "3,0": ART.fort, "-3,0": ART.frost, "3,-1": ART.sky, "-3,-2": ART.crystal, "0,-3": ART.spire, "-3,1": ART.mine, "3,2": ART.shadow, "0,3": ART.core };
@@ -112,6 +123,13 @@ export const roll = (...a) => hash(...a) / 4294967296;
       eliteChance: 0.06 + lvl * 0.008,
       zone: z,
     };
+    // 새 지역 설계로 다시 만든 구역: 이름·색·배경 (docs/REGIONS.md)
+    const NEW = REMADE[id];
+    if (NEW) {
+      Object.assign(reg, NEW.reg);
+      z.name = z.short = reg.name;
+      d.name = `${reg.name} 숨은 던전`;
+    }
     FR_WORLD.push(reg);
     z.reg = d.reg = reg;
   }

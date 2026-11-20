@@ -7602,7 +7602,7 @@ function On(A, S) {
     h = new Ze(R),
     m = S === 0 ? E.far : S === 1 ? E.mid : E.near,
     t = st(m, 0.15);
-  const pid = A.bgId ?? A.id;
+  const pid = A.look ?? A.bgId ?? A.id;
   if (PAINT.paintable(pid) || PAINT.paintable(A.src)) {
     const T2 = new ht(Tt, qt + BGX);
     return (BGN.paintLayer3d(T2, S, E, h, BGN.THEME[pid] ? pid : BGN.THEME[A.src] ? A.src : pid), T2);
@@ -8025,7 +8025,7 @@ try {
 } catch {}
 const BG_PENDING = new Set();
 function AiAsync(A, S) {
-  const pid = S.bgId ?? S.id;
+  const pid = S.look ?? S.bgId ?? S.id;
   if (!BGW || !(PAINT.paintable(pid) || PAINT.paintable(S.src))) return void Ai(A, S);
   const T = `bg_${S.id}`;
   if (A.textures.exists(T + "_sky") || BG_PENDING.has(T)) return;
@@ -18802,7 +18802,7 @@ class Er extends zt.Scene {
       this.cameras.main.flash(300, 255, 240, 200));
     const h = this.currentRegion();
     (this.time.delayedCall(2500, () => {
-      this.dying || j.playMusic(`region_${h.id}`, { ...h.music, region: h.src ?? h.id });
+      this.dying || j.playMusic(`region_${h.id}`, { ...h.music, region: h.look ?? h.src ?? h.id });
     }),
       this.time.delayedCall(1500, () => {
         var t;
@@ -18876,7 +18876,7 @@ class Er extends zt.Scene {
       }
       (FG.zoned || (n = this.hud()) == null || n.regionBanner(h.name, h.sub), FG.zoned || this.cameras.main.flash(400, 255, 255, 255, !1));
     }
-    (this.boss || j.playMusic(`region_${h.id}`, { ...h.music, region: h.src ?? h.id }),
+    (this.boss || j.playMusic(`region_${h.id}`, { ...h.music, region: h.look ?? h.src ?? h.id }),
       (i = this.ambient) == null || i.destroy(),
       (this.ambient = this.makeAmbient(h)),
       FG.regionFx(this, h));
@@ -19578,6 +19578,8 @@ class Er extends zt.Scene {
       return;
     }
     let E = Math.min(0.05, C / 1e3) * this.timeScale;
+    // 구역을 불러오는 동안: 로딩 화면만 움직이고 게임은 멈춘다
+    if (FG.loadGate(this, Math.min(0.05, C / 1e3))) return;
     if (
       (it.tick(performance.now()),
       this.readInput(),

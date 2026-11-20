@@ -1,5 +1,6 @@
 // 지역 배경 (원경 0 · 중경 1 · 근경 2) — 3D 픽셀 리메이크
 import * as G from "./bg3d.js";
+import { paintGrass } from "./bggrass.js";
 const W = 640, HH = 360;
 const mix = (a, b, t) => {
   t = Math.max(0, Math.min(1, t));
@@ -16,11 +17,13 @@ const sh = (c, f) => {
 export const THEME = {
   ashvillage: "plains", mistwood: "forest", echomine: "cave", rotmarsh: "marsh", blazefort: "fortress", frostgorge: "snow",
   glassdesert: "desert", thunderspire: "spire", crystalsanctum: "crystal", skyruins: "sky", shadowcapital: "abyss", forgeheart: "forge",
+  grassmere: "grass",
 };
 const DARK = { cave: 1, abyss: 1 };
 
 export function paintLayer3d(T, S, E, h, id) {
   const th = THEME[id] ?? (/forest|wood/.test(id) ? "forest" : "plains");
+  if (th === "grass") return paintGrass(T, S, E, h);
   const B = G.buffer(W, T.h ?? HH);
   const skyC = E.sky[1], seed = h.int(1, 9999);
   const R = (a, b) => h.int(a, b);
@@ -147,5 +150,14 @@ export function paintLayer3d(T, S, E, h, id) {
 export function paintSky3d(T, E, w, hgt) {
   const B = G.buffer(w, hgt);
   G.sky(B, E.sky[0], E.sky[1], mix(E.sky[0], E.sky[1], 0.6));
+  // 해 빛무리 (팔레트에 glow가 있는 지역)
+  if (E.glow) {
+    const cx = w * 0.78, cy = hgt * 0.16, r = hgt * 0.5;
+    for (let y = 0; y < hgt; y++)
+      for (let x = 0; x < w; x++) {
+        const d = Math.hypot(x - cx, (y - cy) * 1.2) / r;
+        d < 1 && B.put(x, y, E.glow, Math.round(150 * Math.pow(1 - d, 2.2)));
+      }
+  }
   B.toHt(T);
 }
