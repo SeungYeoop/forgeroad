@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
+  <title>사운드 실험실</title>
+  <style>
+    :root { --bg: #111017; --panel: #1b1924; --line: #34304a; --ink: #ece6d6; --dim: #a39c8c; --ok: #7fdc8a; --accent: #e8c46a; --on: #6a4fa0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 "Galmuri11", system-ui, sans-serif; }
+    header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+    header h1 { margin: 0 8px 0 0; font-size: 18px; color: var(--accent); }
+    label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+    input[type=range] { width: 120px; accent-color: var(--accent); }
+    button { font: inherit; color: var(--ink); background: #2c2838; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+    button:hover { background: #3a3448; }
+    button.on { background: var(--on); border-color: #8a6fd0; }
+    #now { flex: 1 1 260px; min-width: 0; font-size: 12px; color: var(--dim); }
+    #now b { color: var(--ink); font-weight: normal; }
+    canvas#meter { width: 220px; height: 44px; background: #0b0a10; border: 1px solid var(--line); border-radius: 6px; }
+    main { padding: 16px; display: grid; gap: 16px; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+    section h2 { margin: 0 0 4px; font-size: 15px; color: var(--accent); }
+    section p { margin: 0 0 10px; color: var(--dim); font-size: 12px; }
+    .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); }
+    .card { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .card .t { font-size: 13px; }
+    .card .s { font-size: 11px; color: var(--dim); }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .sfx { display: flex; flex-wrap: wrap; gap: 6px; }
+    .sfx button { min-width: 92px; }
+  </style>
+  <script type="module" src="/src/forge/soundlab.js"></script>
+</head>
+<body>
+  <header>
+    <h1>사운드 실험실</h1>
+    <label>음악 <input id="vm" type="range" min="0" max="1" step="0.05" value="0.5" /></label>
+    <label>효과음 <input id="vs" type="range" min="0" max="1" step="0.05" value="0.7" /></label>
+    <label>동굴 울림 <input id="sp" type="range" min="0" max="1" step="0.05" value="0" /></label>
+    <button id="stop">■ 모두 멈춤</button>
+    <canvas id="meter" width="440" height="88"></canvas>
+    <div id="now">버튼을 누르면 소리가 납니다.</div>
+  </header>
+  <main>
+    <section>
+      <h2>배경 음악</h2>
+      <p>지역마다 악기·리듬·화음이 다르고, 도입 → 주제 A → 주제 B → 쉼 순서로 흘러갑니다. 게임에서는 구역마다 선율이 달라집니다. "다른 선율"을 누르면 같은 지역의 다른 구역 곡이 나옵니다.</p>
+      <div class="grid" id="music"></div>
+    </section>
+    <section>
+      <h2>효과음</h2>
+      <p>게임에서 쓰는 이름 그대로입니다. 눌러서 들어 보세요 (같은 버튼을 빠르게 누르면 동전은 음이 올라갑니다).</p>
+      <div class="sfx" id="sfx"></div>
+    </section>
+    <section>
+      <h2>환경음</h2>
+      <p>지역 곡을 틀면 그 지역 환경음이 함께 나옵니다. 여기서 따로 바꿔 들을 수도 있습니다. "동굴 울림"을 올리면 땅속처럼 울리고 동굴 소리가 섞입니다.</p>
+      <div class="sfx" id="amb"></div>
+    </section>
+  </main>
+</body>
+</html>

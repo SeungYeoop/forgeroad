@@ -1722,6 +1722,7 @@ export function update(sc, dt) {
   VFX.updateVfx(sc, dt);
   ATMO.update(sc, dt);
   NATANIM.update(sc, dt, natAnimSrc(sc));
+  R.j.setSpace && R.j.setSpace(audioSpace(sc));
   updateEnts(sc, dt);
   updatePickups(sc, dt);
   LOOK.update(sc, dt);
@@ -4174,6 +4175,17 @@ export const _exitPos = (world, z, at) => exitPos(world, z, at);
 // 카메라가 지금 구역 밖(옆 구역)을 비추지 않게: 구역 왼쪽 끝 ~ 오른쪽 끝 - 화면 폭
 // 자연 지형 나무·폐허 그림: 처음 쓸 때 한 번 그려 텍스처로 둔다
 // 움직이는 장식 층에 넘길 지금 구역의 설계 (설계가 준비된 자연 지형 구역만)
+// 소리 공간: 뒷벽으로 둘러싸인 곳(굴·신전·던전) 1, 땅속 0.8, 트인 곳 0 → 효과음 울림·동굴 환경음
+function audioSpace(sc) {
+  const z = zoneOfPlayer(sc);
+  if (!z || !planReady(sc, z)) return 0;
+  const P = ZG.planOf(z, planOpts(sc, z));
+  if (!P) return 0;
+  const px = sc.player.cx - sc.world.lx(z.c0 * 32), py = sc.player.cy;
+  if ((P.walls ?? []).some((w) => px >= w.x0 && px < w.x1 && py >= w.y0 && py < w.y1)) return 1;
+  const surf = P.h ? P.h[Math.max(0, Math.min(P.h.length - 1, Math.round(px / 4)))] : 1e9;
+  return py > surf + 24 ? 0.8 : 0;
+}
 function natAnimSrc(sc) {
   const z = zoneOfPlayer(sc);
   if (!z || !planReady(sc, z)) return null;

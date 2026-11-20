@@ -29,3 +29,7 @@
 - 여러 시드 비교 디버그 페이지: `npm run dev` → http://localhost:5173/terrain-lab.html?zone=gm3_0&seeds=1,2,3,4 (배포판에도 포함: …/terrain-lab.html)
 - 주의: 이 노트북은 계속 100% 부하가 걸리면 몇 초 뒤 CPU가 크게 느려진다. 긴 일괄 검사의 시간 수치는 앞쪽 몇 개만 믿을 것
 - 주의: 헤드리스는 느려서 게임 시간이 실제보다 천천히 간다(속도 판단 금지). 페이지 새로고침 직후 7~10초 기다릴 것(부팅 렌더링).
+- 소리(음원 파일 없는 합성 엔진 `src/forge/audio.js` + `audcore/audvoice/audmusic/audsfx/audamb.js`): 들어 보기 http://localhost:5173/sound-lab.html (배포판에도 포함). 게임에서 옛 소리와 비교: 주소에 `?audio=old`
+  - 크기·주파수 분포·스펙트로그램: `node tools/audiolab.mjs [music|sfx|amb|all] [초] [키 거르기]` → shots/aud_*.png
+  - 계산량(오프라인 렌더 시간 ÷ 소리 길이): `node tools/audtime.mjs empty,boss_frb4,…` (`MUTE=pad+drum`으로 파트 빼고 비교, 탭 첫 측정은 예열 때문에 높게 나옴). 노드를 음마다 만들므로 거름 주파수 자동화·긴 잔향을 늘리면 금방 무거워진다
+  - 게임 속 확인: `node --import ./tools/json-hook.mjs tools/audgame.mjs g1_0` (곡·환경음·땅속 울림 상태, 오류, 프레임)

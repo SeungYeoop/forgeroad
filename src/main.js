@@ -2,6 +2,7 @@ import { titleScene } from "./forge/title-scene.js";
 import Phaser from "phaser";
 import "./style.css";
 import * as FG from "./forge/glue.js";
+import { AudioEngine } from "./forge/audio.js";
 import { TOUCH, initTouch } from "./forge/touch.js";
 import { FRBG, FRDECOR } from "./forge/bg.js";
 import * as PAINT from "./forge/bgpaint.js";
@@ -8443,7 +8444,9 @@ function bn(A) {
   }
   return t;
 }
-const j = new Dn();
+// 소리: 새 합성 엔진 (주소에 ?audio=old 를 붙이면 옛 소리로 비교)
+const j = typeof location !== "undefined" && /[?&]audio=old/.test(location.search) ? new Dn() : new AudioEngine();
+typeof window !== "undefined" && (window.__audio = j);
 function ct(A, S, T, C, E = "body", R = q.text, h = {}) {
   h.stroke && qLight[R] && (R = qLight[R]);
   const m = E === "small" ? ii : E === "tiny" ? Di : E === "big" || E === "title" ? Ms : ei,
@@ -18768,7 +18771,7 @@ class Er extends zt.Scene {
     const o = ji[v];
     j.play("bossRoar");
     const n = this.currentRegion();
-    (j.playMusic(`boss_${v}`, { ...n.music, tempo: n.music.tempo + 24, boss: !0, wave: "sawtooth", seed: 7 }),
+    (j.playMusic(`boss_${v}`, { ...n.music, tempo: n.music.tempo + 24, boss: !0, wave: "sawtooth", seed: 7, region: n.src ?? n.id }),
       (i = this.hud()) == null || i.bossIntro(o.name, o.title),
       this.time.delayedCall(1700, () => {
         this.bossIntro = !1;
@@ -18799,7 +18802,7 @@ class Er extends zt.Scene {
       this.cameras.main.flash(300, 255, 240, 200));
     const h = this.currentRegion();
     (this.time.delayedCall(2500, () => {
-      this.dying || j.playMusic(`region_${h.id}`, h.music);
+      this.dying || j.playMusic(`region_${h.id}`, { ...h.music, region: h.src ?? h.id });
     }),
       this.time.delayedCall(1500, () => {
         var t;
@@ -18873,7 +18876,7 @@ class Er extends zt.Scene {
       }
       (FG.zoned || (n = this.hud()) == null || n.regionBanner(h.name, h.sub), FG.zoned || this.cameras.main.flash(400, 255, 255, 255, !1));
     }
-    (this.boss || j.playMusic(`region_${h.id}`, h.music),
+    (this.boss || j.playMusic(`region_${h.id}`, { ...h.music, region: h.src ?? h.id }),
       (i = this.ambient) == null || i.destroy(),
       (this.ambient = this.makeAmbient(h)),
       FG.regionFx(this, h));
