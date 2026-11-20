@@ -5,6 +5,7 @@
 // 엔진은 "거리 줄" 하나로 돌아가므로, 칸마다 줄 위에 [숨은 던전 5조각][구역 8조각] 자리를 따로 잡아 둔다.
 // 난이도는 줄 위치가 아니라 거점에서 떨어진 칸 수(고리)로 정한다 (diffDist).
 import { FR_REGIONS } from "./world.js";
+import { BESTIARY } from "./bestiary.js";
 
 const VT = 32, ME = 6, POCKET = 5, ZLEN = 16, N = 3;
 // 원래 지역(그림 재료) 번호
@@ -27,31 +28,37 @@ const LAYER = {
   2: [ART.shadow, "그림자 심연", "깊은 지하"],
   3: [ART.core, "용암 핵", "땅의 핵"],
 };
-// 새 지역 설계로 다시 만든 구역 (하나씩 늘려 간다)
+// 새 지역 설계로 다시 만든 구역 = 파랑(고리 1) 8곳. 이름·색·배경·입자 + 층 띠별 몬스터(bestiary.js)
+//   look: 배경(bgnew THEME)·분위기(atmo)·음악(audmusic)이 이 이름으로 고른다
 const REMADE = {
-  g1_0: {
-    reg: {
-      name: "그래스메어",
-      look: "grassmere",
-      particle: "pollen",
-      // 이 구역 전용 몬스터 (세기 천차만별: 슬라임 < 맨드레이크 < 고블린 < 말벌 < 늑대 < 멧돼지 ≪ 정예)
-      // 층마다 사는 몬스터가 다르다 (pack = 한 무리 마릿수 [최소, 최대])
-      //   땅(초원 지표): 슬라임 · 늑대 · 멧돼지, 정예 켄타우로스 사냥꾼 (탁 트인 들판)
-      //   하늘섬: 거대 말벌 · 맨드레이크 (섬 꽃밭에 숨어 있음)
-      //   지하(동굴·고대 던전): 고블린 정찰병 무리, 정예 초원 오우거
-      layers: {
-      // t = 위협 (상자 지기를 고를 때: 나무 상자는 약한 것, 황금·전설은 센 것)
-        ground: { enemies: [{ id: "gm_slime", w: 5, pack: [1, 3], t: 1 }, { id: "gm_wolf", w: 3, pack: [2, 3], t: 2 }, { id: "gm_boar", w: 2, pack: [1, 1], t: 3 }], elites: ["gm_centaur"] },
-        sky: { enemies: [{ id: "gm_wasp", w: 5, pack: [2, 3], t: 2 }, { id: "gm_mandrake", w: 3, pack: [1, 2], t: 1 }], elites: [] },
-        under: { enemies: [{ id: "gm_goblin", w: 1, pack: [2, 3], t: 2 }], elites: ["gm_ogre"] },
-      },
-      // 지표 기준 목록 (떠도는 정예 무리·매복 행사 등 엔진이 쓰는 곳)
-      enemies: [{ id: "gm_slime", w: 5 }, { id: "gm_wolf", w: 3 }, { id: "gm_boar", w: 2 }],
-      elites: ["gm_centaur"],
-      pal: { sky: [0x3f86d6, 0xcdeaf8], far: 0x7f9cc4, mid: 0x5f9a5c, near: 0x355f3c, top: 0x6aaf48, topHi: 0xb6e070, soil: 0x86684a, soilDark: 0x46342a, soilHi: 0xa8885e, rock: 0x9c9686, accent: 0xffe08a, fog: 0xeaf6ff, glow: 0xfff2c8 },
-    },
-  },
+  g1_0: { name: "그래스메어", look: "grassmere", particle: "pollen",
+    pal: { sky: [0x3f86d6, 0xcdeaf8], far: 0x7f9cc4, mid: 0x5f9a5c, near: 0x355f3c, top: 0x6aaf48, topHi: 0xb6e070, soil: 0x86684a, soilDark: 0x46342a, soilHi: 0xa8885e, rock: 0x9c9686, accent: 0xffe08a, fog: 0xeaf6ff, glow: 0xfff2c8 } },
+  gm1_0: { name: "모스바크", look: "mossbark", particle: "fireflies",
+    pal: { sky: [0x3e6e66, 0xbfe0c8], far: 0x6a8e7c, mid: 0x3e6a48, near: 0x203c28, top: 0x4e9436, topHi: 0x9ad060, soil: 0x5c4834, soilDark: 0x2e2218, soilHi: 0x7c6246, rock: 0x6e7c64, accent: 0xd8f070, fog: 0xd8f0e0, glow: 0xf0f8c0 } },
+  g0_m1: { name: "그린스텝", look: "greenstep", particle: "pollen",
+    pal: { sky: [0x4a9ae8, 0xe4f6ff], far: 0xa8c8f0, mid: 0x7ab8d8, near: 0x4a8ab0, top: 0x78c850, topHi: 0xc4f286, soil: 0x8a6e4e, soilDark: 0x4a3628, soilHi: 0xaa8e64, rock: 0xb0a894, accent: 0xfff080, fog: 0xffffff, glow: 0xfff8d8 } },
+  g1_m1: { name: "스톤브리지", look: "stonebridge", particle: "clouds",
+    pal: { sky: [0x5a8ad0, 0xd8ecfa], far: 0x9ab4d8, mid: 0x7a94b8, near: 0x4a6488, top: 0x86b456, topHi: 0xc8e488, soil: 0x9a8a72, soilDark: 0x5a4e40, soilHi: 0xbaa88a, rock: 0xc8bca4, accent: 0x9ad8ff, fog: 0xf0f6ff, glow: 0xfff4d8 } },
+  gm1_m1: { name: "리프크라운", look: "leafcrown", particle: "pollen",
+    pal: { sky: [0x5aa0d8, 0xf0f4d0], far: 0xb8d4a8, mid: 0x6aa050, near: 0x2e5a2a, top: 0x58b038, topHi: 0xb0e85a, soil: 0x7a5434, soilDark: 0x3e2818, soilHi: 0x9a7048, rock: 0x8a6a48, accent: 0xffc040, fog: 0xf8ffe8, glow: 0xfff0b0 } },
+  g0_1: { name: "아이언베인", look: "ironvein", particle: "drips",
+    pal: { sky: [0x1c1a20, 0x4a4248], far: 0x3a3438, mid: 0x2c2628, near: 0x1a1618, top: 0x7a6a5a, topHi: 0xb09a80, soil: 0x5a4a3e, soilDark: 0x2a221c, soilHi: 0x7a6450, rock: 0x6a6670, accent: 0xd07a3a, fog: 0xc09070, glow: 0xffb060 } },
+  g1_1: { name: "드립스톤", look: "dripstone", particle: "drips",
+    pal: { sky: [0x10202a, 0x2a4a58], far: 0x2a4048, mid: 0x1e3038, near: 0x121e24, top: 0xb8c4b8, topHi: 0xe8f0e4, soil: 0x6a7470, soilDark: 0x343c3c, soilHi: 0x8a948c, rock: 0x9aa8a4, accent: 0x60e0f0, fog: 0x80c8d8, glow: 0xa0f0ff } },
+  gm1_1: { name: "루트홀로우", look: "roothollow", particle: "spores",
+    pal: { sky: [0x16101a, 0x3a2a40], far: 0x2e2232, mid: 0x221a26, near: 0x140e16, top: 0x6a5a3a, topHi: 0x9a8a5a, soil: 0x5a4030, soilDark: 0x2a1c14, soilHi: 0x7a5a40, rock: 0x5e5048, accent: 0x7af0a0, fog: 0x9a7ab0, glow: 0xb0ffd0 } },
 };
+// 층 띠별 몬스터 목록 (bestiary.js → 엔진·배치가 쓰는 꼴)
+function layersOf(zid) {
+  const B = BESTIARY[zid];
+  if (!B) return null;
+  const out = {};
+  for (const [band, list] of Object.entries(B.bands))
+    out[band] = { enemies: list.filter((m) => !m.e).map((m) => ({ id: m.id, w: m.w, pack: m.pack, t: m.t })), elites: list.filter((m) => m.e).map((m) => m.id) };
+  return out;
+}
+// 바깥 고리(노랑·빨강) 구역: 같은 방향의 파랑 구역 몬스터를 빌려 쓴다 (세기는 고리에 맞춰 엔진이 올린다)
+const blueOf = (x, y) => `g${Math.sign(x)}_${Math.sign(y)}`.replace(/-/g, "m");
 export const LAYER_NAME = (y) => (y === 0 ? "지상" : LAYER[y][2]);
 // 보스가 사는 칸 (그림 지역마다 한 곳)
 const BOSS_AT = { "2,-2": ART.ash, "-2,2": ART.mist, "2,0": ART.glass, "-2,0": ART.marsh, "3,0": ART.fort, "-3,0": ART.frost, "3,-1": ART.sky, "-3,-2": ART.crystal, "0,-3": ART.spire, "-3,1": ART.mine, "3,2": ART.shadow, "0,3": ART.core };
@@ -115,8 +122,6 @@ export const roll = (...a) => hash(...a) / 4294967296;
     ZONES.push(d, z);
     CELLS[key(x, y)] = z;
     // 엔진용 지역
-    const enemies = [...art.enemies];
-    colArt && colArt !== art && enemies.push(...colArt.enemies.slice(0, 4).map((e) => ({ id: e.id, w: Math.max(1, e.w - 1) })));
     const reg = {
       ...art,
       id: `w_${id}`,
@@ -128,7 +133,7 @@ export const roll = (...a) => hash(...a) / 4294967296;
       start: d.c0 * VT - ME,
       end: z.c1 * VT - ME,
       boss: bossArt != null ? FR_REGIONS[bossArt].boss : null,
-      enemies,
+      enemies: [],
       pal: colArt && y !== 0 ? mixPal(art.pal, colArt.pal, 0.35) : art.pal,
       idx: lvl,
       ceiling: y > 0 ? Math.max(0.75, art.ceiling ?? 0) : y < 0 ? 0 : art.ceiling,
@@ -137,13 +142,18 @@ export const roll = (...a) => hash(...a) / 4294967296;
       eliteChance: 0.06 + lvl * 0.008,
       zone: z,
     };
-    // 새 지역 설계로 다시 만든 구역: 이름·색·배경 (docs/REGIONS.md)
+    // 새 지역 설계로 다시 만든 구역: 이름·색·배경 (docs/REGIONS.md) + 층 띠별 몬스터
     const NEW = REMADE[id];
     if (NEW) {
-      Object.assign(reg, NEW.reg);
+      Object.assign(reg, NEW);
       z.name = z.short = reg.name;
       d.name = `${reg.name} 숨은 던전`;
     }
+    const LY = layersOf(NEW ? id : blueOf(x, y)) ?? layersOf("g1_0");
+    reg.layers = LY;
+    // 엔진이 쓰는 기본 목록 (떠도는 정예 무리·매복 행사): 지표(지상) 또는 모든 띠
+    reg.enemies = LY.ground?.enemies ?? Object.values(LY).flatMap((b) => b.enemies);
+    reg.elites = LY.ground?.elites ?? Object.values(LY).flatMap((b) => b.elites);
     FR_WORLD.push(reg);
     z.reg = d.reg = reg;
   }

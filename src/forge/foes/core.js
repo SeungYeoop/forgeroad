@@ -9,7 +9,10 @@ import { renderSheet } from "./sheet.js";
 let R = null;
 export const bindFoes = (r) => (R = r);
 export const SPECS = {};
+import { foesOf } from "../bestiary.js";
 export const register = (id, spec) => (SPECS[id] = spec);
+// 그림·행동이 다 갖춰진 몬스터인가
+export const hasSpec = (id) => !!(SPECS[id]?.px || SPECS[id]?.model);
 
 // 프레임 배치 (모든 적 공통)
 export const F = { IDLE: [0, 1, 2, 3], MOVE: [4, 5, 6, 7], HURT: 8, WIND: [9, 10], ATK: [11, 12, 13], SP: [14, 15, 16, 17, 18, 19] };
@@ -223,7 +226,8 @@ const ASKED = new Set();
 export function preloadRegion(scene, ri, list = null) {
   if (!list && (ri < 0 || ASKED.has(ri))) return;
   list || ASKED.add(ri);
-  const ids = (list ?? [0, 1, 2, 3, 4, 5].map((k) => `fr${ri}_${k}`).concat([`fr${ri}_e0`, `fr${ri}_e1`, `frb${ri}`])).filter((id) => SPECS[id]?.model || SPECS[id]?.px);
+  // 옛 지역 번호(ri)로 부르면 그 지역 보스만 (일반 몬스터는 지웠다)
+  const ids = (list ?? [`frb${ri}`]).filter((id) => SPECS[id]?.model || SPECS[id]?.px);
   const w = worker(scene);
   for (const id of ids) {
     if (BUILT.has(id) || PENDING.has(id)) continue;
@@ -266,10 +270,8 @@ export function buildArt(scene, key, spec) {
 }
 export function bootFoeArt(scene) {
   // 부팅 때는 렌더하지 않는다: 1·2지역을 뒤에서 미리 만들어 둔다
-  preloadRegion(scene, 0);
-  preloadRegion(scene, 1);
-  // 그래스메어 몬스터 (첫 구역)
-  preloadRegion(scene, -1, ["gm_slime", "gm_slime_mini", "gm_goblin", "gm_wolf", "gm_boar", "gm_wasp", "gm_mandrake", "gm_ogre", "gm_centaur"]);
+  // 그래스메어 몬스터 (첫 구역). 다른 구역은 들어가기 전에 이웃 구역 몬스터를 미리 만든다 (glue prefetchNeighbors)
+  preloadRegion(scene, -1, ["gm_slime", "gm_slime_mini", ...foesOf("g1_0")]);
 }
 // 엔진 정의에 새 적 표시
 export function foeDef(d) {

@@ -9,17 +9,11 @@ import { showLoad } from "./loadscreen.js";
 import { warmProps, prepaintStep } from "./terrain.js";
 import * as PROPS from "./props3d.js";
 import * as FOES from "./foes/core.js";
-import { bindR0 } from "./foes/r0.js";
-import "./foes/r1.js";
 import "./foes/rg0.js";
-import "./foes/r6.js";
+import "./foes/regions.js"; // 새 지역 몬스터 행동 (모스바크·그린스텝·스톤브리지·리프크라운·아이언베인·드립스톤·루트홀로우)
 import { sahar } from "./foes/m6.js";
-import "./foes/r5.js";
 import { kryos } from "./foes/m5.js";
-import "./foes/r4.js";
 import { ignar } from "./foes/m4.js";
-import "./foes/r2.js";
-import "./foes/r3.js";
 import { globrak } from "./foes/m3.js";
 import { grauk } from "./foes/m2.js";
 import { elkharn } from "./foes/m1.js";
@@ -62,7 +56,6 @@ export function bind(refs) {
   NATANIM.bindAnim(R);
   DEPTH.bindDepth(R);
   FOES.bindFoes(R);
-  bindR0(R.j);
   for (const w of R.ce) ORIG_W[w.id] = structuredClone(w);
   for (const a of R.le) ORIG_A[a.id] = structuredClone(a);
 }
@@ -3949,6 +3942,7 @@ FOES.register("frb2", grauk);
 FOES.register("frb3", globrak);
 export const foeDef = (d) => FOES.foeDef(d);
 export const foeThink = (e, dt) => FOES.think(e, dt);
+export const foeReady = (id) => FOES.hasSpec(id);
 // ── 몬스터 영역: 태어난 구역 + 층(하늘섬·땅·지하) + 집에서 가로 480px(정예 600px) ──
 // 플레이어가 영역을 벗어나면 쫓기를 그만두고 집으로 돌아가며, 그동안(그리고 플레이어가 밖에 있는 동안) 체력이 차오른다
 const LEASH = 480, LEASH_ELITE = 600;
@@ -4014,7 +4008,19 @@ export const foeBoss = (b, name) => (BOSS_RUN[b.def.id] ? BOSS_RUN[b.def.id](b, 
 export const foeHurt = (e) => FOES.hurtFrame(e);
 export const foeFrame = (id, nm, k) => FOES.frameOf(id, nm, k);
 export const foeEnsure = (scene, id) => FOES.ensure(scene, id);
-export const foePreload = (scene, ri) => FOES.preloadRegion(scene, R.Ht[ri]?.srcIdx ?? ri);
+// 지역 몬스터 그림 미리 만들기: 그 구역(엔진 지역 ri)이 쓰는 층 띠 몬스터 전부
+export const foePreload = (scene, ri) => {
+  const L = R.Ht[ri]?.layers;
+  L && FOES.preloadRegion(scene, -1, Object.values(L).flatMap((b) => [...b.enemies.map((e) => e.id), ...b.elites]));
+  FOES.preloadRegion(scene, R.Ht[ri]?.srcIdx ?? ri);
+};
+// 지운 옛 몬스터 id(보스가 부르는 졸개 등) → 지금 구역의 몬스터 (가벼운 것부터)
+export function foeAlias(sc, id, x, y) {
+  const z = sc.world ? ZN.zoneAtTile(sc.world.gtx(x ?? sc.player?.x ?? 0)) : null;
+  const L = z?.reg?.layers;
+  const pool = L ? Object.values(L).flatMap((b) => b.enemies).filter((e) => FOES.hasSpec(e.id)).sort((a, b) => (a.t ?? 2) - (b.t ?? 2)) : [];
+  return pool[0]?.id ?? (FOES.hasSpec("gm_slime") ? "gm_slime" : null);
+}
 
 // ── 벽 끼임 풀기: 몸이 막힌 칸과 겹치면 가장 가까운 빈 자리로 옮긴다 (스킬 순간이동·밀려남 등) ──
 const _blocked = (W, x, y, w, h) => {
@@ -4330,7 +4336,7 @@ export function zoneObjs(evm, S, T, traits) {
   const fr = sc.fr;
   if (pc === S.index && fr && !(fr.packs ??= {})[z.id]) {
     fr.packs[z.id] = 1;
-    const pool = S.region?.layers?.ground?.enemies ?? S.region?.enemies ?? [];
+    const pool = (S.region?.layers?.ground?.enemies ?? S.region?.enemies ?? []).filter((x) => FOES.hasSpec(x.id));
     if (pool.length) {
       const pick = () => {
         let t = pool.reduce((s, x) => s + (x.w ?? 1), 0) * Math.random();
@@ -4521,9 +4527,12 @@ export function ensurePlan(sc, z) {
 // 이웃 구역을 미리 (갈 수 있는 출구 쪽)
 function prefetchNeighbors(sc, z) {
   const zz = z.kind === "dungeon" ? ZN.zoneOfPocket(z) : z;
+  // 지금 구역과 이웃 구역 몬스터 그림을 뒤에서 미리
+  const pre = (q) => q?.reg?.layers && FOES.preloadRegion(sc, -1, Object.values(q.reg.layers).flatMap((b) => [...b.enemies.map((e) => e.id), ...b.elites]));
+  pre(zz);
   for (const e of ZN.exitList(zz)) {
     const t = ZN.BY_ID[e.to];
-    t && ensurePlan(sc, t);
+    t && (ensurePlan(sc, t), pre(t));
   }
 }
 // "지형을 만드는 중" 표시 (화면이 어두워진 동안)

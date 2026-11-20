@@ -1,6 +1,7 @@
 // 포지로드 월드 데이터: 지역 12곳, 몬스터·엘리트·보스.
 // 원본 엔진(끝없는 경계)의 스프라이트·AI를 재사용하고 이름·수치·색은 기획서 기준.
 import REGIONS from "./regions.json";
+import { ALL_FOES } from "./bestiary.js";
 
 // 지역마다 적 체력 배율 (기획서 0-4). 엔진은 거리 배율을 따로 적용하므로 기준값을 나눠서 쓴다.
 export const REGION_MULT = [1, 1.5, 2.2, 3.2, 4.6, 6.5, 9, 12.5, 17, 23, 31, 42];
@@ -12,121 +13,7 @@ const el = (s) => {
   return null;
 };
 
-// [이름, AI 원형, 스프라이트 원형, 색조, 색조 세기]
-const MON = [
-  [
-    ["잿더미 좀비", "scorpion", "mummy", 0x8c8580, 0.55],
-    ["불씨 쥐", "hound", "hound", 0xff7a30, 0.5],
-    ["그을린 해골 궁수", "xbowman", "xbowman", 0x5e4e44, 0.5],
-    ["타다 남은 허수아비", "sporecap", "banner", 0xc07038, 0.55],
-    ["재 까마귀", "bat", "bat", 0x4a4448, 0.6],
-    ["녹은 갑옷", "sentry", "sentry", 0xd06a30, 0.45],
-  ],
-  [
-    ["이끼 늑대", "wolf", "wolf", 0x5a9a5a, 0.55],
-    ["안개 요정", "wasp", "wisp", 0xc8fff0, 0.5],
-    ["뿌리 덩굴", "tentacle", "tentacle", 0x5a8a3a, 0.6],
-    ["포자 버섯", "sporecap", "sporecap", 0x60c0a0, 0.3],
-    ["사냥꾼 망령", "xbowman", "phantom", 0x80e0c0, 0.55],
-    ["가시 고슴도치", "scorpion", "crawler", 0x8a6a4a, 0.55],
-  ],
-  [
-    ["해골 광부", "scorpion", "raider", 0xd8d0b8, 0.55],
-    ["광석 벌레", "worm", "worm", 0x8a7060, 0.35],
-    ["동굴 박쥐 떼", "bat", "bat", 0x504870, 0.3],
-    ["폭약 고블린", "kobold", "kobold", 0x80a040, 0.3],
-    ["수정 거미", "crawler", "crawler", 0x40e0d0, 0.45],
-    ["광맥 정령", "shaman", "orb", 0x40e0c0, 0.55],
-  ],
-  [
-    ["늪 거머리", "slime", "slime", 0x6a4a7a, 0.6],
-    ["부풀은 시체", "rotbear", "rotbear", 0x8a9a5a, 0.5],
-    ["두꺼비 전사", "scorpion", "yeti", 0x5a8a3a, 0.6],
-    ["독침 잠자리", "wasp", "wasp", 0x90e060, 0.4],
-    ["늪 마녀", "mummy", "shaman", 0x9a5aaa, 0.55],
-    ["버섯 군락", "sporecap", "sporecap", 0xa070c0, 0.55],
-  ],
-  [
-    ["화염 보병", "pikeman", "pikeman", 0xff5a30, 0.35],
-    ["화약 포병", "bomber", "bomber", 0xff8040, 0.2],
-    ["불도마뱀", "hound", "scorpion", 0xff5030, 0.55],
-    ["용광로 정령", "scorpion", "djinn", 0xff8040, 0.6],
-    ["쇠사슬 고문관", "xbowman", "xbowman", 0x803030, 0.55],
-    ["깃발병", "banner", "banner", 0xff4020, 0.3],
-  ],
-  [
-    ["설원 늑대", "wolf", "wolf", 0xc8e0ff, 0.2],
-    ["얼음 정령", "wisp", "wisp", 0x90e0ff, 0.15],
-    ["서리 예티", "yeti", "yeti", 0xe0f0ff, 0.2],
-    ["얼어붙은 병사", "xbowman", "xbowman", 0x9ad0ff, 0.55],
-    ["고드름 박쥐", "bat", "bat", 0xa0e0ff, 0.55],
-    ["눈사람 폭탄병", "hound", "kobold", 0xffffff, 0.6],
-  ],
-  [
-    ["모래 전갈", "scorpion", "scorpion", 0xf0b060, 0.2],
-    ["사막 약탈자", "raider", "raider", 0xe0a050, 0.2],
-    ["모래 정령", "djinn", "djinn", 0xffd080, 0.2],
-    ["붕대 미라", "scorpion", "mummy", 0xf0e0b0, 0.3],
-    ["유리 뱀", "worm", "worm", 0xa0f0ff, 0.6],
-    ["신기루 상인", "banner", "caller", 0xf0c060, 0.55],
-  ],
-  [
-    ["태엽 병사", "scorpion", "sentry", 0xc08a40, 0.55],
-    ["피뢰 드론", "wasp", "orb", 0xb080ff, 0.5],
-    ["전류 해파리", "voideye", "wisp", 0xc0a0ff, 0.6],
-    ["자석 거미", "scorpion", "crawler", 0x707088, 0.55],
-    ["코일 포탑", "sentinel", "ballista", 0x9a70ff, 0.5],
-    ["수리 로봇", "shaman", "kobold", 0xc0a060, 0.55],
-  ],
-  [
-    ["수정 기사", "phantom", "phantom", 0xffd0f0, 0.55],
-    ["빛의 감시자", "voideye", "voideye", 0xfff0c0, 0.6],
-    ["수정 고슴도치", "crawler", "crawler", 0xffb0e0, 0.55],
-    ["순례자 망령", "shaman", "caller", 0xf8f0ff, 0.55],
-    ["프리즘 나비", "wasp", "wasp", 0xff90ff, 0.55],
-    ["거울 수도사", "stalker", "stalker", 0xe0e0ff, 0.6],
-  ],
-  [
-    ["폭풍 하피", "wasp", "gargoyle", 0xa0c0ff, 0.5],
-    ["천공 기사", "pikeman", "pikeman", 0xf0e0a0, 0.5],
-    ["폭풍 정령", "djinn", "djinn", 0xa0d0ff, 0.6],
-    ["부유석 골렘", "rotbear", "sentinel", 0xc0b080, 0.5],
-    ["번개 매", "bat", "bat", 0xfff080, 0.6],
-    ["구름 양", "shaman", "slime", 0xffffff, 0.65],
-  ],
-  [
-    ["그림자 병사", "sentry", "sentry", 0x403058, 0.6],
-    ["몽마", "voideye", "voideye", 0x8040a0, 0.4],
-    ["그림자 사냥개", "hound", "hound", 0x302040, 0.65],
-    ["근위 망령", "phantom", "phantom", 0x6050a0, 0.5],
-    ["거울 인형", "stalker", "stalker", 0xc8c8e0, 0.55],
-    ["등불지기", "banner", "caller", 0xffe080, 0.45],
-  ],
-  [
-    ["화로 파편 정령", "djinn", "orb", 0xffe0a0, 0.55],
-    ["실패작", "rotbear", "rotbear", 0xa06040, 0.55],
-    ["잿불 대장장이", "shaman", "shaman", 0xff8040, 0.55],
-    ["녹은 금속 슬라임", "slime", "slime", 0xffa040, 0.6],
-    ["모루 거인", "yeti", "yeti", 0x606078, 0.6],
-    ["풀무 박쥐", "bat", "bat", 0xff6020, 0.55],
-  ],
-];
-
-// 엘리트 [이름, AI 원형, 스프라이트, 색조, 세기, 크기]
-const ELI = [
-  [["잿불 파수꾼", "sentry", "sentry", 0xff6030, 0.5, 1.5], ["부서진 종지기", "caller", "banner", 0x9a9088, 0.5, 1.5]],
-  [["거목 수호자", "rotbear", "rotbear", 0x4a7a3a, 0.6, 1.4], ["안개 쌍둥이 마녀", "mummy", "shaman", 0xa0ffe0, 0.55, 1.5]],
-  [["광차 기사", "raider", "raider", 0x8a6a4a, 0.5, 1.5], ["돌 골렘", "yeti", "yeti", 0x8a7a6a, 0.6, 1.35]],
-  [["이끼 트롤", "yeti", "yeti", 0x5a7a3a, 0.6, 1.4], ["역병 의사", "caller", "caller", 0x6a8a4a, 0.6, 1.5]],
-  [["공성 골렘", "tortoise", "tortoise", 0x803020, 0.6, 1.5], ["화염 근위대장", "pikeman", "pikeman", 0xff4020, 0.5, 1.5]],
-  [["빙하 거북", "tortoise", "tortoise", 0xb0e8ff, 0.3, 1.6], ["서리 무녀", "caller", "wisp", 0xc0f0ff, 0.5, 1.7]],
-  [["신기루 술사", "stalker", "djinn", 0xffd080, 0.5, 1.5], ["사구 거상", "yeti", "yeti", 0xd0a060, 0.6, 1.45]],
-  [["뇌격 기사", "phantom", "phantom", 0xc0a0ff, 0.6, 1.45], ["톱니 파괴자", "rotbear", "rotbear", 0xa08040, 0.6, 1.4]],
-  [["성소 수호상", "gargoyle", "gargoyle", 0xffffff, 0.6, 1.5], ["굴절의 사제", "caller", "caller", 0xffc0ff, 0.55, 1.5]],
-  [["천둥새", "wasp", "gargoyle", 0xffff80, 0.6, 1.7], ["폐허의 수문장", "sentry", "sentry", 0xe0d090, 0.55, 1.6]],
-  [["그림자 재판관", "phantom", "phantom", 0x302050, 0.65, 1.5], ["잊혀진 왕비", "caller", "caller", 0xa080c0, 0.55, 1.6]],
-  [["쌍둥이 풀무", "orb", "orb", 0xff8020, 0.55, 1.6], ["첫 번째 도전자의 잔해", "stalker", "stalker", 0xffc080, 0.55, 1.5]],
-];
+// 옛 지역 몬스터(일반 72 · 정예 24)는 지웠다 (2026-11-20). 새 몬스터 명단은 bestiary.js
 
 // 보스: [원형(패턴·스프라이트), 색조, 세기, 패턴, 원소, 칭호]
 const BOSS = [
@@ -217,30 +104,8 @@ export const FR_REGIONS = [];
 
 REGIONS.forEach((r, ri) => {
   const mult = REGION_MULT[ri];
-  const enemies = [];
-  MON[ri].forEach((m, k) => {
-    const doc = r.monsters[k];
-    const id = `fr${ri}_${k}`;
-    FR_MONSTERS.push({
-      id, name: m[0], tpl: m[1], sprite: m[2], tint: m[3], amt: m[4],
-      hp: Math.max(8, Math.round((doc.hp / mult) * 0.85)),
-      weak: el(doc.weak), resist: el(doc.resist), region: ri,
-      pattern: doc.pattern, drop: doc.drop, type: doc.type,
-    });
-    const w = doc.type === "고정" || doc.type === "지원" || doc.type === "소환" ? 2 : doc.type === "공중" ? 3 : 4;
-    enemies.push({ id, w });
-  });
-  if (ri > 0) MON[ri - 1].slice(0, 3).forEach((_, k) => enemies.push({ id: `fr${ri - 1}_${k}`, w: 1 }));
-  const elites = [];
-  ELI[ri].forEach((e, k) => {
-    const doc = r.elites[k];
-    const id = `fr${ri}_e${k}`;
-    FR_ELITES.push({
-      id, name: e[0], tpl: e[1], sprite: e[2], tint: e[3], amt: e[4], scale: e[5],
-      hp: Math.round((doc.hp / mult) * 0.2), region: ri, pattern: doc.pattern, tip: doc.tip, drop: doc.drop,
-    });
-    elites.push(id);
-  });
+  // 지역 몬스터는 구역(zones.js)이 bestiary.js에서 고른다
+  const enemies = [], elites = [];
   const b = BOSS[ri];
   const bid = `frb${ri}`;
   FR_BOSSES.push({
@@ -257,22 +122,13 @@ REGIONS.forEach((r, ri) => {
   });
 });
 
-// ── 그래스메어 몬스터 (새 지역 설계 첫 구역) — 그림·행동은 foes/mg0.js·rg0.js. 체력으로 세기를 천차만별로 ──
-//   [id, 이름, 엔진 원형(공격·방어·골드 기준), 체력, 종류, 패턴]
-for (const [id, name, tpl, hp, type, pattern] of [
-  ["gm_slime", "풀잎 슬라임", "hound", 9, "근접", "통통 튀어 다가와 박치기. 터지면 꼬마 슬라임 둘로 갈라짐"],
-  ["gm_slime_mini", "꼬마 슬라임", "hound", 4, "근접", "작고 빠른 박치기"],
-  ["gm_mandrake", "맨드레이크", "hound", 14, "고정", "풀잎으로 숨어 있다가 튀어나와 비명 (가까우면 잠깐 굳음)"],
-  ["gm_goblin", "고블린 정찰병", "kobold", 18, "근접", "멀면 돌팔매, 가까우면 단검 찌르기 후 뒤로 깡충"],
-  ["gm_wasp", "거대 말벌", "wasp", 15, "공중", "위에서 맴돌다 독침 급강하 (중독)"],
-  ["gm_wolf", "초원 회색늑대", "wolf", 28, "돌진", "울부짖어 무리를 깨우고, 맴돌다 덮쳐 문다"],
-  ["gm_boar", "뿔멧돼지", "scorpion", 48, "돌진", "땅을 긁고 일직선 돌진. 벽에 박으면 어지러워 1.5배 피해"],
-])
-  FR_MONSTERS.push({ id, name, tpl, sprite: tpl, tint: 0xffffff, amt: 0, hp, weak: null, resist: null, region: 0, pattern, drop: null, type });
-FR_ELITES.push(
-  { id: "gm_ogre", name: "초원 오우거", tpl: "rotbear", sprite: "rotbear", tint: 0xffffff, amt: 0, scale: 1, hp: 130, region: 0, pattern: "몽둥이 내려찍기·땅울림 · 발구르기 · 체력 절반에 포효하고 빨라짐", tip: "", drop: null },
-  { id: "gm_centaur", name: "켄타우로스 사냥꾼", tpl: "xbowman", sprite: "xbowman", tint: 0xffffff, amt: 0, scale: 1, hp: 100, region: 0, pattern: "화살 세 발 · 가까우면 짓밟기 · 들판을 가로질러 돌진", tip: "", drop: null },
-);
+// ── 새 몬스터 (bestiary.js): 엔진 원형 tpl의 공격·방어·골드에 체력만 따로. 도감은 page 쪽에 ──
+for (const m of ALL_FOES) {
+  const o = { id: m.id, name: m.name, tpl: m.tpl, sprite: m.tpl, tint: 0xffffff, amt: 0, hp: m.hp, weak: null, resist: null, region: 0, page: m.page, zone: m.zone, band: m.band, pattern: m.pattern, drop: null, type: m.type };
+  m.e ? FR_ELITES.push({ ...o, scale: 1, tip: "" }) : FR_MONSTERS.push(o);
+}
+// 갈라져 나오는 꼬마 슬라임 (명단에는 없다)
+FR_MONSTERS.push({ id: "gm_slime_mini", name: "꼬마 슬라임", tpl: "hound", sprite: "hound", tint: 0xffffff, amt: 0, hp: 4, weak: null, resist: null, region: 0, page: -1, pattern: "작고 빠른 박치기", drop: null, type: "근접" });
 
 // ∞ 재련의 회랑: 지나온 지역이 뒤틀린 모습으로 반복 (색조 변이)
 export const FR_ENDLESS = FR_REGIONS.map((r, i) => ({

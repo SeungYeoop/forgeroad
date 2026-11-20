@@ -250,7 +250,7 @@ const STY = {
 export const STYLES = STY;
 // 원래 지역 → 곡 성격
 export const REGION_STYLE = {
-  grassmere: "meadow", ashvillage: "folk", mistwood: "forest", echomine: "cave", rotmarsh: "swamp", blazefort: "march", frostgorge: "snow",
+  grassmere: "meadow", mossbark: "forest", greenstep: "sky", stonebridge: "sky", leafcrown: "forest", ironvein: "cave", dripstone: "cave", roothollow: "swamp", ashvillage: "folk", mistwood: "forest", echomine: "cave", rotmarsh: "swamp", blazefort: "march", frostgorge: "snow",
   glassdesert: "desert", thunderspire: "storm", crystalsanctum: "sacred", skyruins: "sky", shadowcapital: "abyss", forgeheart: "epic",
 };
 const MOOD_STYLE = { 0: "folk", 1: "forest", 2: "cave", 3: "desert", 4: "snow", 5: "march", 6: "abyss", 7: "storm", 8: "rift", 9: "hub", 10: "result" };

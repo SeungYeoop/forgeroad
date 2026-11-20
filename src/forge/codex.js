@@ -339,17 +339,17 @@ export function drawCodex(P, K) {
       tx(x + pw / 2 - 8, y2, `${Math.round((v / tot) * 100)}%`, "tiny", q.textDim).setOrigin(1, 0);
     });
   } else if (S.cat === 1) {
-    // ── 몬스터: 일반 6 + 정예 2 ──
-    const list = [...FR_MONSTERS.filter((m) => m.region === ri), ...FR_ELITES.filter((m) => m.region === ri)];
-    const cols = 4, cwid = Math.floor(W / cols), chgt = 84;
+    // ── 몬스터: 파랑 지역 한 곳의 12종 (일반 9 + 정예 3). 쪽 번호 = bestiary.js page ──
+    const list = [...FR_MONSTERS.filter((m) => m.page === ri), ...FR_ELITES.filter((m) => m.page === ri)];
+    const many = list.length > 8, cols = many ? 6 : 4, cwid = Math.floor(W / cols), chgt = many ? 62 : 84;
     list.forEach((m, i) => {
       const x = LX + 10 + (i % cols) * cwid, y = CY + Math.floor(i / cols) * (chgt + 4), on = i === S.sel;
-      const elite = m.id.includes("_e");
+      const elite = FR_ELITES.includes(m);
       const card = rect(x + 1, y, cwid - 4, chgt, on ? 0xfff2cc : 0xe8d4a8, 1, 205).setStrokeStyle(on ? 2 : 1, on ? 0xa02818 : 0x7a5434);
       click(card, () => Object.assign(S, { sel: i, anim: null }));
       // 초상: 첫 동작의 첫 장
       const spec = SPECS[m.id], key = "e_" + m.id, ok = spec?.model ? spec._fi && sc.textures.exists(key) : sc.textures.exists(key);
-      const bx = x + 4, by = y + 4, bw = cwid - 12, bh = 50;
+      const bx = x + 4, by = y + 4, bw = cwid - 12, bh = many ? 34 : 50;
       const tp = REG.pal.sky[0], bt = REG.pal.sky[1];
       A(P, sc.add.graphics(), 206).fillGradientStyle(tp, tp, bt, bt, 1).fillRect(bx, by, bw, bh);
       if (ok) {
@@ -360,14 +360,14 @@ export function drawCodex(P, K) {
       } else (tx(bx + bw / 2, by + bh / 2 - 5, "?", "big", q.textDim).setOrigin(0.5, 0), P._pend.push(m.id));
       A(P, sc.add.rectangle(bx, by, bw, bh).setStrokeStyle(1, 0x3a2414).setOrigin(0), 207);
       elite && (rect(x + 1, y, 22, 10, 0xa02818, 1, 208), tx(x + 4, y, "정예", "tiny", "#f2e6c4").setDepth(209));
-      tx(x + cwid / 2 - 1, y + 57, m.name, "tiny", q.text, { ...wrapW(cwid - 8), align: "center" }).setOrigin(0.5, 0);
+      tx(x + cwid / 2 - 1, y + bh + 7, m.name, "tiny", q.text, { ...wrapW(cwid - 8), align: "center" }).setOrigin(0.5, 0);
       kills(m.id) && tx(bx + bw - 2, by + bh - 10, `×${kills(m.id)}`, "tiny", "#f2e6c4", { stroke: "#140a04", strokeThickness: 3 }).setOrigin(1, 0).setDepth(208);
     });
     // 오른쪽: 표본
     const m = list[Math.min(S.sel, list.length - 1)];
     if (m) {
-      const elite = m.id.includes("_e");
-      const doc = elite ? DOC.elites[+m.id.split("_e")[1]] : DOC.monsters[+m.id.split("_")[1]];
+      const elite = FR_ELITES.includes(m);
+      const doc = null;
       const st = specimen(RXc, PY + 8, W, 130, m.id);
       kills(m.id) || stamp(RXc + W - 18, PY + 26);
       let y = PY + 150;
@@ -492,13 +492,13 @@ export function drawCodex(P, K) {
       try { descEnd = describe(P, it, RXc, PY + 70, W); } catch (e) { descEnd = PY + 70 + tx(RXc, PY + 70, raw?.desc ?? "", "tiny", q.text, wrapW(W)).height; }
     }
     // 몬스터 전리품 표 (오른쪽 아래)
-    const drops = [...DOC.monsters, ...DOC.elites].slice(0, 8);
+    const drops = [...FR_MONSTERS, ...FR_ELITES].filter((m) => m.page === ri).slice(0, 8);
     const bottom = PY + PH - 8, fit = Math.floor((bottom - (descEnd + 18)) / 11);
     let r = Math.max(descEnd + 8, bottom - 11 - Math.min(fit, drops.length) * 11);
     fit >= 2 && (rect(RXc, r - 4, W, 1, 0x7a5434, 0.6, 205), tx(RXc, r, "몬스터가 떨어뜨리는 것", "tiny", q.textDim));
     r += 11;
     drops.slice(0, Math.max(0, fit)).forEach((d, i) => {
-      const name = (i < 6 ? FR_MONSTERS.find((m) => m.id === `fr${ri}_${i}`) : FR_ELITES.find((m) => m.id === `fr${ri}_e${i - 6}`))?.name ?? d.name;
+      const name = d.name;
       tx(RXc, r, name, "tiny", q.text);
       tx(RX + PW - 10, r, d.drop ?? "-", "tiny", q.gold).setOrigin(1, 0);
       r += 11;

@@ -6874,7 +6874,6 @@ function frRegisterWorld() {
         frType: m.type,
         frDrop: m.drop,
       };
-    t.summon && (d.summon = `fr${ri}_0`);
     FG.foeDef(d);
     (Os.push(d), (se[d.id] = d));
   }
@@ -9174,6 +9173,8 @@ class Xn {
               V !== tr[0] && tr.push(V);
             }
           }
+          // 아직 그림·행동이 없는 몬스터는 건너뛴다
+          if (!se[id] || !FG.foeReady(id)) continue;
           const fl = !!se[id]?.flying;
           // 특성 둘을 꼭 받아야 하면 다른 것으로
           forced === 2 && tr.length < 2 && tr.push(Ye[(Ye.indexOf(tr[0]) + 1) % Ye.length]);
@@ -19396,6 +19397,9 @@ class Er extends zt.Scene {
   }
   spawnEnemy(T, C, E, R) {
     if (this.enemies.length > 60) return null;
+    // 지운 옛 몬스터(보스가 부르는 졸개 등)는 지금 구역의 몬스터로 바꿔 부른다
+    (se[T] && FG.foeReady(T)) || (T = FG.foeAlias(this, T, C, E));
+    if (!T || !se[T]) return null;
     const h = new Cs(this, T, C, E, this.dist, R);
     return (this.enemies.push(h), h);
   }

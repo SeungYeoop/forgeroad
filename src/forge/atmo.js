@@ -113,6 +113,13 @@ function fgTex(sc, key, kind, col, top) {
 const CFG = {
   _: 0,
   grassmere: { fg: "grass", critter: ["at_bird", 0x2a3a52, 1], rays: 0xfff4d0, sun: 0xfff2c8 },
+  mossbark: { dark: 0.16, fg: "grass", top: "vines", critter: ["at_fly", 0xf0e870, 1], fog: [0xd8f4ec, 0.35], rays: 0xfff8d0 },
+  greenstep: { fg: "grass", critter: ["at_bird", 0x405070, 1.2], rays: 0xfff8e0, sun: 0xfffbe0 },
+  stonebridge: { fg: "rubble", critter: ["at_bird", 0x405070, 1], rays: 0xfff8e0, sun: 0xfffbe0 },
+  leafcrown: { fg: "grass", top: "vines", critter: ["at_bird", 0x3a5a30, 1.2], rays: 0xfff0b0, sun: 0xfff4c0 },
+  ironvein: { dark: 0.58, fg: "rubble", top: "chains", critter: ["at_bat", 0x101018, 0.6], glow: 0xffa050, motes: 1 },
+  dripstone: { dark: 0.6, fg: "rubble", top: "stalac", critter: ["at_bat", 0x101018, 0.8], rays: 0x60e0d0, motes: 1 },
+  roothollow: { dark: 0.55, fg: "reeds", top: "vines", critter: ["at_fly", 0x7af0a0, 1], fog: [0x9a7ab0, 0.3], motes: 1 },
   ashvillage: { fg: "rubble", critter: ["at_bird", 0x1a1418, 0.6], fog: [0x8a7a70, 0.25], glow: 0xff7a30, smoke: 1 },
   mistwood: { dark: 0.22, fg: "grass", top: "vines", critter: ["at_fly", 0xf0e870, 1], fog: [0xd8f4ec, 0.45], rays: 0xfff8d0 },
   echomine: { dark: 0.6, fg: "rubble", top: "stalac", critter: ["at_bat", 0x101018, 0.8], rays: 0x60e0d0, motes: 1 },

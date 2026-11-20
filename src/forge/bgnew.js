@@ -18,6 +18,8 @@ export const THEME = {
   ashvillage: "plains", mistwood: "forest", echomine: "cave", rotmarsh: "marsh", blazefort: "fortress", frostgorge: "snow",
   glassdesert: "desert", thunderspire: "spire", crystalsanctum: "crystal", skyruins: "sky", shadowcapital: "abyss", forgeheart: "forge",
   grassmere: "grass",
+  // 파랑 지역 (새 설계)
+  mossbark: "forest", greenstep: "sky", stonebridge: "sky", leafcrown: "sky", ironvein: "cave", dripstone: "cave", roothollow: "cave",
 };
 const DARK = { cave: 1, abyss: 1 };
 

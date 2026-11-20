@@ -186,3 +186,129 @@ export const BLUEPRINTS = {
     },
   },
 };
+
+// ── 설계도 변형 도구: 높이 옮기기 · 좌우 뒤집기 (그래스메어 하늘 설계를 하늘 구역으로 옮길 때) ──
+const WZ = 8192;
+const mapInner = (I, fx, fy) => I && {
+  ...I,
+  halls: (I.halls ?? []).map((h) => ({ ...h, ...xs(fx, h.x0, h.x1), F: fy(h.F), trap: h.trap ? sortX(fx(h.trap[0]), fx(h.trap[1])) : undefined })),
+  pass: (I.pass ?? []).map(([xa, fa, xb, fb, w]) => [fx(xa), fy(fa), fx(xb), fy(fb), w].filter((v) => v !== undefined)),
+  drops: (I.drops ?? []).map(([x0, x1, y0, y1]) => [...sortX(fx(x0), fx(x1)), fy(y0), fy(y1)]),
+  mouths: (I.mouths ?? []).map((m) => ({ ...m, x: fx(m.x), F: fy(m.F), edge: m.edge != null ? fx(m.edge) : undefined, side: fx(0) > fx(1) ? (m.side === "W" ? "E" : "W") : m.side })),
+};
+const sortX = (a, b) => (a < b ? [a, b] : [b, a]);
+const xs = (fx, x0, x1) => { const [a, b] = sortX(fx(x0), fx(x1)); return { x0: a, x1: b }; };
+// 하늘 설계도 S를 (dx 뒤집기 여부 flip, 높이 dy)로 옮긴다
+export function moveSky(S, { flip = false, dy = 0, W = WZ } = {}) {
+  const fx = flip ? (x) => W - x : (x) => x, fy = (y) => y + dy;
+  const swapId = (k) => {
+    if (k.startsWith("g:")) return "g:" + fx(Number(k.slice(2)));
+    if (k.startsWith("G:")) return "G:" + fx(Number(k.slice(2)));
+    if (!flip) return k;
+    return k.endsWith(">") ? k.slice(0, -1) + "<" : k.endsWith("<") ? k.slice(0, -1) + ">" : k;
+  };
+  return {
+    ...S,
+    peakY: fy(S.peakY),
+    gate: S.gate && { ...S.gate, cx: fx(S.gate.cx), inner: mapInner(S.gate.inner, fx, fy) },
+    isles: S.isles.map((q) => ({
+      ...q, cx: fx(q.cx), top: fy(q.top),
+      step: q.step && flip ? { ...q.step, at: 1 - q.step.at, hi: q.step.hi === "L" ? "R" : "L" } : q.step,
+      inner: mapInner(q.inner, fx, fy),
+    })),
+    links: S.links.map(([a, b, n]) => [swapId(a), swapId(b), n].filter((v) => v !== undefined)),
+  };
+}
+// 섬 몇 개만 바꾸기 (id → 덮어쓸 값, null이면 지움)
+export function editSky(S, patch = {}, links = null) {
+  const isles = S.isles.filter((q) => patch[q.id] !== null).map((q) => (patch[q.id] ? { ...q, ...patch[q.id] } : q));
+  for (const [id, q] of Object.entries(patch)) q && !S.isles.some((p) => p.id === id) && isles.push({ id, ...q });
+  return { ...S, isles, links: links ?? S.links };
+}
+
+// ── g1_m1 「스톤브리지」: 그래스메어 하늘 설계를 하늘 구역 하나로 옮긴 형태 (REGIONS.md) ──
+//   아래 섬 길(구름다리, y≈4800)을 땅 삼아: 쉼터 섬 → 서쪽 거대 섬(속 동굴·샘) → 유적 섬 → 기둥 동굴 섬 → ▲ 신전 섬
+//   동쪽: 돌다리 쉼터 → 동쪽 거대 섬 → 샘 섬 → 동굴 섬 → 턱 섬 → ▲ / 높은 하늘 보물섬·전망섬
+{
+  const S0 = moveSky(BLUEPRINTS.g1_0.sky, { dy: 400 });
+  const S1 = editSky(S0, {
+    A1: { top: 4392, w: 560, t: 200, role: "rest", shape: "slab" },
+    E1: { top: 4440, w: 420, t: 130, role: "rest", shape: "slab" },
+    CV: { top: 4300, role: "treasure" },
+    XT: { top: 4504 },
+  });
+  const links = S1.links.map(([a, b, n]) => {
+    if (a === "g:4250" && b === "A1") return ["g:4450", "A1", 5];
+    if (a === "g:4250" && b === "CV") return ["M", "CV", 6];
+    if (a === "g:5040" && b === "E1") return ["g:4950", "E1", 5];
+    return [a, b, n].filter((v) => v !== undefined);
+  });
+  BLUEPRINTS.g1_m1 = { sky: { ...S1, links }, flatWalk: 1 };
+}
+
+// ── g0_m1 「그린스텝」: 거점 바로 위 하늘 입문. 넓고 낮은 풀섬 계단, 큰 풀섬 속 작은 굴(보물), 동쪽은 돌다리 섬(첫 하늘 전투) ──
+//   스톤브리지 설계를 좌우로 뒤집어 쓰되, 높은 섬 일부를 빼고 섬 모양을 계단밭(tiers)·넓적한 판으로 바꾼다 (쉽고 넓게)
+{
+  const S0 = moveSky(BLUEPRINTS.g1_m1.sky, { flip: true });
+  BLUEPRINTS.g0_m1 = {
+    flatWalk: 1,
+    sky: editSky(S0, {
+      W7: null, E7: null,
+      A1: { shape: "slab", role: "rest", w: 640 },
+      M: { shape: "slab", role: "vista" },
+      W1: { form: "tiers" }, E2: { form: "tiers" },
+      W5: { shape: "slab", role: "arena", w: 1100 },
+      E6: { shape: "slab", role: "arena" },
+    }, null),
+  };
+  BLUEPRINTS.g0_m1.sky.links = BLUEPRINTS.g0_m1.sky.links.filter(([a, b]) => ![a, b].some((k) => /^(W7|E7)/.test(k)));
+}
+// ── gm1_m1 「리프크라운」: 하늘에 뜬 거목 수관. 뿌리가 늘어진 수관 섬(roots), 새 둥지 섬(쉼터), 줄기 속 굴 ──
+{
+  const S0 = moveSky(BLUEPRINTS.g1_0.sky, { dy: 520 });
+  const S1 = editSky(S0, {
+    A1: { top: 4392, w: 600, t: 220, role: "rest", shape: "lumpy" },
+    E1: { top: 4440, w: 420, t: 130, role: "rest", shape: "lumpy" },
+    CV: { top: 4300, role: "treasure", shape: "lumpy" },
+    XT: { top: 4504, shape: "lumpy" },
+    M: { shape: "twin", role: "rest" },
+    W1: { form: "roots" }, W3: { form: "roots" }, W4: { form: "roots" }, E2: { form: "roots" }, E4: { form: "roots" }, E5: { form: "roots" },
+    W5: { shape: "lumpy" }, E6: { shape: "lumpy" }, W6: { shape: "twin", role: "treasure" }, W7: { shape: "lumpy", role: "vista" }, E7: { shape: "twin", role: "treasure" },
+  });
+  const links = S1.links.map(([a, b, n]) => {
+    if (a === "g:4250" && b === "A1") return ["g:4450", "A1", 5];
+    if (a === "g:4250" && b === "CV") return ["M", "CV", 6];
+    if (a === "g:5040" && b === "E1") return ["g:4950", "E1", 5];
+    return [a, b, n].filter((v) => v !== undefined);
+  });
+  BLUEPRINTS.gm1_m1 = { sky: { ...S1, links }, flatWalk: 1 };
+}
+
+// ── gm1_0 「모스바크」: 이끼 덮인 거목 숲 (지상). 그래스메어 땅·하늘 짜임을 좌우로 뒤집고 숲답게 ──
+//   지표: 0~900 숲 입구 · 900~2400 이끼 고원(전투) · 2400~5250 거목 언덕(하늘 출발점) · 5300~6300 개울 골짜기(웅덩이) · 6300~7500 뿌리 둔덕(전투) · 7500~ 출구
+//   하늘: 거목 수관 섬들 (뿌리가 늘어진 섬 · 둥근 잎 덩이 섬), ▲ 신전 섬은 이끼 덮인 옛 신전
+//   땅속: 자연 동굴 (입구 둘: 개울 골짜기 · 뿌리 둔덕)
+{
+  const G0 = BLUEPRINTS.g1_0, fx = (x) => WZ - x;
+  const surf = G0.surface.map((q) => {
+    const o = { ...q, a: fx(q.b), b: fx(q.a) };
+    if (q.c != null) o.c = fx(q.c);
+    if (q.bumps) o.bumps = q.bumps.map((b) => ({ ...b, c: fx(b.c), h: Math.round(b.h * 1.15) }));
+    if (q.kind === "mountain") Object.assign(o, { wl: q.wr, wr: q.wl, h: 560, shoulder: q.shoulder && { ...q.shoulder, side: q.shoulder.side ? 0 : 1 } });
+    if (q.kind === "valley") Object.assign(o, { d: 150, pond: 220 });
+    return o;
+  }).reverse();
+  const S0 = moveSky(G0.sky, { flip: true });
+  const S1 = editSky(S0, {
+    A1: { shape: "lumpy", role: "rest" }, M: { shape: "twin", role: "vista" },
+    W1: { form: "roots" }, E2: { form: "roots" }, W3: { form: "roots" }, E4: { form: "bowl" }, W4: { form: "cone" }, E5: { form: "roots" },
+    W5: { shape: "lumpy" }, E6: { shape: "lumpy" }, W6: { shape: "twin" }, E7: { shape: "lumpy" }, W7: { shape: "spire" },
+  });
+  BLUEPRINTS.gm1_0 = {
+    surface: surf,
+    pads: [],
+    spots: G0.spots.map((q) => ({ ...q, xa: fx(q.xb), xb: fx(q.xa) })),
+    mouthX: [5600, 6900],
+    sky: S1,
+  };
+}
