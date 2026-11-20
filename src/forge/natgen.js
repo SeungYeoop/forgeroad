@@ -4454,7 +4454,8 @@ function dungeonWorld(P, C, D) {
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setC(x, y, v);
   };
   const back = (x0, y0, x1, y1, m) => P.walls.push({ x0: x0 * BLK, y0: y0 * BLK, x1: x1 * BLK, y1: y1 * BLK, m });
-  const brick = (x0, y0, x1, y1, m = 3) => P.mats.push({ x0: (x0 - m) * BLK, y0: (y0 - m) * BLK, x1: (x1 + m) * BLK, y1: (y1 + m) * BLK, m: "brick" });
+  // 던전 껍데기 재질: 기본 벽돌, 설계가 mat을 주면 그 재질 (wood = 나무껍질 성채)
+  const brick = (x0, y0, x1, y1, m = 3) => P.mats.push({ x0: (x0 - m) * BLK, y0: (y0 - m) * BLK, x1: (x1 + m) * BLK, y1: (y1 + m) * BLK, m: D.mat ?? "brick" });
   const tag = (x0, y0, x1, y1, role) => (P.roomTags ??= []).push({ x0: x0 * BLK, x1: x1 * BLK, y0: y0 * BLK, y1: y1 * BLK + 8, role });
   const MW = 64, MH = 48, GX = Math.round(D.x0 / BLK), GY = Math.round(D.y0 / BLK);
   const colX = (c) => GX + c * MW, stY = (s) => GY + s * MH, floorR = (s) => stY(s + 1) - 4;
@@ -4637,7 +4638,7 @@ function dungeonWorld(P, C, D) {
       t.caveE !== "up" && caveDoorE(t.caveE === "both" ? t.id + "_d" : t.id, t.x1, t.F, t.id);
     }
   for (const t of towers)
-    if (t.cave && t.col === 0) {
+    if (t.cave && (t.col === 0 || t.id === "VG")) {
       t.cave !== "down" && caveDoor(t.id, t.x0, t.F0);
       t.cave !== "up" && caveDoor(t.cave === "both" ? t.id + "_d" : t.id, t.x0, t.F, t.id);
     }

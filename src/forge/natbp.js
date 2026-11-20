@@ -396,5 +396,83 @@ BLUEPRINTS.g1_1 = {
   // 떨어지는 구멍: 대공동 → 박쥐 둥지 → 석회 다락 → 물웅덩이 / 젖은 굴 → 검은 물가 → 가라앉은 계단 / 협곡 폭포 둘
   drops: [["GR", "W1b"], ["W1b", "W2b"], ["W2b", "W3m"], ["W4b", "W5b"], ["W5b", "B1"], ["E3", "E4"], ["E4", "B4"]],
 };
-BLUEPRINTS.g0_1 = { cave: { style: "mine" } };
+// ── g0_1 「아이언베인 · 광산 요새」 손 설계: 던전이 주인공 ──
+//   가운데를 7열 9층 옛 광산 요새가 차지한다 (승강 탑 아홉, 나무 판자 벽). 층마다 긴 갱도 회랑 · 광석 창고 · 선로 함정 · 광부 쉼터
+//   ▲는 요새 꼭대기 정문 탑 위 환기구, 동굴은 요새 바깥 껍데기에 붙은 광맥굴뿐 (서쪽 채굴장 · 수정 광맥 · 지하수 갱 / 동쪽 선광장 · 광차 창고)
+//   ▼는 맨 아래 무너진 갱 → 깊은 광맥 대공동 → 심연 입구
+BLUEPRINTS.g0_1 = {
+  cave: { style: "mine" },
+  caves: cvR([
+    ["T", 900, 2050, 2650, 300, "hall", "flat", "treasure"], // 높은 광맥 (정문 탑 서쪽 문)
+    ["PK", 4272, 5300, 2752, 300, "hall", "flat", "rest", { peak: 1 }], // ▲ 환기구
+    ["E0", 5800, 6800, 2500, 300, "tiered", "steps", "arena"], // 환기 갱
+    ["E0b", 7300, 8000, 2200, 260, "small", "flat", "treasure"], // 막힌 환기 갱 끝
+    ["W0", 400, 1900, 3300, 420, "grand", "steps", "vista"], // 버려진 채굴장
+    ["E1", 6450, 7700, 3300, 380, "pillared", "flat", "arena"], // 선광장
+    ["W1b", 200, 900, 4000, 320, "hall", "mound", "treasure"], // 수정 광맥굴
+    ["W1", 1300, 1950, 4300, 260, "small", "flat", "rest"], // 광부 쉼터
+    ["E3", 6400, 7600, 4300, 300, "hall", "mound", "arena"], // 버력 더미 굴
+    ["EL", 64, 900, 4800, 300, "hall", "flat", "rest", { entry: "L" }],
+    ["WM", 1250, 1900, 4900, 280, "hall", "flat", "arena"], // 옛 갱도 입구
+    ["ER", 7000, 8100, 4800, 300, "hall", "flat", "rest", { entry: "R" }],
+    ["E5", 6450, 7500, 5500, 320, "hall", "flat", "treasure"], // 광차 창고
+    ["W6b", 100, 650, 5650, 280, "small", "flat", "treasure"], // 물에 잠긴 굴 끝
+    ["W6", 1000, 1900, 5900, 320, "lake", "basin", "rest"], // 지하수 갱
+    ["W8", 1200, 1950, 6700, 320, "hall", "steps", "arena"], // 무너진 갱
+    ["E8", 6400, 7300, 6700, 340, "hall", "flat", "arena"], // 용광로 뒤 갱
+    ["W9", 800, 2400, 7450, 400, "grand", "basin", "vista"], // 깊은 광맥 대공동
+    ["E10", 6300, 7800, 7650, 380, "pillared", "flat", "arena"], // 무너진 지주 홀
+    ["DP", 3150, 4300, 7900, 360, "hall", "flat", "rest", { deep: 1 }], // ▼ 심연 입구
+    ["E9", 4900, 5900, 8000, 300, "hall", "flat", "treasure"], // 바닥 광석 더미
+  ]),
+  // 광산 요새: 7열 9층 (x 2304~5888, y 3072~6528). 정문 탑(가운데 열)이 ▲ 환기구로, 양쪽 벽 동굴 문 열
+  dungeon: {
+    x0: 2304, y0: 3072, cols: 7, stories: 9, wall: "wood", step: 6, stairs: 1,
+    gate: { col: 3, row: 2752, door: 4272, up: "WE", down: "WE", cave: "up" },
+    towers: [
+      { id: "TA", col: 1, s: 0, up: "WE", down: "WE" },
+      { id: "TB", col: 5, s: 1, up: "WE", down: "WE" },
+      { id: "TC", col: 3, s: 2, up: "WE", down: "WE" },
+      { id: "TD", col: 0, s: 3, up: "WE", down: "WE", cave: "both" },
+      { id: "TE", col: 6, s: 3, up: "WE", down: "WE", caveE: "both" },
+      { id: "TF", col: 2, s: 4, up: "WE", down: "WE" },
+      { id: "TG", col: 4, s: 5, up: "WE", down: "WE" },
+      { id: "TH", col: 1, s: 6, up: "WE", down: "WE" },
+      { id: "TI", col: 5, s: 7, up: "WE", down: "WE" },
+    ],
+    rooms: [
+      { id: "R00", c0: 0, c1: 0, s: 0, type: "vault", role: "treasure", cave: 1 }, // 꼭대기 광석 창고
+      { id: "R02", c0: 2, c1: 2, s: 0, type: "guard", role: "arena" }, // 정문 경비실
+      { id: "R04", c0: 4, c1: 6, s: 0, type: "colonnade", role: "arena", cave: "E" }, // 1층 갱도 회랑
+      { id: "R10", c0: 0, c1: 0, s: 1, type: "guard", role: "arena" }, // 십장 초소
+      { id: "R12", c0: 2, c1: 4, s: 1, type: "arena", role: "arena" }, // 광부 숙소 (싸움터)
+      { id: "R16", c0: 6, c1: 6, s: 1, type: "vault", role: "treasure" }, // 공구 창고
+      { id: "R20", c0: 0, c1: 2, s: 2, type: "colonnade", role: "arena" }, // 2층 갱도 회랑
+      { id: "R24", c0: 4, c1: 4, s: 2, type: "shrine", role: "rest" }, // 광부 쉼터
+      { id: "R26", c0: 6, c1: 6, s: 2, type: "guard", role: "arena" }, // 동쪽 초소
+      { id: "R31", c0: 1, c1: 2, s: 3, type: "trap", role: "trap" }, // 선로 함정 복도
+      { id: "R34", c0: 4, c1: 5, s: 3, type: "guard", role: "arena" }, // 화약고 경비
+      { id: "R41", c0: 1, c1: 1, s: 4, type: "vault", role: "treasure" }, // 화약고
+      { id: "R43", c0: 3, c1: 5, s: 4, type: "arena", role: "arena" }, // 제련 홀
+      { id: "R50", c0: 0, c1: 1, s: 5, type: "colonnade", role: "arena" }, // 5층 갱도 회랑
+      { id: "R53", c0: 3, c1: 3, s: 5, type: "shrine", role: "rest" }, // 물 쉼터
+      { id: "R55", c0: 5, c1: 6, s: 5, type: "guard", role: "arena", cave: "E" }, // 광차 출입구
+      { id: "R60", c0: 0, c1: 0, s: 6, type: "vault", role: "treasure", cave: 1 }, // 지하수 쪽 창고
+      { id: "R62", c0: 2, c1: 3, s: 6, type: "trap", role: "trap" }, // 무너지는 복도
+      { id: "R65", c0: 5, c1: 6, s: 6, type: "vault", role: "treasure" }, // 금고
+      { id: "R70", c0: 0, c1: 0, s: 7, type: "guard", role: "arena" }, // 깊은 초소
+      { id: "R72", c0: 2, c1: 4, s: 7, type: "arena", role: "arena" }, // 용광로 홀
+      { id: "R76", c0: 6, c1: 6, s: 7, type: "shrine", role: "rest" }, // 깊은 쉼터
+      { id: "R80", c0: 0, c1: 4, s: 8, type: "sanctum", role: "arena", cave: 1 }, // 십장의 금고 (성소)
+      { id: "R86", c0: 6, c1: 6, s: 8, type: "vault", role: "treasure", cave: "E" }, // 바닥 창고
+    ],
+  },
+  links: [
+    ["T", "VG"], ["PK", "E0"], ["E0", "E0b"], ["W0", "R00"], ["R04", "E1"],
+    ["W1b", "W1"], ["W1", "TD"], ["EL", "WM"], ["WM", "TD_d"], ["TE", "E3"], ["TE_d", "ER"], ["R55", "E5"],
+    ["W6b", "W6"], ["W6", "R60"], ["W8", "R80"], ["W9", "DP"], ["DP", "E9"], ["R86", "E8"], ["E9", "E10"],
+  ],
+  drops: [["W8", "W9"], ["E8", "E10"]],
+};
+
 BLUEPRINTS.gm1_1 = { cave: { style: "root" } };

@@ -17,7 +17,7 @@ if (D) {
   // 정문 탑: 그 열만 문 높이부터
   if (D.gate) { const gr = D.gate.row ?? 4800; C.push({ id: "정문탑", x0: (colX(D.gate.col) + 12) * 8, x1: (colX(D.gate.col) + 52) * 8, fy: D.y0, h: D.y0 - gr + 110, tower: 1 }); }
   const door = (id2, east, F) => {
-    const x = east ? (colX(cols) + 3) * 8 : id2 === "VG" ? (colX(D.gate.col) + 12 - 3) * 8 : (colX(0) - 3) * 8;
+    const x = east ? (colX(cols) + 3) * 8 : (colX(0) - 3) * 8;
     by[id2] = { id: id2, x0: x, x1: x, fy: F * 8, h: 96, door: 1, east };
   };
   if (D.gate?.cave) door("VG", 0, Math.round((D.gate.row ?? 4800) / 16) * 2);
