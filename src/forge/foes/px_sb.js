@@ -3,6 +3,7 @@
 //   가운데 줄: 바위 원숭이 · 항아리 미믹 · 칼날 제비 · [정예] 그리폰
 //   위 줄: 룬 부유석 · 가고일 · 옛 병사 망령 · [정예] 번개 와이번
 import { board, ellR, capF, polyF, U, minus, pol, lerp, ik, ramp, rampF, rampGlow, mixc, dots, strokes, rot, eye, glass, limb, gait4, gait2, flapOf, spec, done, flash, T2, L } from "./kit.js";
+import { sculpt, mat } from "./px3.js";
 
 const STONE = ramp(0xb0a690), STONEF = rampF(0x9a907a), STONED = ramp(0x857c6c), MOSS = ramp(0x6a9a44), MOSSD = ramp(0x4e7a36);
 const RUNE = rampGlow(0x6ae0ff), BRONZE = ramp(0xb08446), BRONZEF = rampF(0x9a7038), WOODP = ramp(0x9a6a40), CLOTH = ramp(0x8a5040);
@@ -164,53 +165,75 @@ export const pxMason = spec(46, 42, 14, 24,
     return { hurt: f === 0, ham: 0.4, bob: 0.5 };
   }, masonFrame);
 
-// ════ [정예] 석조 수문장 ════ 거대한 돌 기사. 탑 방패(룬) · 돌 철퇴 · 투구 틈으로 빛나는 눈 · 이끼 망토
+// ════ [정예] 석조 수문장 ════ (큰 몬스터 조각 도구) 거대한 돌 기사. 탑 방패(룬) · 돌 철퇴 · 투구 틈으로 빛나는 눈 · 이끼 망토
 //   p: bob · step · shield 방패 내밀기(0~1) · mace 철퇴(0 내림 ~ 1 위 ~ 2 내려침) · crouch · hurt
+const WDK = 0.7;
+const WD_ST = mat(ramp(0xb4aa96), { tex: "stone", amp: 0.7 }), WD_STF = mat(rampF(0x9a907c), { tex: "stone", amp: 0.6 }), WD_STD = mat(ramp(0x8a8070), { tex: "stone", amp: 0.8 });
+const WD_MOSS = mat(ramp(0x5a8a3a), { tex: "fur", amp: 1, dir: 1.5 }), WD_BR = mat(ramp(0xb08446), { spec: 0.5 }), WD_RUNE = mat(rampGlow(0x6ae0ff));
 function wardenFrame(p = {}) {
-  const W = 74, H = 70, G = H - 1, C = board(W, H);
-  const b = (p.bob ?? 0) + (p.crouch ?? 0) * 4, st = p.step ?? 0, sd = p.shield ?? 0, mc = p.mace ?? 0;
-  // 이끼 망토 (뒤)
-  C.part(polyF([[20, 22 + b], [34, 20 + b], [32, 54 + b], [26, 58 + b], [18, 55 + b], [14, 50 + b]]), MOSSD, { shine: 1 });
-  // 철퇴 (먼 팔)
-  const shB = [24, 26 + b], ma = -2.6 + mc * 1.5, hB = pol(shB, ma + 0.9, 11), mt = pol(hB, ma, 22);
-  C.part(capF(shB, hB, 4, 3.6), STONEF, { flat: 0.6 });
-  C.part(capF(hB, mt, 1.6, 1.6), BRONZEF);
-  C.part(ellR(mt[0], mt[1], 6, 6), STONED, { shine: 1 });
-  for (let k = 0; k < 6; k++) { const q = pol(mt, k * 1.047, 6); C.part(capF(q, pol(mt, k * 1.047, 9), 1.5, 0.5), STONED, { sep: !1 }); }
-  // 다리
-  for (const [x, far, s] of [[29, 1, -st], [42, 0, st]]) C.part(polyF([[x - 6, 44 + b], [x + 6, 44 + b], [x + 7 + s, G - Math.max(0, s)], [x - 6 + s, G - Math.max(0, s)]]), far ? STONEF : STONE, { shine: !far, flat: 0.55 });
-  // 몸통 (갑옷)
-  C.part(polyF([[24, 20 + b], [48, 20 + b], [46, 46 + b], [26, 46 + b]]), STONE, { shine: 1, flat: 0.55 });
-  strokes(C, [[26, 33 + b, 46, 33 + b], [26, 39 + b, 46, 39 + b]], STONE[2]);
-  C.part(polyF([[23, 18 + b], [33, 16 + b], [35, 24 + b], [24, 26 + b]]), STONED, { shine: 1, flat: 0.6 }); // 어깨판
-  mossy(C, [[27, 17 + b, 1.2], [44, 19 + b, 1]], 1.4);
-  // 투구
-  C.part(polyF([[29, 4 + b], [44, 4 + b], [46, 18 + b], [28, 18 + b]]), STONE, { shine: 1, flat: 0.6 });
-  C.part(polyF([[34, 1 + b], [39, 1 + b], [38, 5 + b], [35, 5 + b]]), MOSS, { sep: !1 }); // 투구 이끼 볏
-  strokes(C, [[33, 10 + b, 45, 10 + b]], 0x0c1418);
-  !p.hurt && (C.over(39, 10 + b, 0x7af0ff).over(42, 10 + b, 0x7af0ff).over(40, 10 + b, 0xc8f8ff));
-  // 탑 방패 (앞, 내밀면 앞으로)
-  const sx = 46 + sd * 8;
-  C.part(polyF([[sx, 16 + b], [sx + 12, 18 + b], [sx + 12, 50 + b], [sx + 6, 56 + b], [sx, 50 + b]]), STONE, { shine: 1, flat: 0.5 });
-  strokes(C, [[sx + 1.5, 18 + b, sx + 1.5, 50 + b]], STONE[5]);
-  C.part(polyF([[sx + 4, 28 + b], [sx + 9, 28 + b], [sx + 9, 40 + b], [sx + 4, 40 + b]]), BRONZE, { sep: !1, shine: 1 });
-  strokes(C, [[sx + 6.5, 30 + b, sx + 6.5, 38 + b], [sx + 5, 33 + b, sx + 8, 33 + b]], RUNE[3]);
-  return done(C, p);
+  const W = 106, H = 100, G = H - 1, S = sculpt(W, H, { k: p.k ?? WDK, ax: 50 });
+  const b = (p.bob ?? 0) + (p.crouch ?? 0) * 5, st = p.step ?? 0, sd = p.shield ?? 0, mc = p.mace ?? 0;
+  // 이끼 망토 (등 뒤로 늘어짐, 끝단 너덜)
+  S.add(polyF([[30, 30 + b], [52, 28 + b], [50, 80 + b], [46, 84 + b], [42, 80 + b], [37, 86 + b], [33, 80 + b], [24, 74 + b]]), WD_MOSS, { z: -6, h: 4 });
+  // 먼 팔 + 돌 철퇴 (가시 여섯)
+  const shB = [36, 36 + b], ma = -2.6 + mc * 1.5, elB = pol(shB, ma + 0.9, 14), mt = pol(elB, ma, 30);
+  S.add(capF(shB, elB, 6, 5), WD_STF, { z: -4, h: 5 });
+  S.add(capF(elB, mt, 2.2, 2.2), WD_BR, { z: -3, h: 2 });
+  S.add(ellR(mt[0], mt[1], 8.5, 8.5), WD_STD, { z: -2, h: 8 });
+  for (let k = 0; k < 6; k++) { const a = k * 1.047 + mc; S.add(capF(pol(mt, a, 7), pol(mt, a, 13), 2.2, 0.6), WD_STD, { z: -1, h: 2 }); }
+  // 다리: 두꺼운 돌기둥 + 무릎 판 + 발판
+  for (const [x, far, sg] of [[42, 1, -st], [60, 0, st]]) {
+    const top = [x, 64 + b], ft = [x + sg, G - 4 - Math.max(0, sg) * 0.8], M0 = far ? WD_STF : WD_ST, M1 = far ? WD_STF : WD_STD;
+    S.add(capF(top, ft, 9, 8), M0, { z: far ? -2 : 3, h: 8, prof: "flat" });
+    S.add(ellR(x + sg * 0.5, 77 + b, 6, 4.5), M1, { z: far ? -1 : 5, h: 3 });
+    S.add(polyF([[ft[0] - 9, ft[1] - 3], [ft[0] + 11, ft[1] - 3], [ft[0] + 12, G + 0.5], [ft[0] - 9, G + 0.5]]), M1, { z: far ? -1 : 5, h: 3 });
+  }
+  // 몸통: 갑옷 판 · 가슴 판 볼록 · 판 이음 홈 · 놋쇠 리벳 · 허리띠와 룬 버클
+  S.add(polyF([[34, 28 + b], [68, 28 + b], [66, 66 + b], [36, 66 + b]]), WD_ST, { z: 0, h: 15, prof: "flat" });
+  S.add(ellR(51, 40 + b, 13, 9), WD_ST, { blend: 4, h: 4 });
+  S.carve(capF([37, 50 + b], [65, 50 + b], 0.8), 1.4).carve(capF([51, 30 + b], [51, 60 + b], 0.7), 1.1);
+  for (const [x, y] of [[40, 34], [62, 34], [40, 56], [62, 56]]) S.add(ellR(x, y + b, 1.3, 1.3), WD_BR, { on: 1, h: 0.9 });
+  S.add(polyF([[35, 60 + b], [67, 60 + b], [67, 65 + b], [35, 65 + b]]), WD_BR, { on: 1, h: 1.6, lift: 1 });
+  S.add(ellR(51, 62.5 + b, 3, 2.6), WD_RUNE, { on: 1, h: 1.2, lift: 1 });
+  // 어깨판 둘 + 이끼
+  S.add(ellR(36, 30 + b, 9, 7), WD_STD, { lift: 4, h: 6 });
+  S.add(ellR(66, 31 + b, 8, 6.5), WD_STD, { lift: 3, h: 5 });
+  S.add(ellR(35, 25 + b, 6, 2.6), WD_MOSS, { on: 1, h: 1.4 });
+  // 투구: 네모 투구 · 이끼 볏 · 눈 틈(빛나는 두 눈) · 턱 이음
+  S.add(polyF([[42, 6 + b], [62, 6 + b], [64, 26 + b], [40, 26 + b]]), WD_ST, { lift: 3, h: 11, prof: "flat" });
+  S.add(capF([52, 1 + b], [52, 10 + b], 3, 2.6), WD_MOSS, { h: 3, lift: 6 });
+  S.carve(capF([47, 15 + b], [63, 15 + b], 1.1), 3, !1);
+  if (!p.block && !p.hurt) for (const x of [55, 56, 59, 60]) S.decal(x, 15 + b, x % 2 ? 0x7af0ff : 0xd0faff);
+  S.carve(capF([44, 21 + b], [62, 21 + b], 0.5), 1);
+  // 탑 방패 (가까운 손, 내밀면 앞으로): 테두리 단 · 놋쇠 판 · 룬 십자 · 방패 쥔 주먹
+  const sx = 66 + sd * 10;
+  S.add(polyF([[sx, 24 + b], [sx + 16, 27 + b], [sx + 16, 70 + b], [sx + 8, 78 + b], [sx, 70 + b]]), WD_ST, { z: 14, h: 6, prof: "flat" });
+  S.add(polyF([[sx + 2, 29 + b], [sx + 14, 31 + b], [sx + 14, 68 + b], [sx + 8, 74 + b], [sx + 2, 68 + b]]), WD_ST, { blend: 2, h: 1.6 });
+  S.add(polyF([[sx + 5, 40 + b], [sx + 12, 41 + b], [sx + 12, 56 + b], [sx + 5, 56 + b]]), WD_BR, { on: 1, h: 1.2 });
+  S.add(capF([sx + 8.5, 42 + b], [sx + 8.5, 54 + b], 0.9), WD_RUNE, { on: 1, h: 1, lift: 0.8 });
+  S.add(capF([sx + 6, 47 + b], [sx + 11, 47 + b], 0.9), WD_RUNE, { on: 1, h: 1, lift: 0.8 });
+  S.add(ellR(sx + 1, 46 + b, 3.4, 3.4), WD_ST, { z: 16, h: 3 });
+  const C = S.render({ debug: p.debug, rim: !p.block });
+  return p.hurt ? flash(C) : C;
 }
-export const pxWarden = spec(74, 70, 30, 46,
-  { idle: [4, 5], move: [6, 7], guard: [2, 6], bash: [3, 14, !1], wind: [4, 9, !1], atk: [3, 14, !1], rec: [3, 8, !1], hurt: [2, 10, !1], jump: [3, 10, !1] },
-  (nm, f, n, t) => {
-    const ph = (f / n) * T2;
-    if (nm === "idle") return { bob: Math.sin(ph) * 0.4, shield: 0.1 };
-    if (nm === "move") return { step: Math.sin(ph) * 3.5, bob: -Math.abs(Math.sin(ph)) * 1.2, shield: 0.2 };
-    if (nm === "guard") return { shield: 0.6, crouch: 0.3 };
-    if (nm === "bash") return { shield: [0.2, 1.2, 1][f], step: 3, crouch: 0.2 };
-    if (nm === "wind") return { mace: 1.1 * t, crouch: 0.6 * t, shield: 0.2 };
-    if (nm === "jump") return { mace: 1.1, crouch: -0.3, step: 2 };
-    if (nm === "atk") return { mace: [1.6, 2, 2.1][f], crouch: 0.7, shield: 0.3 };
-    if (nm === "rec") return { mace: 2 - 1.8 * t, crouch: 0.6 * (1 - t) };
-    return { hurt: f === 0, crouch: 0.2 };
-  }, wardenFrame);
+export const pxWarden = {
+  fw: Math.round(106 * WDK), fh: Math.round(100 * WDK), w: 30, h: 46,
+  anims: { idle: [4, 5], move: [6, 7], guard: [2, 6], bash: [3, 14, !1], wind: [4, 9, !1], atk: [3, 14, !1], rec: [3, 8, !1], hurt: [2, 10, !1], jump: [3, 10, !1] },
+  px(nm, f, n) {
+    const t = f / Math.max(1, n - 1), ph = (f / n) * T2;
+    let P = {};
+    if (nm === "idle") P = { bob: Math.sin(ph) * 0.5, shield: 0.1 };
+    if (nm === "move") P = { step: Math.sin(ph) * 4, bob: -Math.abs(Math.sin(ph)) * 1.4, shield: 0.2 };
+    if (nm === "guard") P = { shield: 0.6, crouch: 0.3 };
+    if (nm === "bash") P = { shield: [0.2, 1.2, 1][f], step: 3, crouch: 0.2 };
+    if (nm === "wind") P = { mace: 1.1 * t, crouch: 0.6 * t, shield: 0.2 };
+    if (nm === "jump") P = { mace: 1.1, crouch: -0.3, step: 2 };
+    if (nm === "atk") P = { mace: [1.6, 2, 2.1][f], crouch: 0.7, shield: 0.3 };
+    if (nm === "rec") P = { mace: 2 - 1.8 * t, crouch: 0.6 * (1 - t) };
+    if (nm === "hurt") P = { hurt: f === 0, crouch: 0.2 };
+    return wardenFrame(P);
+  },
+};
 
 // ════ 바위 원숭이 ════ 회색 털 · 돌처럼 굳은 손 · 긴 꼬리. 턱을 뛰어다니며 바위를 던진다
 //   p: bob · legs · arm 던지는 팔(0~1) · rock 손에 돌 · crouch · tail · jaw · hurt
@@ -342,55 +365,72 @@ export const pxSwallow = spec(46, 32, 18, 12,
     return { flap: fl };
   }, swallowFrame, { flying: !0 });
 
-// ════ [정예] 그리폰 ════ 독수리 머리·앞발 + 사자 몸 · 큰 날개. 낚아채 높이 올라갔다 떨어뜨린다
-//   p: flap · tilt · claw 앞발 뻗기(0~1) · carry 잡은 자세 · beak 부리 벌림 · hurt
-const GW = ramp(0xd8ccb0), GWD = ramp(0x8a6a40), GL = ramp(0xc89a50), GLF = rampF(0xb08440), BEAK = ramp(0xf0b830);
+// ════ [정예] 그리폰 ════ (큰 몬스터 조각 도구) 독수리 머리·앞발 + 사자 몸 · 큰 날개. 낚아채 높이 올라갔다 떨어뜨린다
+//   p: flap · tilt · claw 앞발 뻗기(0~1) · beak 부리 벌림 · hurt
+const GRK = 0.72;
+const GR_FE = mat(ramp(0xe0d4b8), { tex: "fur", amp: 0.6, dir: 1.5 }), GR_FED = mat(ramp(0x8a6a40), { tex: "fur", amp: 0.8, dir: 0.5 }), GR_FEF = mat(rampF(0x8a6a40), { tex: "fur", amp: 0.7, dir: 0.5 });
+const GR_LI = mat(ramp(0xc89a50), { tex: "fur", amp: 0.6, dir: 0.2 }), GR_LIF = mat(rampF(0xb08440), { tex: "fur", amp: 0.5, dir: 0.2 });
+const GR_BK = mat(ramp(0xf0b830), { spec: 0.5 }), GR_BKF = mat(rampF(0xf0b830)), GR_TL = mat(ramp(0x3a2a20), { spec: 0.3 });
 function griffinFrame(p = {}) {
-  const W = 88, H = 72, C = board(W, H);
-  const fl = p.flap ?? 0, R = rot([44, 38], p.tilt ?? 0), P = (x, y) => R([x, y]), cl = p.claw ?? 0;
+  const W = 122, H = 100, S = sculpt(W, H, { k: p.k ?? GRK, ax: 60 });
+  const fl = p.flap ?? 0, R = rot([60, 52], p.tilt ?? 0), P = (x, y) => R([x, y]), cl = p.claw ?? 0;
+  // 날개: 어깨 → 손목 → 칼깃 일곱 (먼 쪽 먼저)
   const wing = (far) => {
-    const root = P(40, 28), a = -1.9 - fl * 0.8 + (far ? -0.3 : 0), len = 36;
-    const tip = pol(root, a, len), elb = pol(root, a + 0.5, len * 0.45);
-    const shape = polyF([root, elb, tip, pol(tip, a + 2.2, 10), pol(root, a + 1.4, 18), P(46, 32)]);
-    C.part(shape, far ? rampF(0x8a6a40) : GWD, { shine: !far });
-    for (let k = 0; k < 5; k++) { const q = lerp(elb, tip, k / 5); C.part(capF(q, pol(q, a + 1.9, 9 - k), 1.6, 0.6), far ? rampF(0xd8ccb0) : GW, { sep: !1 }); }
+    const root = P(54, 38), a = -1.95 - fl * 0.85 + (far ? -0.3 : 0), M0 = far ? GR_FEF : GR_FED;
+    const wr = pol(root, a + 0.4, 22), tip = pol(root, a, 50);
+    S.add(U(capF(root, wr, 7, 5), capF(wr, tip, 5, 2.4)), M0, { z: far ? -8 : 10, h: 4 });
+    for (let k = 0; k < 7; k++) { const q = lerp(wr, tip, k / 7), fa = a + 1.65 - k * 0.06; S.add(capF(q, pol(q, fa, 19 - k * 1.3), 2.8, 0.9), k % 2 ? M0 : far ? GR_FEF : GR_FE, { z: far ? -9 : 9, h: 1.6 }); }
+    S.add(capF(lerp(root, wr, 0.3), lerp(wr, tip, 0.35), 4, 3), far ? GR_FEF : GR_FE, { blend: 2, h: 1.2 });
   };
   wing(!0);
-  // 사자 뒷몸 + 뒷다리 + 꼬리
-  for (const [x, far] of [[30, 1], [34, 0]]) { const h = P(x, 44), ft = P(x - 2, 58); limb(C, h, ft, 8, 8, 1, far ? 3.6 : 4.2, 2.6, far ? GLF : GL, { shine: !far }); C.part(ellR(...pol(ft, 0, 1.5), 3, 1.8), far ? GLF : GL, { sep: !1 }); }
-  C.part(U(capF(P(24, 42), P(12, 48), 2, 1.4), ellR(...P(11, 49), 3, 3)), GL, { shine: 1 });
-  C.part(ellR(...P(11, 49), 2.6, 2.6), GWD, { sep: !1 });
-  C.part(U(ellR(...P(36, 42), 12, 9), ellR(...P(48, 36), 10, 9)), GL, { shine: 1 });
-  // 깃털 가슴 + 머리
-  C.part(ellR(...P(54, 34), 8, 9), GW, { shine: 1 });
-  C.part(U(ellR(...P(60, 24), 7.5, 7), polyF([P(56, 18), P(52, 13), P(58, 17)])), GW, { shine: 1, lv: 0.05 });
+  // 사자 꼬리 (끝에 털뭉치)
+  S.add(U(capF(P(30, 60), P(16, 66), 2.6, 2), capF(P(16, 66), P(10, 74), 2, 1.6)), GR_LI, { z: -2, h: 2 });
+  S.add(ellR(...P(9, 76), 4, 4), GR_FED, { z: -2, h: 3 });
+  // 뒷다리 (사자)
+  for (const [x, far] of [[40, 1], [46, 0]]) { const h0 = P(x, 62), kn = P(x - 6, 70), ft = P(x - 2, 80); S.add(U(capF(h0, kn, far ? 6 : 7, 4.6), capF(kn, ft, 4.6, 3.4)), far ? GR_LIF : GR_LI, { z: far ? -4 : 4, h: 4 }); S.add(ellR(...P(x + 1, 81), 4.6, 2.6), far ? GR_LIF : GR_LI, { z: far ? -3 : 5, h: 2 }); }
+  // 몸통 (사자) + 엉덩이 근육 + 배 홈
+  S.add(ellR(...P(52, 58), 22, 13, -0.1), GR_LI, { z: 0, h: 12 });
+  S.add(ellR(...P(40, 58), 10, 10), GR_LI, { blend: 4, h: 4 });
+  S.carve(capF(P(44, 66), P(60, 67), 0.9), 1);
+  // 깃털 가슴 (겹친 깃 줄)
+  S.add(ellR(...P(70, 50), 12, 13), GR_FE, { blend: 5, h: 7 });
+  for (let k = 0; k < 5; k++) S.carve(capF(P(64 + k * 2, 44 + k * 3), P(72 + k * 2, 46 + k * 3), 0.5), 0.7);
+  // 머리 (독수리): 둥근 머리 · 귀깃 · 갈고리 부리 · 매서운 눈
+  const hc = P(80, 34);
+  S.add(ellR(hc[0], hc[1], 10, 9.5), GR_FE, { h: 9 });
+  S.add(U(capF(P(72, 27), P(64, 20), 2.6, 0.8), capF(P(74, 26), P(68, 17), 2.2, 0.7)), GR_FED, { h: 2, lift: 3 });
   const bk = p.beak ?? 0;
-  C.part(polyF([P(65, 21), P(73, 23), P(70, 27), P(65, 26)]), BEAK, { shine: 1 });
-  bk > 0.2 && C.part(polyF([P(65, 27), P(70, 27 + bk * 3), P(65, 28 + bk)]), ramp(0x8a2020), { sep: !1 });
-  C.part(polyF([P(70, 23), P(74, 24.5), P(71, 27)]), ramp(0x403020), { sep: !1 });
-  !p.hurt && (C.over(...P(63, 21), 0xffc020), C.over(...P(63.6, 20.5), 0xffffff), C.over(...P(64, 21), 0x101010));
-  strokes(C, [[...P(60, 19.5), ...P(65, 20)]], GW[1]);
-  // 앞발 (독수리 발톱)
-  for (const [x, far] of [[50, 1], [56, 0]]) {
-    const s = P(x, 40), ft = cl > 0 ? P(x + 8 + cl * 6, 52 - cl * 4) : P(x + 1, 54);
-    limb(C, s, ft, 7, 7, -1, far ? 3 : 3.4, 1.8, far ? rampF(0xf0b830) : BEAK, { shine: !far });
-    for (const d of [-0.5, 0, 0.5]) C.part(capF(ft, pol(ft, 1.2 + d, 3.2), 0.9, 0.3), ramp(0x302018), { sep: !1 });
+  S.add(polyF([P(87, 30), P(99, 33), P(97, 38), P(88, 37)]), GR_BK, { h: 3.5, lift: 3 });
+  S.add(polyF([P(97, 33), P(101, 36), P(97, 38)]), GR_TL, { h: 2, lift: 4 });
+  bk > 0.2 && S.add(polyF([P(88, 38), P(96, 39 + bk * 3), P(89, 41 + bk)]), GR_BK, { h: 2, lift: 3 });
+  if (!p.block && !p.hurt) { const e0 = P(84, 31); S.decal(e0[0], e0[1], 0xffc020).decal(e0[0] + 1, e0[1], 0x101010).decal(e0[0], e0[1] - 1, 0xffffff); }
+  S.tone(capF(P(82, 28), P(88, 29), 1.2), -0.15);
+  // 앞발 (독수리 발톱): 뻗으면 앞으로
+  for (const [x, far] of [[64, 1], [72, 0]]) {
+    const sh = P(x, 58), ft = cl > 0 ? P(x + 12 + cl * 8, 70 - cl * 6) : P(x + 2, 78);
+    S.add(capF(sh, ft, far ? 3.4 : 4, 2.6), far ? GR_BKF : GR_BK, { z: far ? -2 : 8, h: 2.6 });
+    for (const d of [-0.6, 0, 0.6]) S.add(capF(ft, pol(ft, 1.1 + d - cl * 0.7, 5), 1.3, 0.4), GR_TL, { z: far ? -1 : 9, h: 1.2 });
   }
   wing(!1);
-  return done(C, p);
+  const C = S.render({ debug: p.debug, rim: !p.block });
+  return p.hurt ? flash(C) : C;
 }
-export const pxGriffin = spec(88, 72, 34, 30,
-  { idle: [4, 14], move: [4, 16], wind: [4, 10, !1], atk: [3, 16, !1], rec: [3, 10, !1], hurt: [2, 10, !1], carry: [4, 16], gust: [5, 12, !1] },
-  (nm, f, n, t) => {
-    const fl = [1, 0.3, -1, 0.3][f % 4];
-    if (nm === "wind") return { flap: fl * 0.5, tilt: -0.2 * t, beak: t };
-    if (nm === "atk") return { flap: -1, tilt: 0.35, claw: 1, beak: 1 };
-    if (nm === "carry") return { flap: fl, claw: 0.6, tilt: -0.1 };
-    if (nm === "gust") return { flap: [1, 1, -1, -1, 0][f], tilt: -0.15, beak: 0.6 };
-    if (nm === "rec") return { flap: fl, tilt: 0.2 * (1 - t) };
-    if (nm === "hurt") return { hurt: f === 0, flap: 0.5, tilt: -0.25, beak: 1 };
-    return { flap: fl, tilt: nm === "move" ? 0.1 : 0 };
-  }, griffinFrame, { flying: !0 });
+export const pxGriffin = {
+  fw: Math.round(122 * GRK), fh: Math.round(100 * GRK), w: 34, h: 30, flying: !0,
+  anims: { idle: [4, 14], move: [4, 16], wind: [4, 10, !1], atk: [3, 16, !1], rec: [3, 10, !1], hurt: [2, 10, !1], carry: [4, 16], gust: [5, 12, !1] },
+  px(nm, f, n) {
+    const t = f / Math.max(1, n - 1), fl = [1, 0.3, -1, 0.3][f % 4];
+    let P = { flap: fl };
+    if (nm === "move") P = { flap: fl, tilt: 0.1 };
+    if (nm === "wind") P = { flap: fl * 0.5, tilt: -0.2 * t, beak: t };
+    if (nm === "atk") P = { flap: -1, tilt: 0.35, claw: 1, beak: 1 };
+    if (nm === "carry") P = { flap: fl, claw: 0.6, tilt: -0.1 };
+    if (nm === "gust") P = { flap: [1, 1, -1, -1, 0][f], tilt: -0.15, beak: 0.6 };
+    if (nm === "rec") P = { flap: fl, tilt: 0.2 * (1 - t) };
+    if (nm === "hurt") P = { hurt: f === 0, flap: 0.5, tilt: -0.25, beak: 1 };
+    return griffinFrame(P);
+  },
+};
 
 // ════ 룬 부유석 ════ 공중에 뜬 오벨리스크 조각. 가운데 룬이 빛나고 둘레를 작은 돌이 돈다. 쏠 때마다 룬이 번쩍
 //   p: glow(0~1.5) · spin 주변 돌 위상 · crack 금 · hurt
@@ -514,54 +554,65 @@ export const pxGhost = spec(50, 52, 16, 30,
     return { hurt: f === 0, bob: 1, spear: 0.2 };
   }, ghostFrame, { flying: !0 });
 
-// ════ [정예] 번개 와이번 ════ 청회색 비늘 · 날개가 곧 앞발 · 노란 번개 줄무늬 · 꼬리 가시. 번개 숨결을 내뿜는다
+// ════ [정예] 번개 와이번 ════ (큰 몬스터 조각 도구) 청회색 비늘 · 날개가 곧 앞발 · 노란 번개 줄무늬 · 꼬리 가시. 번개 숨결을 내뿜는다
 //   p: flap · tilt · jaw · breath 숨결 빛 · tail 꼬리 휘두르기 · hurt
-const WV = ramp(0x5a6a88), WVF = rampF(0x4e5a76), WVB = ramp(0xc8c0a0), BOLT = rampGlow(0xffe040);
+const WVK = 0.72;
+const WV_SC = mat(ramp(0x5a6a88), { tex: "skin", amp: 0.5 }), WV_SCF = mat(rampF(0x4e5a76), { tex: "skin", amp: 0.4 });
+const WV_MEM = mat(ramp(0x7a8aa8), { tex: "skin", amp: 0.3 }), WV_MEMF = mat(rampF(0x6a7a98), { tex: "skin", amp: 0.3 });
+const WV_BEL = mat(ramp(0xc8c0a0), { tex: "stone", amp: 0.3 }), WV_BOLT = mat(rampGlow(0xffe040)), WV_HORN = mat(ramp(0xd8d0b8), { spec: 0.4 });
 function wyvernFrame(p = {}) {
-  const W = 96, H = 74, C = board(W, H);
-  const fl = p.flap ?? 0, R = rot([46, 36], p.tilt ?? 0), P = (x, y) => R([x, y]);
+  const W = 130, H = 114, S = sculpt(W, H, { k: p.k ?? WVK, ax: 62 });
+  const fl = p.flap ?? 0, R = rot([62, 64], p.tilt ?? 0), P = (x, y) => R([x, y + 14]);
+  // 날개 = 앞발: 어깨 → 팔꿈치 → 손목(갈고리) → 손가락 뼈 셋, 그 사이 막
   const wing = (far) => {
-    const root = P(44, 28), a = -2.0 - fl * 0.85 + (far ? -0.3 : 0), len = 42;
-    const wr = pol(root, a + 0.35, len * 0.5), tip = pol(root, a, len);
-    const f1 = pol(wr, a + 0.9, 22), f2 = pol(wr, a + 1.5, 18);
-    C.part(polyF([root, wr, tip, lerp(tip, f1, 0.6), f1, lerp(f1, f2, 0.5), f2, P(52, 34)]), far ? WVF : rampF(0x6a7a98), { shine: !far });
-    C.part(U(capF(root, wr, 2.2, 1.6), capF(wr, tip, 1.6, 0.6), capF(wr, f1, 1, 0.5), capF(wr, f2, 1, 0.5)), far ? WVF : WV, { sep: !1, shine: !far });
-    !far && strokes(C, [[...lerp(root, tip, 0.3), ...lerp(root, tip, 0.6)]], BOLT[3]);
+    const root = P(58, 40), a = -2.0 - fl * 0.9 + (far ? -0.3 : 0), MB = far ? WV_SCF : WV_SC, MM = far ? WV_MEMF : WV_MEM;
+    const el = pol(root, a + 0.4, 19), wr = pol(el, a - 0.2, 17), f1 = pol(wr, a + 0.1, 26), f2 = pol(wr, a + 0.75, 22), f3 = pol(wr, a + 1.35, 17);
+    S.add(polyF([root, el, wr, f1, lerp(f1, f2, 0.5), f2, lerp(f2, f3, 0.5), f3, P(66, 50)]), MM, { z: far ? -9 : 9, h: 1.4, prof: "flat" });
+    S.add(U(capF(root, el, 4.4, 3.4), capF(el, wr, 3.4, 2.6)), MB, { z: far ? -8 : 10, h: 3 });
+    for (const q of [f1, f2, f3]) S.add(capF(wr, q, 1.8, 0.7), MB, { z: far ? -8 : 10, h: 1.6 });
+    S.add(capF(wr, pol(wr, a - 1.4, 5), 1.4, 0.4), WV_HORN, { z: far ? -7 : 11, h: 1.2 });
+    !far && S.add(capF(lerp(root, el, 0.4), lerp(el, wr, 0.6), 1, 0.8), WV_BOLT, { on: 1, h: 0.8 });
   };
   wing(!0);
-  // 꼬리 (가시 끝)
-  const tw = p.tail ?? 0, t0 = P(30, 40), t1 = P(16, 46 + tw * 4), t2 = P(5, 42 + tw * 10);
-  C.part(U(capF(t0, t1, 4, 2.6), capF(t1, t2, 2.6, 1)), WV, { shine: 1 });
-  C.part(polyF([pol(t2, 2.6, 3), pol(t2, 3.6, 7), pol(t2, 4.4, 3)]), BOLT, { sep: !1 });
-  // 뒷다리
-  for (const [x, far] of [[36, 1], [40, 0]]) { const h = P(x, 42), ft = P(x + 2, 56); limb(C, h, ft, 7, 7, 1, far ? 3 : 3.6, 2, far ? WVF : WV, { shine: !far }); }
-  // 몸통 + 배 비늘
-  C.part(U(ellR(...P(42, 36), 13, 9, -0.2), ellR(...P(54, 30), 8, 8)), WV, { shine: 1 });
-  C.part((x, y) => ellR(...P(44, 40), 10, 4, -0.2)(x, y), WVB, { sep: !1 });
-  for (let k = 0; k < 4; k++) strokes(C, [[...P(36 + k * 5, 37), ...P(37 + k * 5, 43)]], WVB[2]);
-  // 등 번개 줄무늬
-  strokes(C, [[...P(34, 30), ...P(38, 28)], [...P(38, 28), ...P(36, 32)], [...P(36, 32), ...P(42, 29)], [...P(46, 27), ...P(50, 25)]], BOLT[4]);
-  // 목 + 머리
-  C.part(capF(P(56, 28), P(66, 18), 5, 4), WV, { shine: 1 });
-  const jw = p.jaw ?? 0;
-  C.part(U(ellR(...P(70, 16), 6.5, 5.2), polyF([P(70, 12), P(82, 15), P(82, 18), P(72, 20)])), WV, { shine: 1, lv: 0.05 });
-  C.part(polyF([P(71, 19), P(81, 18.5 + jw * 2), P(79, 22 + jw * 3), P(70, 21)]), WV, { shine: 1 });
-  jw > 0.3 && C.part(polyF([P(72, 19.5), P(80, 18.6 + jw * 2), P(78, 21 + jw * 2.4)]), ramp(0x6a1a2a), { sep: !1 });
-  C.part(U(capF(P(67, 11), P(60, 5), 1.6, 0.4), capF(P(70, 11), P(66, 3), 1.4, 0.4)), BOLT, { sep: !1 });
-  !p.hurt && (C.over(...P(72, 14), 0xfff060), C.over(...P(73, 14), 0xffffff));
-  (p.breath ?? 0) > 0 && C.part(ellR(...P(83, 18 + jw * 2), 3 * p.breath, 2.4 * p.breath), BOLT, { sep: !1 });
+  // 꼬리 + 번개 가시
+  const tw = p.tail ?? 0, t0 = P(40, 56), t1 = P(22, 62 + tw * 6), t2 = P(8, 56 + tw * 14);
+  S.add(U(capF(t0, t1, 6, 3.8), capF(t1, t2, 3.8, 1.4)), WV_SC, { z: -2, h: 4 });
+  S.add(polyF([pol(t2, 2.7, 4), pol(t2, 3.5, 10), pol(t2, 4.3, 4)]), WV_BOLT, { z: -1, h: 2 });
+  // 뒷다리 + 발톱
+  for (const [x, far] of [[48, 1], [54, 0]]) { const h0 = P(x, 58), kn = P(x + 6, 68), ft = P(x + 2, 78); S.add(U(capF(h0, kn, far ? 5 : 6, 4), capF(kn, ft, 4, 2.6)), far ? WV_SCF : WV_SC, { z: far ? -4 : 4, h: 3.6 }); for (const d of [-0.5, 0, 0.5]) S.add(capF(ft, pol(ft, 0.3 + d, 4.4), 1.1, 0.4), WV_HORN, { z: far ? -3 : 5, h: 1 }); }
+  // 몸통 + 배 비늘 판
+  S.add(ellR(...P(58, 52), 20, 12, -0.2), WV_SC, { z: 0, h: 12 });
+  S.add(ellR(...P(60, 58), 15, 6, -0.2), WV_BEL, { on: 1, h: 2, lift: 0.6 });
+  for (let k = 0; k < 5; k++) S.carve(capF(P(50 + k * 4.5, 55), P(51 + k * 4.5, 62), 0.5), 0.9);
+  // 등 번개 줄무늬 (지그재그)
+  for (const [x0, y0, x1, y1] of [[44, 46, 50, 43], [50, 43, 48, 48], [48, 48, 56, 44], [60, 42, 66, 40]]) S.add(capF(P(x0, y0), P(x1, y1), 0.9), WV_BOLT, { on: 1, h: 0.8, lift: 0.4 });
+  // 목 + 머리 + 뿔 + 턱
+  S.add(capF(P(70, 46), P(84, 30), 6.5, 5.2), WV_SC, { blend: 2, h: 5 });
+  const hc = P(90, 26), jw = p.jaw ?? 0;
+  S.add(U(ellR(hc[0], hc[1], 8, 6.4), polyF([P(90, 20), P(106, 24), P(105, 29), P(92, 31)])), WV_SC, { h: 7 });
+  S.add(polyF([P(92, 31), P(104, 30 + jw * 3), P(101, 35 + jw * 4), P(91, 34)]), WV_SC, { h: 4, lift: 1 });
+  jw > 0.3 && !p.block && (S.decal(...P(98, 31 + jw * 1.5), 0x6a1a2a), S.decal(...P(99, 32 + jw * 2), 0x6a1a2a));
+  S.add(U(capF(P(86, 19), P(76, 8), 2, 0.5), capF(P(90, 18), P(84, 5), 1.8, 0.5)), WV_HORN, { h: 2, lift: 4 });
+  S.carve(capF(P(94, 23), P(100, 24), 0.6), 1.4, !1);
+  if (!p.block && !p.hurt) { const e0 = P(93, 22); S.decal(e0[0], e0[1], 0xfff060).decal(e0[0] + 1, e0[1], 0xffffff).decal(e0[0], e0[1] + 1, 0xc8a020); }
+  (p.breath ?? 0) > 0 && S.add(ellR(...P(108, 30 + jw * 2), 4 * p.breath, 3 * p.breath), WV_BOLT, { z: 20, h: 2 });
   wing(!1);
-  return done(C, p);
+  const C = S.render({ debug: p.debug, rim: !p.block });
+  return p.hurt ? flash(C) : C;
 }
-export const pxWyvern = spec(96, 74, 38, 30,
-  { idle: [4, 12], move: [4, 14], wind: [4, 10, !1], breath: [4, 16], atk: [3, 16, !1], rec: [3, 10, !1], hurt: [2, 10, !1], tail: [4, 14, !1] },
-  (nm, f, n, t) => {
-    const fl = [1, 0.3, -1, 0.3][f % 4];
-    if (nm === "wind") return { flap: fl * 0.5, tilt: -0.25 * t, jaw: 0.4 * t, breath: t * 0.8 };
-    if (nm === "breath") return { flap: fl * 0.4, tilt: 0.1, jaw: 1.2, breath: 1.4 + (f % 2) * 0.3 };
-    if (nm === "atk") return { flap: -1, tilt: 0.45, jaw: 1 };
-    if (nm === "tail") return { flap: fl, tail: [0, 1, 2, 1][f], tilt: -0.15 };
-    if (nm === "rec") return { flap: fl, tilt: 0.2 * (1 - t) };
-    if (nm === "hurt") return { hurt: f === 0, flap: 0.5, tilt: -0.25, jaw: 1 };
-    return { flap: fl, tilt: nm === "move" ? 0.12 : 0 };
-  }, wyvernFrame, { flying: !0 });
+export const pxWyvern = {
+  fw: Math.round(130 * WVK), fh: Math.round(114 * WVK), w: 38, h: 30, flying: !0,
+  anims: { idle: [4, 12], move: [4, 14], wind: [4, 10, !1], breath: [4, 16], atk: [3, 16, !1], rec: [3, 10, !1], hurt: [2, 10, !1], tail: [4, 14, !1] },
+  px(nm, f, n) {
+    const t = f / Math.max(1, n - 1), fl = [1, 0.3, -1, 0.3][f % 4];
+    let P = { flap: fl };
+    if (nm === "move") P = { flap: fl, tilt: 0.12 };
+    if (nm === "wind") P = { flap: fl * 0.5, tilt: -0.25 * t, jaw: 0.4 * t, breath: t * 0.8 };
+    if (nm === "breath") P = { flap: fl * 0.4, tilt: 0.1, jaw: 1.2, breath: 1.4 + (f % 2) * 0.3 };
+    if (nm === "atk") P = { flap: -1, tilt: 0.45, jaw: 1 };
+    if (nm === "tail") P = { flap: fl, tail: [0, 1, 2, 1][f], tilt: -0.15 };
+    if (nm === "rec") P = { flap: fl, tilt: 0.2 * (1 - t) };
+    if (nm === "hurt") P = { hurt: f === 0, flap: 0.5, tilt: -0.25, jaw: 1 };
+    return wyvernFrame(P);
+  },
+};
