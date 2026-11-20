@@ -15,21 +15,21 @@ const RUST = [0x5e2e16, 0x84441e, 0xa85e2a];
 const EYE = 0xc89a30, EYEH = 0xfff0a8, MOUTH = 0x1a080a, TOOTH = 0xd8cca8, TOOTHD = 0x9a8c6a;
 
 // ── 모양 ──
-const ellR = (cx, cy, rx, ry, a = 0) => {
+export const ellR = (cx, cy, rx, ry, a = 0) => {
   const c = Math.cos(a), s = Math.sin(a);
   return (x, y) => {
     const dx = x - cx, dy = y - cy, u = dx * c + dy * s, v = -dx * s + dy * c;
     return (u / rx) ** 2 + (v / ry) ** 2 <= 1;
   };
 };
-const capF = (a, b, ra, rb = ra) => {
+export const capF = (a, b, ra, rb = ra) => {
   const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1;
   return (x, y) => {
     const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / L2));
     return Math.hypot(x - a[0] - dx * t, y - a[1] - dy * t) <= ra + (rb - ra) * t;
   };
 };
-const polyF = (pts) => (x, y) => {
+export const polyF = (pts) => (x, y) => {
   let c = !1;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
     const [xi, yi] = pts[i], [xj, yj] = pts[j];
@@ -37,16 +37,16 @@ const polyF = (pts) => (x, y) => {
   }
   return c;
 };
-const U = (...f) => (x, y) => f.some((g) => g(x, y));
-const minus = (a, b) => (x, y) => a(x, y) && !b(x, y);
-const pol = (p, ang, d) => [p[0] + Math.cos(ang) * d, p[1] + Math.sin(ang) * d];
-const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+export const U = (...f) => (x, y) => f.some((g) => g(x, y));
+export const minus = (a, b) => (x, y) => a(x, y) && !b(x, y);
+export const pol = (p, ang, d) => [p[0] + Math.cos(ang) * d, p[1] + Math.sin(ang) * d];
+export const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 const BAY = [0, 2, 3, 1];
 const LX = -0.55, LY = -0.68, LZ = 0.48, LN = Math.hypot(LX, LY, LZ);
 
 // 그림판 + 부위별 외곽색 기록
 // DW×DH 설계 좌표로 그리고, k배 크기의 픽셀 칸에 직접 찍는다 (발밑 가운데 기준). 늘리고 줄인 그림이 아니라 작은 칸에 다시 그림
-function board(DW, DH, k = 1) {
+export function board(DW, DH, k = 1) {
   const W = Math.round(DW * k), H = Math.round(DH * k);
   const C = canvas(W, H), oc = new Int32Array(W * H).fill(-1);
   const DX = (x) => DW / 2 + (x - W / 2) / k, DY = (y) => DH + (y - H) / k;
@@ -103,7 +103,7 @@ function board(DW, DH, k = 1) {
   };
   return C;
 }
-function ik(a, b, l1, l2, bend) {
+export function ik(a, b, l1, l2, bend) {
   const dx = b[0] - a[0], dy = b[1] - a[1], d = Math.min(Math.hypot(dx, dy), l1 + l2 - 0.01);
   const t = Math.acos(Math.max(-1, Math.min(1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d))));
   return pol(a, Math.atan2(dy, dx) - t * bend, l1);

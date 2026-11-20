@@ -5,7 +5,8 @@ import { register } from "./core.js";
 import { pxSlime, pxSlimeMini } from "./pg0.js";
 import { slimeFx, splash, puddle, groundBelow } from "./slimefx.js";
 import { pxGoblin } from "./pgob.js";
-import { plainsWolf, tuskBoar, giantWasp, mandrake, meadowOgre, centaur } from "./mg0.js";
+import { pxWolf, pxBoar, pxWasp, pxMandrake } from "./pgm2.js";
+import { pxOgre, pxCentaur } from "./pgl.js";
 
 const DT = 1 / 60;
 const POIS = (p = 0.15, d = 3) => ({ type: "poison", chance: 1, dur: d, power: p });
@@ -327,7 +328,7 @@ register("gm_goblin", {
 // ════ 초원 회색늑대 ════ 처음 보면 울부짖어 근처 늑대를 깨운다. 거리를 두고 맴돌다 낮게 웅크려 덮친다
 register("gm_wolf", {
   atkMul: 1.1,
-  ...plainsWolf, speed: 150, sight: 260,
+  ...pxWolf, speed: 150, sight: 260,
   *brain(e, A) {
     const M = e.fz.mem;
     M.cd = 0.8 + Math.random();
@@ -364,6 +365,8 @@ register("gm_wolf", {
           yield 0;
         }
         while (!A.ground) yield 0;
+        A.burst("dust", 0, -1, 5, 0xb8b0a0);
+        A.sound("land", 0.4);
         yield A.once("rec");
         // 물고 뒤로 빠졌다가 다시 맴돈다
         A.play("move");
@@ -384,7 +387,7 @@ register("gm_wolf", {
 // ════ 뿔멧돼지 ════ 앞발로 땅을 긁고(경고선) 일직선 돌진. 벽에 박으면 어지러워 피해를 1.5배 받는다
 register("gm_boar", {
   atkMul: 1.5,
-  ...tuskBoar, speed: 55, sight: 260, heavy: 1,
+  ...pxBoar, speed: 55, sight: 260, heavy: 1,
   damage(e, dmg) {
     return e.fz?.mem.dizzy ? dmg * 1.5 : dmg;
   },
@@ -432,7 +435,7 @@ register("gm_boar", {
           A.burst("spark", 16, -14, 8, 0xfff080);
           M.dizzy = 1;
           A.play("stun");
-          yield 1.8;
+          for (let t = 0; t < 1.8; t += 0.3) (A.burst("spark", 10, -26, 2, 0xfff080), yield 0.3);
           M.dizzy = 0;
         } else {
           A.play("idle");
@@ -451,7 +454,7 @@ register("gm_boar", {
 // ════ 거대 말벌 ════ 플레이어 위를 맴돌다 배를 말고(예고) 독침 급강하. 맞으면 중독
 register("gm_wasp", {
   atkMul: 1,
-  ...giantWasp, speed: 120, sight: 280,
+  ...pxWasp, speed: 120, sight: 280,
   *brain(e, A) {
     const M = e.fz.mem;
     M.cd = 1.5 + Math.random();
@@ -491,7 +494,7 @@ register("gm_wasp", {
 // ════ 맨드레이크 ════ 풀잎 무더기로 숨어 있다가 다가오면 튀어나와 비명 (가까우면 잠깐 굳는다). 도망치다 다시 숨는다
 register("gm_mandrake", {
   atkMul: 0.6,
-  ...mandrake, speed: 70, sight: 160,
+  ...pxMandrake, speed: 70, sight: 160,
   damage(e, dmg) {
     return e.fz?.mem.hidden ? dmg * 0.3 : dmg;
   },
@@ -532,7 +535,7 @@ register("gm_mandrake", {
 // ════ [정예] 초원 오우거 ════ 몽둥이 내려찍기(양옆으로 땅울림) · 발구르기(가까우면 굳음) · 체력 절반에 포효하고 빨라짐
 register("gm_ogre", {
   atkMul: 1.9,
-  ...meadowOgre, speed: 40, sight: 280, heavy: 1,
+  ...pxOgre, speed: 40, sight: 280, heavy: 1,
   *brain(e, A) {
     const M = e.fz.mem;
     M.cd = 1.2;
@@ -553,9 +556,9 @@ register("gm_ogre", {
         yield 0.3;
       }
       const d = Math.abs(A.dx);
-      if (d < 86 && Math.abs(A.dy) < 60 && M.cd <= 0) {
+      if (d < 70 && Math.abs(A.dy) < 50 && M.cd <= 0) {
         A.face(), A.stop(1);
-        if (d < 50 && Math.random() < 0.45) {
+        if (d < 42 && Math.random() < 0.45) {
           // 발구르기: 한 발을 들었다가 쿵 → 가까우면 굳음
           A.tele(0.55, { bar: [e.cx, 200] });
           yield A.once("stomp", 6) * 0.5;
@@ -568,17 +571,18 @@ register("gm_ogre", {
           yield 0.6;
         } else {
           // 몽둥이 내려찍기: 머리 위로 크게 들었다가 → 쾅 + 양옆으로 땅울림 파도
-          A.tele(0.8, { bar: [e.cx + e.facing * 46, 90] });
+          A.tele(0.8, { bar: [e.cx + e.facing * 36, 90] });
           yield A.once("wind");
           yield 0.15;
           A.once("atk");
           yield 0.08;
-          A.melee(70, 80, 1.7, { knock: 2.4 });
-          A.fxHeavy(44, -20, 1.4, 0xd8c090);
+          A.melee(54, 56, 1.7, { knock: 2.4 });
+          A.fxHeavy(36, -14, 1, 0xd8c090);
           A.shake(8);
           A.sound("explosion", 0.7);
-          A.burst("dust", 46, -2, 16, 0x9a8a6a);
-          for (const dir of [-1, 1]) A.shoot({ sprite: "p_wave", speed: 230, life: 1, radius: 10 }, e.cx + e.facing * 46, e.body.y - 10, dir > 0 ? 0 : Math.PI, 0.6, { el: "earth", opts: { tint: 0xc8b080 } });
+          A.burst("dust", 36, -2, 16, 0x9a8a6a);
+          A.burst("chunk", 36, -2, 8, 0x7a6a50);
+          for (const dir of [-1, 1]) A.shoot({ sprite: "p_wave", speed: 230, life: 1, radius: 10 }, e.cx + e.facing * 36, e.body.y - 10, dir > 0 ? 0 : Math.PI, 0.6, { el: "earth", opts: { tint: 0xc8b080 } });
           yield 0.25;
           yield A.once("rec");
         }
@@ -586,7 +590,7 @@ register("gm_ogre", {
         M.cd = 1.6 + Math.random() * 0.6;
         continue;
       }
-      if (d > 60) (A.play("move"), A.walk(Math.sign(A.dx), e.speed));
+      if (d > 48) (A.play("move"), A.walk(Math.sign(A.dx), e.speed));
       else (A.play("idle"), A.stop(), A.face());
       yield 0;
     }
@@ -596,7 +600,7 @@ register("gm_ogre", {
 // ════ [정예] 켄타우로스 사냥꾼 ════ 거리를 두고 화살 세 발 · 바짝 붙으면 앞발로 짓밟기 · 가끔 들판을 가로질러 돌진
 register("gm_centaur", {
   atkMul: 1.4,
-  ...centaur, speed: 150, sight: 340,
+  ...pxCentaur, speed: 150, sight: 340,
   *brain(e, A) {
     const M = e.fz.mem;
     M.cd = 1;
@@ -609,15 +613,15 @@ register("gm_centaur", {
         continue;
       }
       const d = Math.abs(A.dx);
-      if (d < 64 && Math.abs(A.dy) < 50 && M.cd <= 0) {
+      if (d < 54 && Math.abs(A.dy) < 50 && M.cd <= 0) {
         // 앞발 들어 짓밟기
         A.face(), A.stop(1);
-        A.tele(0.45, { bar: [e.cx + e.facing * 40, 80] });
+        A.tele(0.45, { bar: [e.cx + e.facing * 32, 70] });
         yield A.once("rear", 7);
-        A.melee(52, 50, 1.4, { knock: 2.2 });
+        A.melee(42, 40, 1.4, { knock: 2.2 });
         A.shake(5);
         A.sound("thud", 0.8);
-        A.burst("dust", 30, -2, 10, 0x9a8a6a);
+        A.burst("dust", 24, -2, 10, 0x9a8a6a);
         yield 0.35;
         M.cd = 1;
         continue;
@@ -635,7 +639,7 @@ register("gm_centaur", {
         for (let t = 0; t < 1.1; t += DT) {
           e.body.vx = dir * 330;
           e.facing = dir;
-          !hit && (hit = A.melee(34, 44, 1.3, { knock: 1.8 }));
+          !hit && (hit = A.melee(30, 36, 1.3, { knock: 1.8 }));
           Math.random() < 0.4 && A.burst("dust", -20, -2, 1, 0x9a8a6a);
           if (e.body.hitWall) break;
           yield 0;
@@ -652,7 +656,7 @@ register("gm_centaur", {
         const p = A.p;
         for (let i = 0; i < 3; i++) {
           A.once("shoot");
-          const ox = e.cx + e.facing * 22, oy = e.body.y - 54, ang = Math.atan2(p.cy - oy, p.cx - ox) + (i - 1) * 0.05;
+          const ox = e.cx + e.facing * 30, oy = e.body.y - 44, ang = Math.atan2(p.cy - oy, p.cx - ox) + (i - 1) * 0.05;
           A.shoot({ sprite: "p_arrow", speed: 560, gravity: 60, life: 1.6, radius: 5 }, ox, oy, ang, 0.9, { opts: { tint: 0xffffff } });
           A.sound("bow", 0.6);
           yield 0.2;

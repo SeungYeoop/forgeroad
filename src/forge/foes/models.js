@@ -9,7 +9,8 @@ import { snowWolf, iceSpirit, frostYeti, frozenSoldier, icicleBat, snowmanBomber
 import { sandScorpion, desertRaider, sandSpirit, mummy, glassSerpent, mirageMerchant, mirageSorcerer, duneColossus, sahar } from "./m6.js";
 import { pxSlime, pxSlimeMini } from "./pg0.js";
 import { pxGoblin } from "./pgob.js";
-import { plainsWolf, tuskBoar, giantWasp, mandrake, meadowOgre, centaur } from "./mg0.js";
+import { pxWolf, pxBoar, pxWasp, pxMandrake } from "./pgm2.js";
+import { pxOgre, pxCentaur } from "./pgl.js";
 
 export const MODELS = {
   fr0_0: ghoul, fr0_1: rat, fr0_2: archer, fr0_3: scarecrow, fr0_4: crow, fr0_5: husk, fr0_e0: warden, fr0_e1: ringer, frb0: grayburn,
@@ -19,5 +20,5 @@ export const MODELS = {
   fr4_0: flameInfantry, fr4_1: artillerist, fr4_2: salamander, fr4_3: furnaceSpirit, fr4_4: chainTorturer, fr4_5: bannerBearer, fr4_e0: siegeGolem, fr4_e1: guardCaptain, frb4: ignar,
   fr5_0: snowWolf, fr5_1: iceSpirit, fr5_2: frostYeti, fr5_3: frozenSoldier, fr5_4: icicleBat, fr5_5: snowmanBomber, fr5_e0: glacierTurtle, fr5_e1: frostMaiden, frb5: kryos,
   fr6_0: sandScorpion, fr6_1: desertRaider, fr6_2: sandSpirit, fr6_3: mummy, fr6_4: glassSerpent, fr6_5: mirageMerchant, fr6_e0: mirageSorcerer, fr6_e1: duneColossus, frb6: sahar,
-  gm_slime: pxSlime, gm_slime_mini: pxSlimeMini, gm_goblin: pxGoblin, gm_wolf: plainsWolf, gm_boar: tuskBoar, gm_wasp: giantWasp, gm_mandrake: mandrake, gm_ogre: meadowOgre, gm_centaur: centaur,
+  gm_slime: pxSlime, gm_slime_mini: pxSlimeMini, gm_goblin: pxGoblin, gm_wolf: pxWolf, gm_boar: pxBoar, gm_wasp: pxWasp, gm_mandrake: pxMandrake, gm_ogre: pxOgre, gm_centaur: pxCentaur,
 };
