@@ -6,6 +6,41 @@
 function cvR(rows) { return rows.map(([id, x0, x1, fy, h, kind, floor, role, ex]) => ({ id, x0, x1, fy, h, kind, floor, role, ...(ex ?? {}) })); }
 const _cvR0 = (rows) => rows.map(([id, x0, x1, fy, h, kind, floor, role, ex]) => ({ id, x0, x1, fy, h, kind, floor, role, ...(ex ?? {}) }));
 
+
+// 탑 속 계단 굴: 탑 [x0, x1] 바닥 문(Fb, 들어오는 쪽 inSide)에서 꼭대기(top)까지 좌우 방을 번갈아 비탈 굴로 잇는다 (한 칸 가로 450 · 높이 ≤ 380)
+//   outSide를 주면 맨 위 방에 그쪽 옆문(F = outF), 아니면 마지막 굴이 탑 윗면으로 나온다
+function towerInner(x0, x1, Fb, top, inSide, outSide = null, outF = null, branch = 0, kind = "ruin") {
+  const L = [x0 + 30, x0 + 300], Rr = [x1 - 300, x1 - 30], halls = [], pass = [];
+  const end = outSide ? outF : top + 250;
+  const n = Math.max(1, Math.ceil((Fb - end) / 380));
+  const dy = (Fb - end) / n;
+  let side = inSide === "W" ? 0 : 1, F = Fb;
+  for (let k = 0; k <= n; k++) {
+    const [a, c] = side ? Rr : L;
+    halls.push({ x0: a, x1: c, F: Math.round(F), h: 190, role: k === 0 ? "rest" : k % 3 === 2 ? "treasure" : "arena" });
+    if (k < n) {
+      const nF = Math.round(F - dy);
+      side ? pass.push([Rr[0], Math.round(F), L[1], nF]) : pass.push([L[1], Math.round(F), Rr[0], nF]);
+      F = nF;
+      side ^= 1;
+    }
+  }
+  const last = halls[halls.length - 1];
+  if (!outSide) pass.push(side ? [last.x0, last.F, last.x0 - 450, top] : [last.x1, last.F, last.x1 + 450, top]);
+  const mouths = [{ side: inSide, x: inSide === "W" ? halls[0].x0 : halls[0].x1, F: Fb }];
+  outSide && mouths.push({ side: outSide, x: outSide === "W" ? last.x0 : last.x1, F: last.F });
+  // 가지 문: branch 층마다 그 방의 바깥 벽에 옆문 (바로 붙은 가지 섬으로 걸어 나간다)
+  const doors = [];
+  for (let k = 2; branch && k < halls.length - 1; k += branch) {
+    const h = halls[k], sd = h.x0 < (x0 + x1) / 2 ? "W" : "E";
+    mouths.push({ side: sd, x: sd === "W" ? h.x0 : h.x1, F: h.F });
+    doors.push({ side: sd, F: h.F });
+  }
+  // 들어오는 문을 맨 뒤로 (같은 쪽 가지 문에 이름이 덮이지 않게)
+  mouths.push(mouths.shift());
+  return { kind, halls, pass, mouths, doors };
+}
+
 export const BLUEPRINTS = {
   // ── g1_0 「재의 들판」: 1번 지역 첫 지상 구역. 난이도 낮음 ──
   // ▲ 문 x≈4352 y≈1200 (거대 하늘섬 평평한 윗면), ▼ 문 x≈3330 (서쪽 동굴 맨 아래 심연 동굴)
@@ -230,150 +265,98 @@ export function editSky(S, patch = {}, links = null) {
   return { ...S, isles, links: links ?? S.links };
 }
 
-// ── g1_m1 「스톤브리지 · 돌다리」 손 설계: 덩어리 섬 대신 길고 얇은 돌다리 판이 층층이 엇갈린다 ──
-//   다리 열세 개가 서→동→서로 꺾이며 350px씩 오르고, 꺾이는 자리는 속에 옛 초소가 있는 돌탑 섬. 정상은 무너진 성(유적 방·계단 굴)
-//   갈래: 다리 끝마다 짧은 보물 바위 · 동쪽 끝 전망탑
+// ── g1_m1 「스톤브리지 · 공중 도시」 손 설계: 하늘에 걸린 벽돌 도시 ──
+//   벽돌 대로 셋(길이 3600~4900)이 층층이 걸리고, 대로 끝마다 벽돌 탑 — 탑 속 계단 굴(좌우 방을 번갈아)을 올라 꼭대기에서 다음 대로로
+//   맨 위는 성채(▲): 옥좌실 · 성벽 회랑. 기초 땅(구름 길)은 맨 아래 8000
 BLUEPRINTS.g1_m1 = {
   skyBase: 8000,
   flatWalk: 1,
   sky: {
-    peakY: 1800,
+    peakY: 2000,
     gate: {
-      cx: 4350, w: 2700, sh: 600, tS: 1300, belly: 0.5, flat: true,
+      cx: 4050, w: 3100, sh: 400, tS: 900, belly: 0.5, flat: true,
       inner: {
         kind: "ruin",
         halls: [
-          { x0: 3050, x1: 3550, F: 3000, h: 220, type: "colonnade", role: "arena" }, // 서쪽 성벽 회랑
-          { x0: 5150, x1: 5650, F: 3000, h: 220, type: "colonnade", role: "arena" }, // 동쪽 성벽 회랑
-          { x0: 4000, x1: 4700, F: 2650, h: 240, type: "sanctum" }, // 옥좌실 (큰 상자)
+          { x0: 2700, x1: 3300, F: 2550, h: 220, type: "colonnade", role: "arena" }, // 서쪽 성벽 회랑
+          { x0: 3700, x1: 4500, F: 2500, h: 240, type: "sanctum" }, // 옥좌실 (큰 상자)
+          { x0: 4800, x1: 5400, F: 2550, h: 220, type: "colonnade", role: "arena" }, // 동쪽 성벽 회랑
         ],
-        pass: [[3550, 3000, 4000, 2650, 150], [4700, 2650, 5150, 3000, 150], [4000, 2650, 3150, 1800, 150], [4700, 2650, 5550, 1800, 150]],
-        mouths: [{ side: "W", x: 3050, F: 3000 }, { side: "E", x: 5650, F: 3000 }],
+        pass: [[3300, 2550, 3700, 2500, 150], [4500, 2500, 4800, 2550, 150], [3700, 2500, 3250, 2000, 150], [4500, 2500, 4950, 2000, 150]],
+        mouths: [],
       },
     },
     isles: [
-      { id: "B1", cx: 3300, top: 7650, w: 1800, t: 90, shape: "slab", role: "rest" }, // 첫 다리
-      { id: "B2", cx: 1100, top: 7300, w: 1800, t: 90, shape: "slab", role: "arena" },
-      { id: "B3", cx: 3300, top: 6950, w: 1800, t: 90, shape: "slab", role: "arena" },
-      { id: "B4", cx: 5500, top: 6600, w: 1800, t: 90, shape: "slab", role: "rest" },
-      { id: "K1", cx: 7400, top: 6250, w: 1100, t: 420, shape: "lumpy", role: "arena" }, // 동쪽 돌탑 섬 (꺾임)
-      { id: "B6", cx: 5500, top: 5900, w: 1800, t: 90, shape: "slab", role: "arena" },
-      { id: "B7", cx: 3300, top: 5550, w: 1800, t: 90, shape: "slab", role: "arena" },
-      { id: "K2", cx: 1100, top: 5200, w: 1600, t: 420, shape: "lumpy", role: "rest" }, // 서쪽 돌탑 섬 (쉼터)
-      { id: "B9", cx: 3300, top: 4900, w: 1800, t: 90, shape: "slab", role: "arena" },
-      { id: "B10", cx: 5500, top: 4550, w: 1800, t: 90, shape: "slab", role: "arena" },
-      { id: "K3", cx: 7500, top: 4200, w: 1100, t: 420, shape: "lumpy", role: "arena" }, // 동쪽 돌탑 섬 2
-      { id: "B12", cx: 5500, top: 3850, w: 1800, t: 90, shape: "slab", role: "rest" },
-      { id: "B13", cx: 7550, top: 3500, w: 1100, t: 90, shape: "slab", role: "arena" },
-      { id: "P", cx: 6275, top: 3200, w: 550, t: 260, shape: "spire", role: "arena" }, // 성문 앞 돌기둥
-      // 갈래
-      { id: "T1", cx: 7600, top: 7650, w: 500, t: 150, shape: "spire", role: "treasure" }, // 땅 가까운 동쪽 보물 바위
-      { id: "T2", cx: 3900, top: 3500, w: 600, t: 240, shape: "spire", role: "vista" }, // 성 밑 전망탑
-      { id: "T3", cx: 6400, top: 1650, w: 600, t: 300, shape: "lumpy", role: "treasure" }, // 성 동쪽 보물섬
+      { id: "S1", cx: 3150, top: 7650, w: 4900, t: 130, shape: "slab", role: "arena", mat: "brick" }, // 아래 대로
+      { id: "T1", cx: 6425, top: 5800, w: 1050, t: 2100, shape: "block", form: "cone", role: "rest", mat: "brick", inner: towerInner(5900, 6950, 7650, 5800, "W") }, // 동쪽 탑
+      { id: "S2", cx: 3810, top: 5800, w: 3580, t: 130, shape: "slab", role: "arena", mat: "brick" }, // 가운데 대로
+      { id: "T2", cx: 1225, top: 4000, w: 1050, t: 2050, shape: "block", form: "cone", role: "rest", mat: "brick", inner: towerInner(700, 1750, 5800, 4000, "E") }, // 서쪽 탑
+      { id: "S3", cx: 3810, top: 4000, w: 3580, t: 130, shape: "slab", role: "arena", mat: "brick" }, // 위 대로
+      { id: "T3", cx: 6425, top: 2300, w: 1050, t: 1950, shape: "block", form: "cone", role: "rest", mat: "brick", inner: towerInner(5900, 6950, 4000, 2300, "W") }, // 성채 앞 탑
+      { id: "X1", cx: 7650, top: 7650, w: 500, t: 160, shape: "spire", role: "treasure", mat: "brick" }, // 동쪽 끝 보물 망루
     ],
     links: [
-      ["g:4600", "B1"], ["B1", "B2"], ["B2", "B3"], ["B3", "B4"], ["B4", "K1"], ["K1", "B6"], ["B6", "B7"], ["B7", "K2"],
-      ["K2", "B9"], ["B9", "B10"], ["B10", "K3"], ["K3", "B12"], ["B12", "B13"], ["B13", "P"], ["P", "G>"],
-      ["g:6900", "T1"], ["B12", "T2"], ["G", "T3"],
+      ["g:300", "S1"], ["S1", "T1<"], ["T1", "S2"], ["S2", "T2>"], ["T2", "S3"], ["S3", "T3<"], ["T3", "G"], ["g:7000", "X1"],
     ],
   },
 };
 
-// ── g0_m1 「그린스텝 · 하늘 계단」 손 설계: 기초 땅(구름 섬 길)은 맨 아래 8000, 그 위로 넓은 풀 계단밭 섬이 지그재그로 쌓인다 ──
-//   동쪽으로 다섯 단 → 서쪽으로 네 단 → 동쪽으로 네 단 → 정상 풀밭(▲) 동쪽 굴로. 단마다 350px씩 오르고, 섬은 계단밭(tiers)이라 윗면도 층층이
-//   갈래: 땅 가까이 서쪽 보물섬 · 가운데 높이 동쪽 끝 전망섬 · 정상 위 보물섬 둘
+// ── g0_m1 「그린스텝 · 떠 있는 산」 손 설계: 하늘에 산 하나가 통째로 떠 있다 (기초 땅은 맨 아래 8000 구름 섬 길) ──
+//   양쪽 산기슭의 작은 풀섬 다섯 단을 올라 산 끝자락에 닿고, 층층이 깎인 풀 비탈을 걸어 정상(▲)까지. 보물은 산기슭 바깥 섬
 BLUEPRINTS.g0_m1 = {
   skyBase: 8000,
   flatWalk: 1,
   sky: {
-    peakY: 1600,
+    // 떠 있는 산: 폭 5000 · 높이 1600의 계단밭 비탈, 밑은 뾰족하게 매달린 바위
+    peakY: 4600,
     gate: {
-      cx: 4350, w: 2600, sh: 600, tS: 1300, belly: 0.6, flat: true,
-      inner: {
-        halls: [
-          { x0: 3100, x1: 3550, F: 2800, h: 210, type: "colonnade", role: "arena" }, // 서쪽 풀밭 굴
-          { x0: 5150, x1: 5600, F: 2800, h: 210, role: "arena" }, // 동쪽 풀밭 굴
-          { x0: 4000, x1: 4700, F: 2450, h: 230, type: "sanctum" }, // 정상 아래 성소 (큰 상자)
-        ],
-        pass: [[3550, 2800, 4000, 2450, 150], [4700, 2450, 5150, 2800, 150], [4000, 2450, 3150, 1600, 150], [4700, 2450, 5550, 1600, 150]],
-        mouths: [{ side: "W", x: 3100, F: 2800 }, { side: "E", x: 5600, F: 2800 }],
-      },
+      cx: 4150, w: 5000, sh: 1600, tS: 2200, belly: 0.8,
     },
     isles: [
-      { id: "A", cx: 1700, top: 7600, w: 1000, t: 220, shape: "slab", role: "rest" }, // 첫 계단밭
-      { id: "B", cx: 3200, top: 7300, w: 1000, t: 360, shape: "twin", role: "arena" },
-      { id: "C", cx: 4700, top: 6950, w: 1000, t: 360, shape: "chunk", role: "arena" },
-      { id: "D", cx: 6200, top: 6600, w: 1000, t: 360, shape: "twin", role: "rest" },
-      { id: "E", cx: 7600, top: 6250, w: 800, t: 320, shape: "lumpy", role: "arena" }, // 동쪽 꺾임 섬
-      { id: "F", cx: 6200, top: 5900, w: 1000, t: 360, shape: "chunk", role: "arena" },
-      { id: "G2", cx: 4700, top: 5550, w: 1000, t: 360, shape: "block", form: "bowl", role: "rest", inner: { halls: [{ x0: 4400, x1: 4800, F: 5800, h: 200, kind: "pool", role: "treasure" }], pass: [[4800, 5800, 5100, 5550]], mouths: [] } }, // 샘 굴 섬
-      { id: "H", cx: 3200, top: 5200, w: 1000, t: 360, shape: "twin", role: "arena" },
-      { id: "I", cx: 1650, top: 4850, w: 1100, t: 360, shape: "lumpy", role: "rest" }, // 서쪽 꺾임 섬
-      { id: "J", cx: 3200, top: 4500, w: 1000, t: 360, shape: "chunk", role: "arena" },
-      { id: "K", cx: 4700, top: 4150, w: 1000, t: 360, shape: "twin", role: "arena" },
-      { id: "L", cx: 6200, top: 3800, w: 1000, t: 360, shape: "chunk", role: "rest" },
-      { id: "M", cx: 7600, top: 3420, w: 800, t: 320, shape: "lumpy", role: "arena" },
-      { id: "P", cx: 6500, top: 3100, w: 800, t: 300, shape: "slab", role: "arena" }, // 정상 앞 판섬
-      // 갈래
-      { id: "T1", cx: 450, top: 7450, w: 500, t: 240, shape: "spire", role: "treasure" }, // 땅 가까운 서쪽 보물섬
-      { id: "V1", cx: 400, top: 4500, w: 500, t: 260, shape: "spire", role: "vista" }, // 서쪽 끝 전망섬
-      { id: "T2", cx: 2500, top: 1450, w: 600, t: 280, shape: "lumpy", role: "treasure" }, // 정상 서쪽 보물섬
-      { id: "T3", cx: 6200, top: 1400, w: 600, t: 280, shape: "lumpy", role: "treasure" }, // 정상 동쪽 보물섬
+      // 서쪽 산기슭: 구름 길에서 산 끝자락까지 다섯 단
+      { id: "F1", cx: 1100, top: 7650, w: 600, t: 150, shape: "lumpy", role: "rest" },
+      { id: "F2", cx: 225, top: 7300, w: 350, t: 150, shape: "lumpy", role: "arena" },
+      { id: "F3", cx: 1100, top: 6950, w: 600, t: 150, shape: "lumpy", role: "arena" },
+      { id: "F4", cx: 225, top: 6600, w: 350, t: 150, shape: "lumpy", role: "treasure" },
+      { id: "F5", cx: 1025, top: 6250, w: 450, t: 150, shape: "lumpy", role: "arena" },
+      // 동쪽 산기슭
+      { id: "E1", cx: 7150, top: 7650, w: 600, t: 150, shape: "lumpy", role: "rest" },
+      { id: "E2", cx: 8000, top: 7300, w: 300, t: 150, shape: "lumpy", role: "arena" },
+      { id: "E3", cx: 7150, top: 6950, w: 600, t: 150, shape: "lumpy", role: "arena" },
+      { id: "E4", cx: 8000, top: 6600, w: 300, t: 150, shape: "lumpy", role: "treasure" },
+      { id: "E5", cx: 7225, top: 6250, w: 450, t: 150, shape: "lumpy", role: "arena" },
     ],
     links: [
-      ["g:2700", "A"], ["A", "B"], ["B", "C"], ["C", "D"], ["D", "E"], ["E", "F"], ["F", "G2"], ["G2", "H"], ["H", "I"],
-      ["I", "J"], ["J", "K"], ["K", "L"], ["L", "M"], ["M", "P"], ["P", "G>"],
-      ["A", "T1"], ["I", "V1"], ["G", "T2"], ["G", "T3"],
+      ["g:1800", "F1"], ["F1", "F2"], ["F2", "F3"], ["F3", "F4"], ["F4", "F5"], ["F5", "G"],
+      ["g:6450", "E1"], ["E1", "E2"], ["E2", "E3"], ["E3", "E4"], ["E4", "E5"], ["E5", "G"],
     ],
   },
 };
-// ── gm1_m1 「리프크라운 · 잎 왕관」 손 설계: 작은 섬 대신 거대한 잎 덩어리 층이 위로 갈수록 좁아지며 쌓인다 (나무 왕관 모양) ──
-//   층마다 끝에서 끝까지 잎 위를 길게 걷고, 끝의 잔가지 섬(나뭇가지)을 밟아 다음 층으로. 꼭대기는 왕관 정상 (▲, 동쪽 굴)
-//   갈래: 층 아래로 매달린 새 둥지 보물섬 · 서쪽 높은 전망 가지
-BLUEPRINTS.gm1_m1 = {
-  skyBase: 8000,
-  flatWalk: 1,
-  sky: {
-    peakY: 1700,
-    gate: {
-      cx: 4350, w: 2700, sh: 600, tS: 1200, belly: 0.6, flat: true,
-      inner: {
-        halls: [
-          { x0: 3100, x1: 3550, F: 2800, h: 210, role: "arena" }, // 서쪽 잎굴
-          { x0: 5150, x1: 5600, F: 2800, h: 210, role: "arena" }, // 동쪽 잎굴
-          { x0: 4000, x1: 4700, F: 2450, h: 230, type: "sanctum" }, // 왕관 속 둥지 (큰 상자)
-        ],
-        pass: [[3550, 2800, 4000, 2450, 150], [4700, 2450, 5150, 2800, 150], [4000, 2450, 3150, 1700, 150], [4700, 2450, 5550, 1700, 150]],
-        mouths: [{ side: "W", x: 3100, F: 2800 }, { side: "E", x: 5600, F: 2800 }],
-      },
+
+
+
+
+// ── gm1_m1 「리프크라운 · 세계수」 손 설계: 기초 땅에서 하늘 끝까지 서 있는 거대한 나무 한 그루 ──
+//   줄기(나무) 속 계단 굴 열두 칸을 올라 꼭대기 ▲. 세 층마다 줄기 옆벽 문 → 바로 붙은 잎 가지(전투·보물), 꼭대기 둘레엔 수관 잎
+{
+  const TRUNK = towerInner(3575, 4675, 7650, 3000, "W", null, null, 3, "cave");
+  const br = TRUNK.doors.map((d, k) => ({ id: `BR${k}`, cx: d.side === "W" ? 3575 - 60 - 450 : 4675 + 60 + 450, top: d.F, w: 900, t: 220, shape: "lumpy", role: k % 2 ? "treasure" : "arena", mat: "leaf" }));
+  BLUEPRINTS.gm1_m1 = {
+    skyBase: 8000,
+    flatWalk: 1,
+    sky: {
+      peakY: 3000,
+      gate: { cx: 4125, w: 1100, sh: 200, tS: 4900, belly: 0.2, flat: true, mat: "wood", inner: TRUNK }, // 줄기 = ▲ 섬
+      isles: [
+        { id: "R0", cx: 2350, top: 7650, w: 900, t: 200, shape: "lumpy", role: "rest", mat: "leaf" }, // 뿌리 쪽 잎 (입구)
+        ...br,
+        { id: "C1", cx: 2700, top: 2850, w: 1100, t: 260, shape: "lumpy", role: "vista", mat: "leaf" }, // 수관 서쪽 잎
+        { id: "C2", cx: 5550, top: 2850, w: 1100, t: 260, shape: "lumpy", role: "treasure", mat: "leaf" }, // 수관 동쪽 잎
+      ],
+      links: [["g:1500", "R0"], ["R0", "G<"], ["G", "C1"], ["G", "C2"]],
     },
-    isles: [
-      { id: "L1", cx: 4050, top: 7600, w: 5700, t: 240, shape: "lumpy", role: "rest", mat: "leaf" }, // 맨 아래 잎 층
-      { id: "W1", cx: 7550, top: 7250, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" }, // 잔가지
-      { id: "L2", cx: 4350, top: 6900, w: 4800, t: 260, shape: "lumpy", role: "arena", mat: "leaf" },
-      { id: "W2", cx: 1200, top: 6550, w: 400, t: 160, shape: "slab", role: "rest", mat: "wood" },
-      { id: "L3", cx: 3950, top: 6200, w: 4100, t: 260, shape: "lumpy", role: "arena", mat: "leaf" },
-      { id: "W3", cx: 6650, top: 5850, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
-      { id: "L4", cx: 4000, top: 5500, w: 3600, t: 260, shape: "lumpy", role: "rest", mat: "leaf" },
-      { id: "W4", cx: 1400, top: 5150, w: 600, t: 160, shape: "slab", role: "arena", mat: "wood" },
-      { id: "L5", cx: 3900, top: 4800, w: 3200, t: 260, shape: "lumpy", role: "arena", mat: "leaf" },
-      { id: "W5", cx: 6150, top: 4450, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
-      { id: "L6", cx: 4100, top: 4100, w: 2600, t: 260, shape: "lumpy", role: "rest", mat: "leaf" },
-      { id: "W6", cx: 1950, top: 3750, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
-      { id: "L7", cx: 4100, top: 3450, w: 3000, t: 240, shape: "lumpy", role: "arena", mat: "leaf" },
-      { id: "W7", cx: 6250, top: 3100, w: 500, t: 160, shape: "slab", role: "arena", mat: "wood" },
-      // 갈래
-      { id: "N1", cx: 7700, top: 6200, w: 500, t: 200, shape: "spire", role: "treasure", mat: "wood" }, // 새 둥지 보물 가지 (동)
-      { id: "N2", cx: 450, top: 4800, w: 500, t: 200, shape: "spire", role: "vista", mat: "wood" }, // 서쪽 높은 전망 가지
-      { id: "N3", cx: 6500, top: 1550, w: 600, t: 260, shape: "lumpy", role: "treasure", mat: "leaf" }, // 왕관 동쪽 보물 잎
-    ],
-    links: [
-      ["g:600", "L1"], ["L1", "W1"], ["W1", "L2"], ["L2", "W2"], ["W2", "L3"], ["L3", "W3"], ["W3", "L4"], ["L4", "W4"],
-      ["W4", "L5"], ["L5", "W5"], ["W5", "L6"], ["L6", "W6"], ["W6", "L7"], ["L7", "W7"], ["W7", "G>"],
-      ["W3", "N1"], ["W4", "N2"], ["G", "N3"],
-    ],
-  },
-};
+  };
+}
 
 // ── gm1_0 「모스바크 · 이끼 거목 숲」 손 설계 (지상): 그래스메어와 다른 땅·하늘·땅속 ──
 //   지표: 숲 입구 → 이끼 둔덕 둘 → 깊은 개울 협곡(물) → 쓰러진 거목 언덕 → 출구 숲. 협곡 위로 ▲ 거목 정상이 떠 있다

@@ -4133,6 +4133,7 @@ function skyWorld(P, groundAt, style, o = {}) {
       return topFn(x) + (gNeed ? gNeed(x, dep) : dep);
     };
     island(P, cx, peakY, gw, tS, st2, { topFn, botFn, sub: false, lobes: 0 });
+    o.design?.gate?.mat && P.mats.push({ x0: xa - 16, y0: peakY - 80, x1: xb + 16, y1: peakY + tS * 1.6 + 60, m: o.design.gate.mat });
     G = { x0: xa, x1: xb, top: peakY, rim: 0, gate: 1, topAt: topFn };
     const gBody = new Map();
     if (o.design?.gate?.inner)
