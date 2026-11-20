@@ -248,7 +248,7 @@ function placeProps(P) {
   P.walls = keepW.filter((wl) => !(wl.m === "stem" && wl.y1 - wl.y0 <= 10 && cols.some((cc) => near(wl, cc))));
   for (const cc of cols) {
     const cx = Math.round((cc.x0 + cc.x1) / 2), brk = brickAt(cx, cc.y1 - 8);
-    out.push({ x: cx, y: cc.y1 + 1, k: brk ? "p_column" : "p_rockcol", s: Math.round(cc.y1 - cc.y0 + (brk ? 10 : 0)), v: Math.round(cc.x1 - cc.x0), acc: null, hang: 0, bg: 1, dim: 0.04, ext: 1, g: brk ? 0 : 1 });
+    out.push({ x: cx, y: cc.y1 + 1, k: brk ? "p_column" : "p_rockcol", s: Math.round((cc.y1 - cc.y0 + (brk ? 10 : 0)) / 8) * 8, v: Math.round(cc.x1 - cc.x0), acc: null, hang: 0, bg: 1, dim: 0.04, ext: 1, g: brk ? 0 : 1 });
   }
   // 받침 확인: 폭의 85%가 바닥(천장)에 닿고, 반대쪽으로 높이만큼 비었나
   const floorOK = (x, y, w, h) => {
@@ -270,6 +270,9 @@ function placeProps(P) {
   };
   // 크기 배율: 사람 크기 물건은 작게, 바위·기둥·석상 같은 건 방 높이에 맞춰 크게까지
   const SCS = [0.8, 1, 1.25, 1.5, 1.8, 2.2, 2.6], SCW = [2, 4, 4, 3, 2, 1.5, 1];
+  // 그림 가짓수를 줄이려고 배율은 정해진 단계로만 (같은 그림을 여러 번 쓴다)
+  const snapSc = (v) => SCS.reduce((b, c) => (Math.abs(c - v) < Math.abs(b - v) ? c : b), 1);
+  const SCALED = ["p_stalag", "p_stalac", "p_crystal", "p_boulder", "p_bush", "p_shroom", "p_rubble", "p_brokencol", "p_moss", "p_roots", "p_fern", "p_flowers", "p_bones", "p_skulls"];
   const CAP = { p_torch: 1, p_brazier: 1.25, p_candles: 1.25, p_altar: 1.25, p_rack: 1.25, p_urn: 1.5, p_crates: 1.5, p_skulls: 1.5, p_bones: 1.5, p_flowers: 1.25, p_fern: 1.5, p_bush: 1.8, p_log: 1.5, p_chain: 1.5, p_cage: 1.5, p_chand: 1.5, p_banner: 1.5, p_web: 1.5, p_shelf: 1.25, p_rubble: 1.8, p_sarcoph: 1.5, p_statue: 2.6 };
   const pickSc = (k, room) => {
     const cap = Math.min(CAP[k] ?? 2.6, room);
@@ -279,7 +282,7 @@ function placeProps(P) {
     return 1;
   };
   const tryPut = (x, yy, k, hang, o = {}) => {
-    const s = o.s ?? (["p_statue", "p_shelf", "p_crates", "p_brazier", "p_torch", "p_altar", "p_rack", "p_sarcoph", "p_niche", "p_cage", "p_chand"].includes(k) ? 0 : R.int(0, 2));
+    const s = o.s ?? (["p_statue", "p_shelf", "p_crates", "p_brazier", "p_torch", "p_altar", "p_rack", "p_sarcoph", "p_niche", "p_cage", "p_chand"].includes(k) ? 0 : SCALED.includes(k) ? R.int(1, 2) : R.int(0, 2));
     const [w0, h0] = propSize(k, s), sc = o.sc ?? pickSc(k, (o.room ?? 300) / (h0 + 18)), w = w0 * sc, h = h0 * sc;
     if (!free(x, yy, w) || !room(x, yy, w) || !(hang ? ceilOK(x, yy, w, h) : floorOK(x, yy, w, h + 6))) return false;
     placed.push({ x, y: yy, w });
@@ -287,10 +290,19 @@ function placeProps(P) {
     // 종유석: 물방울이 떨어질 바닥까지 거리 (움직임 층에서 쓴다)
     let fall = 0;
     if (k === "p_stalac") for (let q = yy + 8; q < yy + 900 && !solid(x, q); q += 4) fall = q - yy;
-    out.push({ x: Math.round(x), y: Math.round(hang ? yy - 6 : yy + 2), k, s, v: R.int(0, 1), sc, acc: o.acc ?? null, hang: hang ? 1 : 0, g: o.g ?? 0, ...(fall ? { fall } : {}) });
+    out.push({ x: Math.round(x), y: Math.round(hang ? yy - 6 : yy + 2), k, s, v: SCALED.includes(k) ? 0 : R.int(0, 1), sc, acc: o.acc ?? null, hang: hang ? 1 : 0, g: o.g ?? 0, ...(fall ? { fall } : {}) });
     return true;
   };
   const CRY = [0x60d0ff, 0xc080ff, 0xffd070], SHR = [0xc060e0, 0x40e0c0, 0xffa040];
+  // ── 나무: 옛 그림(natdeco) 대신 3D 픽셀 나무 ──
+  for (const T of P.trees ?? []) {
+    const [, kind, sS, vS] = T.key.split(":");
+    const k = kind === "pine" ? "p_pine" : kind === "dead" ? "p_dead" : ["oak", "willow", "pale"].includes(kind) ? "p_oak" : null;
+    if (!k) continue;
+    out.push({ x: T.x, y: T.y + 2, k, s: Math.min(2, +sS), v: +vS % 2, acc: null, hang: 0, sc: 1, g: 0 });
+    T.conv = 1;
+  }
+  P.trees = (P.trees ?? []).filter((T) => !T.conv);
   const T_OPEN = [["p_bush", 34], ["p_flowers", 26], ["p_boulder", 18], ["p_fern", 16], ["p_log", 6]];
   const T_UGB = [["p_sarcoph", 12], ["p_skulls", 14], ["p_rubble", 16], ["p_brokencol", 10], ["p_urn", 10], ["p_brazier", 8], ["p_rack", 8], ["p_altar", 5], ["p_crates", 6], ["p_candles", 8]];
   const T_SKB = [["p_statue", 14], ["p_urn", 16], ["p_brazier", 12], ["p_candles", 12], ["p_altar", 8], ["p_shelf", 7], ["p_crates", 5], ["p_brokencol", 8], ["p_rubble", 6]];
@@ -323,7 +335,7 @@ function placeProps(P) {
           out.push({ x, y: tap ? yy - clear + 6 : yy - 30 - R.int(0, 20), k: tap ? "p_tapestry" : "p_niche", s: 1, v: R.int(0, 1), sc: tap ? 1 : R() < 0.5 ? 1 : 1.25, acc: null, hang: tap ? 1 : 0, bg: 1, g: 1 });
         } else if (ctx === "cave" && clear >= 150 && !out.some((q) => q.bg && !q.hang && Math.abs(q.x - x) < 170 && Math.abs(q.y - yy) < 140) && R() < 0.85) {
           const big = Math.min(2.6, clear / 70);
-          out.push({ x, y: yy + 2, k: R() < 0.7 ? "p_stalag" : "p_crystal", s: 2, v: R.int(0, 1), sc: Math.max(1.25, big * (0.6 + R() * 0.4)), acc: CRY[R.int(0, 2)], hang: 0, bg: 1, g: 1 });
+          out.push({ x, y: yy + 2, k: R() < 0.7 ? "p_stalag" : "p_crystal", s: 2, v: R.int(0, 1), sc: snapSc(Math.max(1.25, big * (0.6 + R() * 0.4))), acc: CRY[R.int(0, 2)], hang: 0, bg: 1, g: 1 });
         }
         const rate = ctx === "open" ? 0.075 : ctx === "cave" ? 0.15 : 0.12;
         if (R() > rate) continue;
@@ -344,7 +356,7 @@ function placeProps(P) {
         const ctx = brk ? (ug ? "ugb" : "skb") : "cave";
         // 큰 동굴 천장 뒷벽: 흐릿한 큰 종유석 (바위에 묻혀 붙는다)
         if (ctx === "cave" && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < 190 && Math.abs(q.y - yy) < 120) && R() < 0.8 && ceilOK(x, yy, 30, 60))
-          out.push({ x, y: yy - 6, k: "p_stalac", s: 2, v: R.int(0, 1), sc: Math.min(2.6, 1.25 + R() * below / 160), acc: null, hang: 1, bg: 1, g: 1 });
+          out.push({ x, y: yy - 6, k: "p_stalac", s: 2, v: R.int(0, 1), sc: snapSc(Math.min(2.6, 1.25 + R() * below / 160)), acc: null, hang: 1, bg: 1, g: 1 });
         if (R() > (ctx === "cave" ? 0.12 : 0.08)) continue;
         const tall = below > 170;
         const k = ctx === "ugb" ? pickW([["p_chain", 18], ["p_cage", 14], ["p_web", 16], ["p_moss", 16], ["p_chand", tall ? 10 : 0], ["p_banner", tall ? 8 : 0]]) : ctx === "skb" ? pickW([["p_banner", tall ? 30 : 0], ["p_chand", tall ? 20 : 0], ["p_chain", 12], ["p_web", 6]]) : pickW([["p_stalac", 50], ["p_roots", ug ? 10 : 40], ["p_moss", 24]]);
@@ -3684,12 +3696,22 @@ function innerNeed(I, T, x0, x1) {
     return dep;
   };
 }
-function skyInner(P, R, I, x0i, x1i, top, tags, topAt = null) {
+function skyInner(P, R, I, x0i, x1i, top, tags, topAt = null, bodyAt = null) {
   const sn = (v) => Math.round(v / BLK) * BLK, ruin = I.kind === "ruin", lo = x0i + 16, hi = x1i - 16;
   const box = (a, b, c, d) => cutShape(P, a - 4, b - 4, c + 4, d + 4, (px, py) => Math.min(px - a, c - px, py - b, d - py) + 0.5);
   const slab = (a, b, c, d) => addShape(P, a - 4, b - 4, c + 4, d + 4, (px, py) => Math.min(px - a, c - px, py - b, d - py) + 0.5);
   const wall = (a, b, c, d, m) => {
     const A = Math.max(a, lo), B = Math.min(c, hi);
+    if (bodyAt) {
+      // 파기 전 섬 바위 칸 [윗면, 밑면] 안에만: 하늘로 트인 출구 위·섬 옆 밖·입구 바깥엔 뒷벽이 없다
+      for (let x = Math.floor(A / 8) * 8; x < B; x += 8) {
+        const bc = bodyAt(x);
+        if (!bc) continue;
+        const xa = Math.max(A, x), xb = Math.min(B, x + 8), Y = Math.max(b, bc[0] + 16), Y1 = Math.min(d, bc[1] - 6);
+        Y1 > Y && xb > xa && P.walls.push({ x0: xa, y0: Y, x1: xb, y1: Y1, m });
+      }
+      return;
+    }
     if (!topAt) {
       const Y = Math.max(b, top + 16);
       B > A && d > Y && P.walls.push({ x0: A, y0: Y, x1: B, y1: d, m });
@@ -3759,10 +3781,13 @@ function skyInner(P, R, I, x0i, x1i, top, tags, topAt = null) {
       const t = clamp((x - xa) / (xb - xa || 1), 0, 0.9999);
       let i = 0;
       while (i < k && t >= bnd[i + 1]) i++;
-      if (rough && i < k) {
-        // 다음 단으로 넘어가기 직전 10px은 비스듬히 (높이 차의 절반까지)
-        const dx = (bnd[i + 1] - t) * Math.abs(xb - xa);
-        if (dx < 10) return sn(lev(i) + ((lev(i + 1) - lev(i)) * (10 - dx)) / 20);
+      if (!ruin && i < k) {
+        // 단의 뒤쪽 55%는 다음 단까지 부드러운 비탈 (네모난 계단 대신 바위 비탈 턱)
+        const f = (t - bnd[i]) / (bnd[i + 1] - bnd[i]), rr = 0.55;
+        if (f > 1 - rr) {
+          const u = (f - (1 - rr)) / rr;
+          return lev(i) + (lev(i + 1) - lev(i)) * u * u * (3 - 2 * u);
+        }
       }
       return sn(lev(i));
     };
@@ -4013,7 +4038,18 @@ function skyWorld(P, groundAt, style, o = {}) {
     };
     island(P, cx, peakY, gw, tS, st2, { topFn, botFn, sub: false, lobes: 0 });
     G = { x0: xa, x1: xb, top: peakY, rim: 0, gate: 1, topAt: topFn };
-    G.mouths = o.design?.gate?.inner ? skyInner(P, R, o.design.gate.inner, xa, xb, peakY, tags) : [];
+    const gBody = new Map();
+    if (o.design?.gate?.inner)
+      for (let xx = Math.floor(xa / 8) * 8; xx < xb; xx += 8) {
+        let yt = -1, yb = -1;
+        for (let yy = peakY - 140; yy < peakY + tS * 2.4; yy += 4) {
+          const sd = P.F.solid(xx + 4, yy);
+          if (sd && yt < 0) yt = yy;
+          if (yt >= 0 && !sd) ((yb = yy), (yy = 1e9));
+        }
+        yt >= 0 && gBody.set(xx, [yt, yb < 0 ? peakY + tS * 2.4 : yb]);
+      }
+    G.mouths = o.design?.gate?.inner ? skyInner(P, R, o.design.gate.inner, xa, xb, peakY, tags, null, (x) => gBody.get(Math.floor(x / 8) * 8) ?? null) : [];
     G.edgeAt = (s) => {
       const x = s > 0 ? xb - 12 : xa + 12;
       return { x, y: topFn(x) };
@@ -4180,8 +4216,20 @@ function skyWorld(P, groundAt, style, o = {}) {
       objs.push(head);
       if (q.shape === "block") {
       }
+      // 파기 전 섬 바위 칸마다 [윗면, 밑면] (섬 속 뒷벽을 이 안에만 그린다)
+      const bodyCols = new Map();
       if (q.inner)
-        for (const m of skyInner(P, R, q.inner, x0, x1, top, tags, (x) => (st && (st.hi === "R" ? x >= rz : x < rz) ? hiTop : top))) {
+        for (let xx = Math.floor(x0 / 8) * 8; xx < x1; xx += 8) {
+          let yt = -1, yb = -1;
+          for (let yy = hiTop - 130; yy < top + t * 3 + 400; yy += 4) {
+            const sd = P.F.solid(xx + 4, yy);
+            if (sd && yt < 0) yt = yy;
+            if (yt >= 0 && !sd) ((yb = yy), (yy = 1e9));
+          }
+          yt >= 0 && bodyCols.set(xx, [yt, yb < 0 ? top + t * 3 + 400 : yb]);
+        }
+      if (q.inner)
+        for (const m of skyInner(P, R, q.inner, x0, x1, top, tags, (x) => (st && (st.hi === "R" ? x >= rz : x < rz) ? hiTop : top), (x) => bodyCols.get(Math.floor(x / 8) * 8) ?? null)) {
           const pt = { x0: m.e - 40, x1: m.e + 40, top: m.F, rim: 0, t, obj: head, bpId: q.id, edgeAt: () => ({ x: m.e + (m.side === "E" ? -8 : 8), y: m.F }) };
           plats.push(pt);
           byId.set(q.id + (m.side === "E" ? ">" : "<"), pt);

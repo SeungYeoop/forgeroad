@@ -1,8 +1,20 @@
 // 지형 픽셀 계산 전용 작업 스레드 (칸 지형은 terrain.js pixSteps, 자연 지형은 terrfine.js pixFine)
 import { pixSteps } from "./terrain.js";
 import { pixFine, cropBand } from "./terrfine.js";
+import { paintProp } from "./natprops.js";
 
 self.onmessage = (ev) => {
+  // 쉴 때 받은 소품 그림 미리 그리기 (캐시만 채운다)
+  if (ev.data.warm) {
+    const pal = ev.data.pal;
+    for (const p of ev.data.warm) {
+      try {
+        paintProp(p.k, p.s, p.v, p.acc != null ? { ...pal, acc: p.acc } : pal, p.sc ?? 1, p.g ?? 0, p.ext ? { h: p.s, w: p.v } : null);
+      } catch (e) {}
+    }
+    self.postMessage({ warmDone: 1 });
+    return;
+  }
   const { id, codes, CW, ROWS, margin, base, ch, region, fine, bandTop, bandH } = ev.data;
   try {
     let g;

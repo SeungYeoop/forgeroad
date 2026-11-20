@@ -5,6 +5,7 @@ import * as VFX from "./vfx.js";
 import * as ATMO from "./atmo.js";
 import * as DEPTH from "./depth.js";
 import * as NATANIM from "./natanim.js";
+import { warmProps } from "./terrain.js";
 import * as PROPS from "./props3d.js";
 import * as FOES from "./foes/core.js";
 import { bindR0 } from "./foes/r0.js";
@@ -4005,9 +4006,19 @@ export function travel(sc, to, back) {
       const at = back ?? "L";
       const p = arrivePos(sc.world, z, at);
       sc.travelTo(p.tile, at === "R" ? -1 : 1, p.row > 0 ? p.row : null, p.py > 0 ? p.py : null);
-      sc.cameras.main.fadeIn(260, 8, 6, 12);
-      sc.zoneBusy = 0;
-      arrive(sc, z);
+      // 보이는 지형 띠가 다 그려질 때까지 화면을 어둡게 둔다 (작업 스레드가 그리는 동안 빈 화면이 보이지 않게, 최대 4초)
+      const t0 = sc.time.now;
+      const done = () => (loadingNote(sc, !1), sc.cameras.main.fadeIn(260, 8, 6, 12), (sc.zoneBusy = 0), arrive(sc, z));
+      const wait = () => {
+        if (!sc.world) return;
+        const el = sc.time.now - t0;
+        let pend = 0, bands = 0;
+        for (const ch of sc.world.loaded?.values() ?? []) for (const B of ch.bands?.values() ?? []) (bands++, B.rt && B.rt._frJob && pend++);
+        if ((el > 150 && bands > 0 && pend === 0) || el > 4000) return done();
+        el > 600 && loadingNote(sc, !0);
+        sc.time.delayedCall(80, wait);
+      };
+      wait();
     }),
   );
 }
@@ -4167,7 +4178,18 @@ function natAnimSrc(sc) {
   const z = zoneOfPlayer(sc);
   if (!z || !planReady(sc, z)) return null;
   const P = ZG.planOf(z, planOpts(sc, z));
-  return P && P.props && P.props.length ? { key: z.id + ":" + P.seed, P, ox: sc.world.lx(z.c0 * 32) } : null;
+  if (!P || !P.props || !P.props.length) return null;
+  const key = z.id + ":" + P.seed, ox = sc.world.lx(z.c0 * 32);
+  if (sc._naWarm !== key) {
+    sc._naWarm = key;
+    const px = sc.player.cx - ox, py = sc.player.cy, seen = new Map();
+    for (const p of P.props) {
+      const k = [p.k, p.s, p.v, p.acc, p.sc ?? 1, p.g ?? 0, p.ext ? 1 : 0].join(":"), d = Math.abs(p.x - px) + Math.abs(p.y - py) * 0.5;
+      (!seen.has(k) || seen.get(k).d > d) && seen.set(k, { p, d });
+    }
+    warmProps(key, [...seen.values()].sort((a, b) => a.d - b.d).map((q) => q.p), z.reg?.pal);
+  }
+  return { key, P, ox };
 }
 export function natDecorTex(scene, key) {
   if (scene.textures.exists(key)) return;

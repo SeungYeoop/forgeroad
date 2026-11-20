@@ -35,6 +35,12 @@ function mkTex(sc) {
     g.addColorStop(0, "rgba(255,255,255,0.95)"), g.addColorStop(0.3, "rgba(255,255,255,0.42)"), g.addColorStop(0.65, "rgba(255,255,255,0.12)"), g.addColorStop(1, "rgba(255,255,255,0)");
     (x.fillStyle = g), x.fillRect(0, 0, 64, 64);
   }));
+  // 가장자리 어둠: 가운데는 투명, 바깥으로 갈수록 검게
+  sc.textures.addCanvas("na_vig", cv(256, 256, (x) => {
+    const g = x.createRadialGradient(128, 128, 40, 128, 128, 182);
+    g.addColorStop(0, "rgba(0,0,0,0)"), g.addColorStop(0.45, "rgba(0,0,0,0.25)"), g.addColorStop(0.8, "rgba(0,0,0,0.75)"), g.addColorStop(1, "rgba(0,0,0,1)");
+    (x.fillStyle = g), x.fillRect(0, 0, 256, 256);
+  }));
   sc.textures.addCanvas("na_ray", cv(32, 128, (x) => {
     const g = x.createLinearGradient(0, 0, 0, 128);
     g.addColorStop(0, "rgba(255,255,255,0.9)"), g.addColorStop(0.6, "rgba(255,255,255,0.35)"), g.addColorStop(1, "rgba(255,255,255,0)");
@@ -59,6 +65,11 @@ function build(A, P) {
   const lights = [], drips = [], wins = [], trees = [];
   for (const p of P.props ?? []) {
     const L = LIGHT[p.k];
+    if (p.k === "p_oak" || p.k === "p_pine") {
+      const [w0, h1] = sizeOf(p.k, p.s);
+      trees.push({ x: p.x, y: p.y - h1 * 0.62, w: w0, t: hash(p.x, p.y) * 6 });
+      continue;
+    }
     if (!LIGHT[p.k] && p.k !== "p_stalac") continue;
     const [, h0] = p.ext ? [0, p.s] : sizeOf(p.k, p.s);
     const h = h0 * (p.sc ?? 1);
@@ -77,7 +88,7 @@ function build(A, P) {
 function ensure(sc) {
   if (sc._na && sc._na.scene === sc && sc._na.alive) return sc._na;
   mkTex(sc);
-  const A = { scene: sc, alive: true, key: null, halos: [], rays: [], lines: [], parts: [], t: 0 };
+  const A = { scene: sc, alive: true, key: null, halos: [], rays: [], lines: [], parts: [], t: 0, vig: null, va: 0 };
   sc.events.once("shutdown", () => (A.alive = false));
   sc._na = A;
   return A;
@@ -103,9 +114,25 @@ function spawn(A, sc, o) {
   Object.assign(q, { on: true, life: o.life, age: 0, x: o.x, y: o.y, vx: o.vx ?? 0, vy: o.vy ?? 0, g: o.g ?? 0, sway: o.sway ?? 0, a: o.a ?? 1, fade: o.fade ?? 1, stopY: o.stopY ?? null, onStop: o.onStop ?? null, ph: Math.random() * 6.28 });
   q.img.setTexture(o.tex ?? "na_px").setTint(o.tint ?? 0xffffff).setScale(o.s ?? 1).setAlpha(q.a).setVisible(true).setBlendMode(o.add === false ? 0 : ADD()).setPosition(o.x, o.y);
 }
+// 동굴 안 가장자리 어둠: 땅속이거나 뒷벽으로 둘러싸인 곳(섬 속 굴·신전·던전)에 있으면 화면 가장자리가 은은하게 어두워진다
+function vignette(A, sc, dt, src) {
+  let target = 0;
+  if (src) {
+    const P = src.P, px = sc.player.cx - src.ox, py = sc.player.cy;
+    const inside = (P.walls ?? []).some((w) => px >= w.x0 && px < w.x1 && py >= w.y0 && py < w.y1);
+    const surf = P.h ? P.h[Math.max(0, Math.min(P.h.length - 1, Math.round(px / 4)))] : 1e9;
+    target = inside ? 0.34 : py > surf + 24 ? 0.26 : 0;
+  }
+  A.va += (target - A.va) * Math.min(1, dt * 2.2);
+  if (A.va < 0.005 && !target) return void (A.vig && A.vig.setVisible(false));
+  const cam = sc.cameras.main;
+  A.vig ??= sc.add.image(0, 0, "na_vig").setScrollFactor(0).setDepth(39.5);
+  A.vig.setVisible(true).setPosition(cam.width / 2, cam.height / 2).setDisplaySize(cam.width * 1.15, cam.height * 1.25).setAlpha(A.va);
+}
 export function update(sc, dt, src) {
   if (!R || !sc.world || !sc.player) return;
   const A = ensure(sc);
+  vignette(A, sc, dt, src);
   if (!src) {
     if (A.key) {
       for (const o of [...A.halos, ...A.rays, ...A.lines]) o && o.setVisible(false);

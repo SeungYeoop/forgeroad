@@ -231,6 +231,18 @@ export function* pixFine(ch, base, region, S) {
       for (let y = y0; y < y1; y++) MM.fill(c, y * PW + x0, Math.max(y * PW + x0, y * PW + x1));
     }
   }
+  // 지붕 있는 섬 속(정해진 뒷벽 구역): 바닥에 풀 대신 바위 가장자리 (계단 단마다 풀이 돋아 계단처럼 보이지 않게)
+  let IW = null;
+  if (S.walls && S.walls.length) {
+    IW = new Uint8Array(PW * PH);
+    for (const r of S.walls) {
+      if (r.m === "stem") continue;
+      const x0 = Math.max(0, Math.floor(r.x0 - MX)), x1 = Math.min(PW, Math.ceil(r.x1 - MX));
+      const y0 = Math.max(0, Math.floor(r.y0 - OY)), y1 = Math.min(PH, Math.ceil(r.y1 - OY) + 4);
+      for (let y = y0; y < y1; y++) x1 > x0 && IW.fill(1, y * PW + x0, y * PW + x1);
+    }
+  }
+  const inIW = (x, y) => IW !== null && x >= 0 && x < PW && y >= 0 && y < PH && IW[y * PW + x] === 1;
   const BARK = rampOf(mix(0x6e4628, P.soil, 0.25)), LEAF = rampOf(mix(P.top, 0x2e6a30, 0.3)), BRICK = rampOf(mix(P.rock, 0xc0b098, 0.45));
   const STEM = rampOf(0xe0d4b8), CAPR = rampOf(mix(P.accent ?? 0xd04040, 0xc83838, 0.55));
   const ICE = rampOf(0xa8dcf4), JELLY = rampOf(0xe070c0);
@@ -299,7 +311,7 @@ export function* pixFine(ch, base, region, S) {
         up = 1 / Math.sqrt(1 + sl * sl);
       }
       const ugTop = isUGp(x, s);
-      const capT = ugTop ? (BI?.cap ? "moss" : "rock") : cap;
+      const capT = ugTop ? (BI?.cap ? "moss" : "rock") : inIW(x, s - 2) ? "rock" : cap;
       const cTop = capT === "moss" ? BI.cap[0] : capT === "snow" ? 0xeef6ff : capT === "sand" ? P.topHi : P.top;
       const cHi = capT === "moss" ? BI.cap[1] : capT === "snow" ? 0xffffff : capT === "sand" ? 0xfff6d0 : P.topHi;
       const CR = rampOf(cTop);
@@ -565,7 +577,7 @@ export function* pixFine(ch, base, region, S) {
   // ── 7) 장식 (실제 윤곽에) ──
   const onBrick = (x, y) => MM && x >= 0 && x < PW && y >= 0 && y < PH && MM[y * PW + x] === 3;
   const decoFloor = (x, y, wx, r) => {
-    if (onBrick(x, y)) return;
+    if (onBrick(x, y) || inIW(x, y - 2)) return;
     const h = H(wx, r, 21);
     if (isUGp(x, y) && BI) {
       switch (ug.biome) {

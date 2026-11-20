@@ -60,34 +60,84 @@ const PRE = new Map(), FREE = [];
 // 작업 스레드: 픽셀 계산을 게임 밖에서 (구역마다 0.2초 가까이 걸리던 계산이 화면을 끊지 않게)
 const MARGIN = 16;
 let WK = null, WK_N = 0;
-const WK_JOBS = new Map(), WK_LAT = [];
+const WK_JOBS = new Map(), WK_LAT = [], WK_Q = [];
+const NWK = Math.max(1, Math.min(3, ((typeof navigator !== "undefined" && navigator.hardwareConcurrency) || 2) - 1));
+// 지금 구역 소품 그림 목록: 스레드가 쉴 때 조금씩 미리 그려 둔다 (띠를 그릴 때 처음 보는 그림을 그리느라 늦지 않게)
+const WARM = { key: null, list: [], pal: null };
+export function warmProps(key, list, pal) {
+  if (WARM.key === key) return;
+  Object.assign(WARM, { key, list, pal: { top: pal?.top, rock: pal?.rock, acc: pal?.accent ?? 0xffe060 } });
+  if (WK) for (const w of WK) w.warmI = 0;
+  pump();
+}
+function onResult(w, ev) {
+  w.busy = null;
+  if (ev.data.warmDone) return void pump();
+  const d = ev.data, j = WK_JOBS.get(d.id);
+  j && WK_LAT.push(Math.round(performance.now() - j.t0));
+  WK_JOBS.delete(d.id);
+  pump();
+  if (!j) return;
+  if (j.dead) return void FREE.push(j.S);
+  if (d.error) return void (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region, j.band), (j.wait = !1));
+  const img = new ImageData(new Uint8ClampedArray(d.img), PW, d.h);
+  j.gen = (function* () {
+    finishPut(j.S, img, new Uint8ClampedArray(d.front), new Uint8ClampedArray(d.wall));
+    yield;
+    j.scene.textures.get(j.S.key).refresh();
+    yield;
+    j.scene.textures.get(j.S.keyF).refresh();
+    j.scene.textures.get(j.S.keyW).refresh();
+  })();
+  j.wait = !1;
+}
+// 줄에서 급한 것(보이는 띠)부터, 쉬는 스레드에 하나씩. 버린 일은 보내지 않는다
+function pump() {
+  if (!WK) return;
+  for (const w of WK) {
+    if (w.busy) continue;
+    let bi = -1;
+    for (let i = 0; i < WK_Q.length; i++) if (bi < 0 || WK_Q[i].j.pri > WK_Q[bi].j.pri) bi = i;
+    while (bi >= 0 && WK_Q[bi].j.dead) {
+      const q = WK_Q.splice(bi, 1)[0];
+      WK_JOBS.delete(q.id);
+      FREE.push(q.j.S);
+      bi = -1;
+      for (let i = 0; i < WK_Q.length; i++) if (bi < 0 || WK_Q[i].j.pri > WK_Q[bi].j.pri) bi = i;
+    }
+    if (bi < 0) {
+      // 할 일이 없으면 소품 그림 미리 그리기 (하나씩: 급한 띠가 오래 기다리지 않게)
+      const i = w.warmI ?? 0;
+      if (WARM.list.length && i < WARM.list.length) {
+        w.warmI = i + 1;
+        w.busy = { warm: 1 };
+        w.postMessage({ warm: WARM.list.slice(i, i + 1), pal: WARM.pal });
+      }
+      continue;
+    }
+    const q = WK_Q.splice(bi, 1)[0];
+    w.busy = q;
+    q.j.t0 = performance.now();
+    w.postMessage(q.msg, q.tr);
+  }
+}
 function worker() {
   if (WK !== null) return WK;
   try {
-    WK = new Worker(new URL("./terrworker.js", import.meta.url), { type: "module" });
-    WK.onmessage = (ev) => {
-      const d = ev.data, j = WK_JOBS.get(d.id);
-      j && WK_LAT.push(Math.round(performance.now() - j.t0));
-      WK_JOBS.delete(d.id);
-      if (!j) return;
-      if (j.dead) return void FREE.push(j.S);
-      if (d.error) return void (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region, j.band), (j.wait = !1));
-      const img = new ImageData(new Uint8ClampedArray(d.img), PW, d.h);
-      j.gen = (function* () {
-        finishPut(j.S, img, new Uint8ClampedArray(d.front), new Uint8ClampedArray(d.wall));
-        yield;
-        j.scene.textures.get(j.S.key).refresh();
-        yield;
-        j.scene.textures.get(j.S.keyF).refresh();
-        j.scene.textures.get(j.S.keyW).refresh();
-      })();
-      j.wait = !1;
-    };
-    WK.onerror = () => {
-      WK = !1;
-      for (const j of WK_JOBS.values()) (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region, j.band)), (j.wait = !1);
-      WK_JOBS.clear();
-    };
+    WK = [];
+    for (let i = 0; i < NWK; i++) {
+      const w = new Worker(new URL("./terrworker.js", import.meta.url), { type: "module" });
+      w.busy = null;
+      w.onmessage = (ev) => onResult(w, ev);
+      w.onerror = () => {
+        // 스레드가 죽으면 맡긴 일과 줄의 일을 화면 스레드에서 (드문 경우)
+        WK = !1;
+        for (const j of WK_JOBS.values()) (j.gen = paintSteps(j.scene, j.S, j.ch, j.base, j.raw, j.region, j.band)), (j.wait = !1);
+        WK_JOBS.clear();
+        WK_Q.length = 0;
+      };
+      WK.push(w);
+    }
   } catch (e) {
     WK = !1;
   }
@@ -102,10 +152,11 @@ export function prepaint(scene, ch, base, raw, region, band = 0, force = !1) {
   const PH = bandH(ch, band);
   let S = FREE.pop();
   (!S || S.scene !== scene || S.cv.height !== PH) && (S = makeEntry(scene, PH));
-  const j = { scene, S, ch, base, raw, region, band, gen: null, done: !1, wait: !1, pk, rt: null };
+  const j = { scene, S, ch, base, raw, region, band, gen: null, done: !1, wait: !1, pk, rt: null, pri: force ? 2 : 1 };
   PRE.set(pk, j);
   const W = worker();
   if (W) {
+    const post = (msg, tr) => (WK_Q.push({ id: msg.id, j, msg, tr }), pump());
     const id = ++WK_N;
     j.wait = !0;
     j.t0 = performance.now();
@@ -113,7 +164,7 @@ export function prepaint(scene, ch, base, raw, region, band = 0, force = !1) {
     if (ch.fine) {
       // 자연 지형: 칸 대신 밀도장 조각(좌우 여유 포함)을 보낸다 — 옆 구역을 만들지 않는다
       const fine = fineSlice(ch, band);
-      W.postMessage({ id, fine, base, band, ch: { n: ch.grid.length, ug: ch.ug }, region: { pal: region.pal, theme: region.theme } }, [fine.d.buffer]);
+      post({ id, fine, base, band, ch: { n: ch.grid.length, ug: ch.ug }, region: { pal: region.pal, theme: region.theme } }, [fine.d.buffer]);
       return;
     }
     const ROWS = Math.round(ch.grid.length / COLS), CW = COLS + MARGIN * 2;
@@ -122,7 +173,7 @@ export function prepaint(scene, ch, base, raw, region, band = 0, force = !1) {
       const wc = base + c - MARGIN;
       for (let r = 0; r < ROWS; r++) codes[r * CW + c] = wc < 0 ? 1 : raw(wc, r);
     }
-    W.postMessage({ id, codes, CW, ROWS, margin: MARGIN, base, band, bandTop: band * BANDH, bandH: PH, ch: { n: ch.grid.length, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, region: { pal: region.pal, theme: region.theme } }, [codes.buffer]);
+    post({ id, codes, CW, ROWS, margin: MARGIN, base, band, bandTop: band * BANDH, bandH: PH, ch: { n: ch.grid.length, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, region: { pal: region.pal, theme: region.theme } }, [codes.buffer]);
   } else j.gen = paintSteps(scene, S, ch, base, raw, region, band);
 }
 // 늦게 끝난 띠: 기다리던 그림판이 아직 같은 띠면 그린다
@@ -171,6 +222,7 @@ export function paintChunk(scene, rt, ch, base, raw, region, band = 0) {
   // 작업 스레드가 있으면 화면 스레드에서 그리지 않는다: 미리 그려 둔 게 없으면 지금 맡기고, 끝나면 그린다
   if (!pre && worker()) (prepaint(scene, ch, base, raw, region, band, !0), (pre = PRE.get(pk)));
   if (pre && pre.wait && !pre.dead && pre.scene === scene && pre.ch === ch && pre.S.cv.height === PH) {
+    pre.pri = 2;
     const old = pool.get(rt);
     old && old !== pre.S && FREE.push(old);
     pool.set(rt, pre.S);
@@ -642,4 +694,4 @@ export function paintPreview(scene, name, grid, region) {
   PREVIEW.set(name, S.key);
   return S.key;
 }
-export const _wkState = () => ({ WK: WK === null ? "none" : WK ? "on" : "off", jobs: WK_JOBS.size, pre: PRE.size, lat: WK_LAT.slice(-10) });
+export const _wkState = () => ({ WK: WK === null ? "none" : WK ? "on" : "off", n: WK ? WK.length : 0, jobs: WK_JOBS.size, queue: WK_Q.length, pre: PRE.size, lat: WK_LAT.slice(-10) });

@@ -111,14 +111,14 @@ function render(W, H, parts, mats, o = {}) {
     for (let i = 0; i < W; i++) {
       const sx = (i + 0.5 - W / 2) / SC, sy = (H - base - (j + 0.5)) / SC;
       let x = sx, y = sy * cp + Z0 * sp, z = -sy * sp + Z0 * cp, t = 0, hit = false, m = 0;
-      for (let k = 0; k < 140 && t < Z0 * 2.2; k++) {
+      for (let k = 0; k < 90 && t < Z0 * 2.2; k++) {
         const [d, mm] = scene(x, y, z);
         if (d < 0.25) {
           hit = true;
           m = mm;
           break;
         }
-        const st = Math.max(d * 0.85, 0.18);
+        const st = Math.max(d * 0.9, 0.25);
         t += st;
         x += fx * st;
         y += fy * st;
@@ -126,7 +126,9 @@ function render(W, H, parts, mats, o = {}) {
       }
       if (!hit) continue;
       const e = 0.35;
-      let nx = dist(x + e, y, z) - dist(x - e, y, z), ny = dist(x, y + e, z) - dist(x, y - e, z), nz = dist(x, y, z + e) - dist(x, y, z - e);
+      // 네 점으로 면 방향
+      const a1 = dist(x + e, y - e, z - e), a2 = dist(x - e, y - e, z + e), a3 = dist(x - e, y + e, z - e), a4 = dist(x + e, y + e, z + e);
+      let nx = a1 - a2 - a3 + a4, ny = -a1 - a2 + a3 + a4, nz = -a1 + a2 - a3 + a4;
       const nl = Math.hypot(nx, ny, nz) || 1;
       ((nx /= nl), (ny /= nl), (nz /= nl));
       const M = mats[m] ?? mats[0];
@@ -142,8 +144,8 @@ function render(W, H, parts, mats, o = {}) {
       }
       const diff = Math.max(0, nx * Lx + ny * Ly + nz * Lz), fill = Math.max(0, nx * Fx + ny * Fy + nz * Fz) * 0.28, sky = 0.22 * (0.5 + 0.5 * ny);
       let occ = 0;
-      for (let s = 1; s <= 3; s++) occ += Math.max(0, s * 2.2 - dist(x + nx * s * 2.2, y + ny * s * 2.2, z + nz * s * 2.2)) / (s * 2.2);
-      const ao = 1 - 0.32 * occ;
+      for (let s = 1; s <= 2; s++) occ += Math.max(0, s * 2.6 - dist(x + nx * s * 2.6, y + ny * s * 2.6, z + nz * s * 2.6)) / (s * 2.6);
+      const ao = 1 - 0.4 * occ;
       const vdot = Math.abs(nx * fx + ny * fy + nz * fz), rim = 0.22 * Math.pow(1 - vdot, 2.5) * (nx < 0.2 ? 1 : 0.4);
       let I = (diff * 0.82 + fill + sky) * ao + rim + (M.tex ? M.tex(x, y, z, nx, ny, nz) : 0);
       if (M.gloss) {
@@ -611,6 +613,73 @@ const KINDS = {
     }
     parts.push({ d: S.ellip(0, top + 1, 0, 9 + s * 4, 2, 3), m: 0, k: 1.5 });
     return { W: 26 + s * 10, H: 30 + s * 14, parts, mats: [{ c: mc, tex: leafTex(51) }], hang: true, top: top + 2 };
+  },
+  // ── 나무 (3D 픽셀): 참나무·소나무·마른 나무 ──
+  // 참나무: 굵은 밑동과 뿌리, 갈래 가지, 가지 끝마다 잎 뭉치 (잎 뭉치는 울퉁불퉁)
+  p_oak(s, R, c) {
+    const H = [90, 140, 200][s], W = [80, 120, 160][s], tr = [3.2, 4.6, 6.2][s], lean = (R() - 0.5) * 0.12, tt = H * 0.52;
+    const trunk = (x, y, z) => {
+      const t = clamp(y / tt, 0, 1), cx = lean * y, r = tr * (1.25 - 0.45 * t) + (y < 7 ? (7 - y) * 0.55 : 0);
+      return Math.max(Math.hypot(x - cx, z) - r, -y, y - tt - 6);
+    };
+    const parts = [{ d: trunk, m: 0 }], cl = [];
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + R();
+      parts.push({ d: S.capsule(lean * 2, 2.5, 0, Math.cos(a) * tr * 2.4, 0.5, Math.sin(a) * tr * 1.4, tr * 0.42), m: 0, k: 1.2 });
+    }
+    const nb = 4 + s;
+    for (let k = 0; k < nb; k++) {
+      const side = k % 2 ? 1 : -1, y0 = tt * (0.55 + 0.4 * R()), x1 = side * W * (0.16 + 0.22 * R()), y1 = tt + H * (0.05 + 0.22 * R()), z1 = (R() - 0.5) * W * 0.22;
+      parts.push({ d: S.capsule(lean * y0, y0, 0, x1, y1, z1, tr * 0.42), m: 0, k: 1.4 });
+      cl.push([x1, y1 + 4, z1, W * (0.15 + 0.06 * R())]);
+    }
+    cl.push([lean * tt, tt + H * 0.3, 0, W * 0.24]);
+    for (let k = 0; k < 4 + s; k++) cl.push([(R() - 0.5) * W * 0.6, tt + H * (0.12 + 0.3 * R()), (R() - 0.5) * W * 0.3, W * (0.12 + 0.06 * R())]);
+    const cc = [lean * tt, tt + H * 0.22, 0], cr = Math.max(W * 0.55, H * 0.4) + 6;
+    const canopy = (x, y, z) => {
+      const db = len3(x - cc[0], y - cc[1], z - cc[2]) - cr;
+      if (db > 5) return db;
+      let d = 1e9;
+      for (const [px, py, pz, r] of cl) d = Math.min(d, len3(x - px, y - py, z - pz) - r);
+      return d + (vn3(x * 0.2, y * 0.2, z * 0.2, 61) - 0.5) * 7 + (vn3(x * 0.55, y * 0.55, z * 0.55, 62) - 0.5) * 2.4;
+    };
+    parts.push({ d: canopy, m: 1, k: 2.5 });
+    const leaf = R() < 0.18 ? mix(c.top, 0xd8a040, 0.55) : c.top;
+    return { W: W + 24, H: H + 20, parts, mats: [{ c: 0x6e4a2e, tex: woodTex(63) }, { c: leaf, tex: leafTex(64) }], pitch: 0.28 };
+  },
+  // 소나무: 곧은 줄기에 아래로 넓은 가지층 여럿 (층 가장자리는 들쭉날쭉)
+  p_pine(s, R, c) {
+    const H = [100, 150, 210][s], W = [50, 72, 100][s], tr = [2.6, 3.6, 4.8][s], n = 4 + s;
+    const parts = [{ d: S.taper(0, 0, tr * 1.3, tr * 0.5, 0, H * 0.96), m: 0 }];
+    const needle = mix(c.top, 0x1e4a32, 0.45);
+    for (let k = 0; k < n; k++) {
+      const y0 = H * (0.18 + (0.72 * k) / n), h = H * (0.3 - 0.02 * k), r = (W / 2) * (1 - (0.75 * k) / n);
+      parts.push({ d: ((f, sd) => (x, y, z) => f(x, y, z) + (vn3(x * 0.35, y * 0.25, z * 0.35, sd) - 0.5) * 3.2)(S.taper(0, 0, r, 0.6, y0, y0 + h), k + 70), m: 1, k: 1.5 });
+    }
+    return { W: W + 16, H: H + 12, parts, mats: [{ c: 0x5a3a24, tex: woodTex(71) }, { c: needle, tex: leafTex(72) }], pitch: 0.28 };
+  },
+  // 마른 나무: 비틀린 줄기, 두 번 갈라지는 가지 (껍질 무늬)
+  p_dead(s, R, c) {
+    const H = [90, 140, 200][s], tr = [2.8, 4, 5.4][s], parts = [];
+    let px = 0, py = 0;
+    const seg = 5;
+    for (let k = 0; k < seg; k++) {
+      const nx = px + (R() - 0.5) * tr * 2.2, ny = py + (H * 0.62) / seg;
+      parts.push({ d: S.capsule(px, py, 0, nx, ny, 0, tr * (1.2 - (0.6 * k) / seg)), m: 0, k: 1.2 });
+      if (k >= 2) {
+        const side = k % 2 ? 1 : -1, bx = nx + side * H * (0.14 + 0.12 * R()), by = ny + H * (0.08 + 0.14 * R());
+        parts.push({ d: S.capsule(nx, ny, 0, bx, by, (R() - 0.5) * 8, tr * 0.42), m: 0, k: 0.9 });
+        parts.push({ d: S.capsule(bx, by, 0, bx + side * H * 0.08, by + H * (0.06 + 0.08 * R()), (R() - 0.5) * 6, tr * 0.22), m: 0, k: 0.6 });
+        parts.push({ d: S.capsule(bx, by, 0, bx - side * H * 0.04, by + H * 0.1, 0, tr * 0.2), m: 0, k: 0.6 });
+      }
+      ((px = nx), (py = ny));
+    }
+    parts.push({ d: S.capsule(px, py, 0, px + (R() - 0.5) * 8, py + H * 0.16, 0, tr * 0.35), m: 0, k: 0.8 });
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + R();
+      parts.push({ d: S.capsule(0, 2, 0, Math.cos(a) * tr * 2.6, 0.4, Math.sin(a) * tr * 1.4, tr * 0.45), m: 0, k: 1 });
+    }
+    return { W: H * 0.75, H: H + 14, parts, mats: [{ c: 0x7a6a5a, tex: (x, y, z) => woodTex(73)(x, y, z) + (Math.sin(y * 1.3 + x * 0.4) > 0.75 ? -0.15 : 0) }], pitch: 0.26 };
   },
   // 사슬 (천장)
   p_chain(s, R, c) {
