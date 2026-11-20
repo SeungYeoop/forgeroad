@@ -2,6 +2,10 @@
 // 좌표: px (구역 왼쪽 위 기준). 지표 기준 높이 y=4800. 1칸(블록)=8px
 // 역할(role): rest 쉼터(적 없음) · arena 전투(적 더) · treasure 보물(상자) · vista 전망 · sanctum 성소 · trap 함정
 
+// 동굴 방 한 줄: [id, x0, x1, 바닥 y, 높이, 종류, 바닥, 역할, 덧붙임(peak·deep·entry)]
+function cvR(rows) { return rows.map(([id, x0, x1, fy, h, kind, floor, role, ex]) => ({ id, x0, x1, fy, h, kind, floor, role, ...(ex ?? {}) })); }
+const _cvR0 = (rows) => rows.map(([id, x0, x1, fy, h, kind, floor, role, ex]) => ({ id, x0, x1, fy, h, kind, floor, role, ...(ex ?? {}) }));
+
 export const BLUEPRINTS = {
   // ── g1_0 「재의 들판」: 1번 지역 첫 지상 구역. 난이도 낮음 ──
   // ▲ 문 x≈4352 y≈1200 (거대 하늘섬 평평한 윗면), ▼ 문 x≈3330 (서쪽 동굴 맨 아래 심연 동굴)
@@ -371,40 +375,97 @@ BLUEPRINTS.gm1_m1 = {
   },
 };
 
-// ── gm1_0 「모스바크」: 이끼 덮인 거목 숲 (지상). 그래스메어 땅·하늘 짜임을 좌우로 뒤집고 숲답게 ──
-//   지표: 0~900 숲 입구 · 900~2400 이끼 고원(전투) · 2400~5250 거목 언덕(하늘 출발점) · 5300~6300 개울 골짜기(웅덩이) · 6300~7500 뿌리 둔덕(전투) · 7500~ 출구
-//   하늘: 거목 수관 섬들 (뿌리가 늘어진 섬 · 둥근 잎 덩이 섬), ▲ 신전 섬은 이끼 덮인 옛 신전
-//   땅속: 자연 동굴 (입구 둘: 개울 골짜기 · 뿌리 둔덕)
-{
-  const G0 = BLUEPRINTS.g1_0, fx = (x) => WZ - x;
-  const surf = G0.surface.map((q) => {
-    const o = { ...q, a: fx(q.b), b: fx(q.a) };
-    if (q.c != null) o.c = fx(q.c);
-    if (q.bumps) o.bumps = q.bumps.map((b) => ({ ...b, c: fx(b.c), h: Math.round(b.h * 1.15) }));
-    if (q.kind === "mountain") Object.assign(o, { wl: q.wr, wr: q.wl, h: 560, shoulder: q.shoulder && { ...q.shoulder, side: q.shoulder.side ? 0 : 1 } });
-    if (q.kind === "valley") Object.assign(o, { d: 150, pond: 220 });
-    return o;
-  }).reverse();
-  const S0 = moveSky(G0.sky, { flip: true });
-  const S1 = editSky(S0, {
-    A1: { shape: "lumpy", role: "rest" }, M: { shape: "twin", role: "vista" },
-    W1: { form: "roots" }, E2: { form: "roots" }, W3: { form: "roots" }, E4: { form: "bowl" }, W4: { form: "cone" }, E5: { form: "roots" },
-    W5: { shape: "lumpy" }, E6: { shape: "lumpy" }, W6: { shape: "twin" }, E7: { shape: "lumpy" }, W7: { shape: "spire" },
-  });
-  BLUEPRINTS.gm1_0 = {
-    surface: surf,
-    pads: [],
-    spots: G0.spots.map((q) => ({ ...q, xa: fx(q.xb), xb: fx(q.xa) })),
-    mouthX: [5600, 6900],
-    sky: S1,
-  };
-}
+// ── gm1_0 「모스바크 · 이끼 거목 숲」 손 설계 (지상): 그래스메어와 다른 땅·하늘·땅속 ──
+//   지표: 숲 입구 → 이끼 둔덕 둘 → 깊은 개울 협곡(물) → 쓰러진 거목 언덕 → 출구 숲. 협곡 위로 ▲ 거목 정상이 떠 있다
+//   하늘: 거목 수관 섬(잎) 다섯이 협곡 양쪽에서 정상 굴로 / 정상 위 보물 잎 둘
+//   땅속: 8열 3층 이끼 무덤(낮고 넓은 지하 묘지) — 서쪽 둔덕 사이 정문 탑으로 들어간다. 동쪽: 개울 굴 · 버섯 사슴 굴 · 썩은 통나무 굴, 서쪽 무덤 끝 굴, 맨 아래 지하 늪과 ▼
+BLUEPRINTS.gm1_0 = {
+  surface: [
+    { kind: "flat", a: 0, b: 800 }, // 숲 입구
+    { kind: "hills", a: 800, b: 2300, bumps: [{ c: 1200, h: 160, w: 250 }, { c: 1850, h: 240, w: 300 }], role: "arena" }, // 이끼 둔덕
+    { kind: "hills", a: 2300, b: 3900, bumps: [{ c: 2750, h: 120, w: 300 }, { c: 3400, h: 200, w: 380 }] }, // 고사리 언덕
+    { kind: "valley", a: 3900, b: 5600, c: 4750, d: 420, w: 700, p: 0.25, pond: 260 }, // 개울 협곡
+    { kind: "mountain", a: 5600, b: 7000, c: 6300, h: 380, wl: 600, wr: 700, top: 0.3 }, // 쓰러진 거목 언덕
+    { kind: "flat", a: 7000, b: 8192 }, // 출구 숲
+  ],
+  pads: [],
+  spots: [{ xa: 900, xb: 2200, role: "arena" }, { xa: 6000, xb: 6600, role: "arena" }, { xa: 4500, xb: 5000, role: "treasure" }],
+  mouths: [{ x: 6900, to: "E1" }],
+  noClimb: 1,
+  caves: cvR([
+    ["E1", 7500, 8050, 5300, 280, "hall", "flat", "rest"], // 이끼 굴 입구
+    ["E2", 5900, 6900, 5650, 340, "lake", "basin", "rest"], // 개울 굴
+    ["E3", 5800, 7000, 6400, 360, "pillared", "mound", "arena"], // 버섯 사슴 굴
+    ["E4", 7500, 8100, 6100, 300, "small", "flat", "treasure"], // 사슴 뿔 보물굴
+    ["E5", 5800, 6900, 7150, 340, "hall", "steps", "arena"], // 썩은 통나무 굴
+    ["E6", 7400, 8100, 7500, 320, "hall", "mound", "arena"], // 뿌리 엉킨 굴
+    ["E7", 7300, 8100, 8150, 340, "hall", "flat", "rest"], // 바닥 굴
+    ["E8", 4800, 6300, 8000, 400, "lake", "basin", "vista"], // 지하 늪
+    ["W1", 100, 600, 6300, 280, "small", "flat", "treasure"], // 무덤 끝 보물굴
+    ["W2", 100, 650, 6900, 300, "hall", "flat", "arena"], // 무덤 뒷굴
+    ["W3", 100, 1500, 7700, 380, "hall", "mound", "arena"], // 이끼 바닥 굴
+    ["DP", 2900, 3800, 8100, 360, "hall", "flat", "rest", { deep: 1 }], // ▼ 심연
+  ]),
+  dungeon: {
+    x0: 1024, y0: 5600, cols: 8, stories: 3, wall: "rock", step: 6, stairs: 1,
+    gate: { col: 0, door: 1500, down: "E" },
+    towers: [
+      { id: "T1", col: 3, s: 0, up: "WE", down: "WE" },
+      { id: "T2", col: 6, s: 1, up: "WE", down: "WE" },
+    ],
+    rooms: [
+      { id: "R01", c0: 1, c1: 2, s: 0, type: "colonnade", role: "arena" }, // 무덤 입구 회랑
+      { id: "R04", c0: 4, c1: 5, s: 0, type: "arena", role: "arena" }, // 무덤 지기 홀
+      { id: "R06", c0: 6, c1: 7, s: 0, type: "vault", role: "treasure", cave: "E" }, // 껴묻거리 방 (개울 굴로)
+      { id: "R10", c0: 0, c1: 2, s: 1, type: "trap", role: "trap", cave: 1 }, // 가시 덩굴 묘도
+      { id: "R14", c0: 4, c1: 5, s: 1, type: "shrine", role: "rest" }, // 이끼 샘
+      { id: "R17", c0: 7, c1: 7, s: 1, type: "guard", role: "arena", cave: "E" }, // 동쪽 문지기
+      { id: "R20", c0: 0, c1: 1, s: 2, type: "vault", role: "treasure", cave: 1 }, // 서쪽 껴묻거리 방
+      { id: "R22", c0: 2, c1: 5, s: 2, type: "sanctum", role: "arena" }, // 이끼 왕의 무덤 (성소)
+      { id: "R27", c0: 7, c1: 7, s: 2, type: "guard", role: "arena", cave: "E" }, // 깊은 문지기
+    ],
+  },
+  links: [
+    ["E2", "E1"], ["R06", "E2"], ["R17", "E3"], ["E3", "E4"], ["R27", "E5"], ["E5", "E6"],
+    ["W1", "R10"], ["W2", "R20"], ["W3", "DP"], ["DP", "E8"], ["E8", "E7"],
+  ],
+  drops: [["E6", "E7"], ["W2", "W3"]],
+  sky: {
+    peakY: 2400,
+    gate: {
+      cx: 4350, w: 2400, sh: 600, tS: 1200, belly: 0.6, flat: true,
+      inner: {
+        halls: [
+          { x0: 3200, x1: 3650, F: 3400, h: 210, role: "arena" }, // 서쪽 수관 굴
+          { x0: 5050, x1: 5500, F: 3400, h: 210, role: "arena" }, // 동쪽 수관 굴
+          { x0: 3950, x1: 4750, F: 3050, h: 230, type: "sanctum" }, // 거목 정상 속 둥지 (큰 상자)
+        ],
+        pass: [[3650, 3400, 3950, 3050, 150], [4750, 3050, 5050, 3400, 150], [3950, 3050, 3300, 2400, 150], [4750, 3050, 5400, 2400, 150]],
+        mouths: [{ side: "W", x: 3200, F: 3400 }, { side: "E", x: 5500, F: 3400 }],
+      },
+    },
+    isles: [
+      { id: "W1", cx: 2650, top: 4210, w: 700, t: 260, shape: "lumpy", role: "rest", mat: "leaf" }, // 서쪽 낮은 수관
+      { id: "W2", cx: 1600, top: 3860, w: 600, t: 240, shape: "lumpy", role: "arena", mat: "leaf" },
+      { id: "W3", cx: 2600, top: 3510, w: 600, t: 240, shape: "lumpy", role: "arena", mat: "leaf" },
+      { id: "K1", cx: 7250, top: 4070, w: 800, t: 260, shape: "lumpy", role: "arena", mat: "leaf" }, // 동쪽 낮은 수관
+      { id: "K2", cx: 6200, top: 3720, w: 500, t: 240, shape: "lumpy", role: "rest", mat: "leaf" },
+      { id: "T1", cx: 7950, top: 4450, w: 300, t: 160, shape: "spire", role: "treasure", mat: "wood" }, // 출구 숲 위 보물 가지
+      { id: "T2", cx: 2150, top: 2250, w: 700, t: 260, shape: "lumpy", role: "treasure", mat: "leaf" }, // 정상 서쪽 보물 잎
+      { id: "T3", cx: 6550, top: 2250, w: 700, t: 260, shape: "lumpy", role: "treasure", mat: "leaf" }, // 정상 동쪽 보물 잎
+    ],
+    links: [
+      ["g:1850", "W1"], ["W1", "W2"], ["W2", "W3"], ["W3", "G<"],
+      ["g:6300", "K1"], ["K1", "K2"], ["K2", "G>"],
+      ["g:6900", "T1"], ["G", "T2"], ["G", "T3"],
+    ],
+  },
+};
 
 // ── 동굴 구역 셋 (y=1 줄): 같은 동굴 생성기에 지역마다 다른 짜임과 소품 (natgen.js CAVE_STYLE) ──
 //   g1_1 드립스톤: 종유석 대공동 · 지하 호수 · 높은 천장 / g0_1 아이언베인: 옛 갱도 · 나무 판자 벽과 횃불 · 광맥 수정
 //   gm1_1 루트홀로우: 둥근 굴방 · 뿌리 기둥 · 늘어진 뿌리와 빛 버섯
 // 동굴 방 한 줄: [id, x0, x1, 바닥 y, 높이, 종류, 바닥, 역할, 덧붙임(peak·deep·entry)]
-const cvR = (rows) => rows.map(([id, x0, x1, fy, h, kind, floor, role, ex]) => ({ id, x0, x1, fy, h, kind, floor, role, ...(ex ?? {}) }));
 
 // ── g1_1 「드립스톤 · 수몰 사원」 손 설계: 자연 동굴이 주인공 ──
 //   가운데에 물에 잠긴 석회 사원(5열 7층). 사원 정문 탑 꼭대기 = ▲ 하늘 구멍, 사원 서쪽 벽에서 동굴 갈래 다섯이 뻗는다

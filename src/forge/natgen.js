@@ -1167,6 +1167,7 @@ function buildGround(P) {
       surfRow,
       design: bp,
       extern: dg,
+      noClimb: bp.noClimb ?? 0,
       fill: bp.caveFill ?? null,
       mouths: (bp.mouths ?? []).map((m) => ({ x: toC(m.x), y: surfRow(toC(m.x)), to: m.to })),
       sinks: (bp.sinks ?? []).map((m) => ({ x: toC(m.x), y: surfRow(toC(m.x)) })),
