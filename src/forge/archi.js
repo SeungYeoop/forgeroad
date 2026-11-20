@@ -31,13 +31,15 @@ export function kit(P, C) {
       }
     },
     // 굽은 굴 (사인 곡선으로 흔들리며): 바닥 높이를 점들로
-    wiggle(pts, h = 7, amp = 0) {
+    wiggle(pts, h = 7, amp = 0, wallM) {
       for (let k = 0; k + 1 < pts.length; k++) {
         const [xa, fa] = pts[k], [xb, fb] = pts[k + 1];
         const n = Math.abs(xb - xa), dir = Math.sign(xb - xa) || 1;
         for (let i = 0; i <= n; i++) {
           const x = xa + i * dir, f = Math.round(fa + ((fb - fa) * i) / Math.max(1, n) + (amp ? Math.sin((x * 0.13) + k) * amp : 0));
           K.air(x, f - h, x + 1, f);
+          // 뒷벽 (하늘 섬 속 굴: 하늘이 비치지 않게) — 4칸마다 한 조각
+          wallM && i % 4 === 0 && K.wall(x - 2, f - h - 1, x + 3, f, wallM);
         }
       }
     },
@@ -110,6 +112,36 @@ export function kit(P, C) {
     tag(x0, y0, x1, y1, role) {
       (P.roomTags ??= []).push({ x0: x0 * 8, x1: x1 * 8, y0: y0 * 8, y1: y1 * 8 + 8, role });
     },
+    // ── 하늘에 짓기 ──
+    // 받침판: 바닥 f부터 t칸 두께 (재질 m)
+    slab(x0, x1, f, t = 3, m) {
+      K.rock(x0, f, x1, f + t);
+      m && K.mat(x0, f, x1, f + t, m);
+    },
+    // 섬 배: 아래로 갈수록 좁아지는 거꾸로 선 산 (울퉁불퉁)
+    belly(x0, x1, f, depth, m) {
+      const w = x1 - x0;
+      for (let k = 0; k < depth; k++) {
+        const u = k / depth, s0 = Math.round(u * u * w * 0.48 + (Math.sin(k * 0.9 + x0) + 1) * 1.5), s1 = Math.round(u * u * w * 0.48 + (Math.sin(k * 0.7 + x1) + 1) * 1.5);
+        x0 + s0 < x1 - s1 && K.rock(x0 + s0, f + k, x1 - s1, f + k + 1);
+      }
+      m && K.mat(x0, f, x1, f + depth, m);
+    },
+    // 계단 다리: (xa, fa) → (xb, fb), 기울기 1 이하, 두께 t
+    stairway(xa, fa, xb, fb, t = 2, m) {
+      const n = Math.abs(xb - xa), dir = Math.sign(xb - xa) || 1;
+      for (let i = 0; i <= n; i++) {
+        const x = xa + i * dir, f = Math.round(fa + ((fb - fa) * i) / Math.max(1, n));
+        K.rock(x, f, x + 1, f + t);
+        m && K.mat(x, f, x + 1, f + t, m);
+      }
+    },
+    cloud(x0, x1, f) {
+      P.specReq.push({ x0, x1, y0: f, y1: f + 2, k: "cloud" });
+    },
+    bounce(x0, x1, f) {
+      P.specReq.push({ x0, x1, y0: f - 1, y1: f, k: "bounce" });
+    },
     peak(cx, f) {
       P.peak = { x: Math.round((cx * 8 - 8) / 16) * 16 + 8, y: f * 8 };
     },
@@ -129,7 +161,7 @@ export function network(K, o) {
   const { NX, NY, R } = K;
   const rooms = o.fixed.map((r) => ({ ...r, fixed: 1 }));
   const M = o.margin ?? 8;
-  const hit = (a, b, m) => a.x0 - m < b.x1 && b.x0 - m < a.x1 && a.f - a.h - m < b.f + 2 && b.f - b.h - m < a.f + 2;
+  const hit = (a, b, m) => a.x0 - m < b.x1 && b.x0 - m < a.x1 && a.f - a.h - m < b.f + (b.below ?? 0) + 2 && b.f - b.h - m < a.f + (a.below ?? 0) + 2;
   const top = o.top ?? 40, bot = o.bot ?? NY - 30;
   for (let t = 0; t < (o.tries ?? 8000) && rooms.length < (o.n ?? 160); t++) {
     const q = o.pick();
@@ -544,9 +576,9 @@ function dripstone(K) {
   }
   fixed.push({ id: "EL", x0: 0, x1: 34, f: EN, h: 10, type: "door" }, { id: "ER", x0: NX - 34, x1: NX, f: EN, h: 10, type: "door" }, { id: "DP", x0: 392, x1: 440, f: 1012, h: 14, type: "grotto" });
   network(K, {
-    fixed, n: 80, margin: 9, top: 30, bot: 1032, vw: 1.3, extra: 2, maxLen: 150, loopP: 0.8,
+    fixed, n: 150, margin: 6, top: 30, bot: 1032, vw: 1.3, extra: 2, maxLen: 120, loopP: 0.8, tries: 14000,
     reserve: [{ x0: CX0 - 8, x1: CX1 + 8, f: CF + 30, h: CF - CT + 40 }],
-    pick: picker(R, [["cavern", 3, [90, 170], [50, 90]], ["grotto", 7, [18, 40], [11, 18]], ["lake", 2, [60, 110], [22, 32]], ["chimney", 2, [14, 20], [50, 80]], ["gallery", 3, [50, 100], [12, 16]]]),
+    pick: picker(R, [["cavern", 3, [90, 170], [50, 90]], ["grotto", 8, [20, 46], [12, 20]], ["lake", 2, [60, 110], [22, 32]], ["chimney", 2, [14, 20], [50, 80]], ["gallery", 3, [50, 100], [12, 16]]]),
     shape(K, r) {
       if (r.type === "door") return void K.air(r.x0, r.f - r.h, r.x1, r.f);
       if (r.type === "chimney") {
@@ -615,4 +647,436 @@ function dripstone(K) {
   K.deep(416, 1012);
 }
 
-export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone };
+// ── 하늘 공통: 두 받침 잇기 (돌다리·판자 다리·낡은 출렁다리 / 사다리·승강기 / 짚라인+바람) ──
+function skyVert(K, x, up, lo, how) {
+  // 위 받침을 뚫고 아래 받침까지
+  K.air(x - 1, up, x + 2, lo);
+  if (how === "lift" && lo - up > 50) {
+    K.air(x - 4, up - 1, x + 4, lo);
+    K.lift(x - 3, x + 3, up, lo, up - 10);
+    return;
+  }
+  K.plank(x - 1, x + 2, up);
+  how === "vine" ? K.ladder(x, up, lo, "vine") : how === "rope" ? K.rope(x, up - 3, lo) : K.ladder(x, up, lo);
+}
+// 짚라인으로 내려가고, 아래 받침 옆 바람 기둥으로 다시 올라온다
+function zipWind(K, up, lo, m) {
+  const dir = Math.sign(lo.x - up.x) || 1;
+  K.zip(up.x + dir * 1, up.f - 3, lo.x - dir * 2, lo.f - 3);
+  // 바람 기둥: 위 받침 끝 바로 바깥, 아래에 작은 착지판 (아래 받침까지 이어짐)
+  const wx = up.x + dir * 3;
+  K.stairway(wx, lo.f, lo.x, lo.f, 2, m);
+  const w0 = dir > 0 ? wx : wx - 5;
+  K.wind(w0, w0 + 5, up.f - 6, lo.f);
+}
+function skyLink(K, a, b, kind, opt) {
+  const R = K.R, m = opt.mat;
+  if (kind === "h") {
+    const dy = Math.abs(b.f - a.f), u = R();
+    if (dy <= 2 && u < opt.plankP) {
+      // 판자 다리 (낡은 것은 무너지는 판이 섞인 출렁다리)
+      const old = R() < opt.oldP;
+      for (let x = a.x; x <= b.x; x += 6) {
+        const f = Math.round(a.f + ((b.f - a.f) * (x - a.x)) / Math.max(1, b.x - a.x));
+        old && (x / 6) % 3 === 1 ? K.crumble(x, Math.min(b.x + 1, x + 6), f) : K.plank(x, Math.min(b.x + 1, x + 6), f);
+      }
+    } else if (opt.stones && R() < opt.stones) {
+      // 디딤돌 (한 번 뛰어 닿는 틈), 가끔 무너지는 돌
+      const n = Math.max(1, Math.round((b.x - a.x) / 15));
+      for (let i = 1; i < n; i++) {
+        const x = Math.round(a.x + ((b.x - a.x) * i) / n) - 4, f = Math.round(a.f + ((b.f - a.f) * i) / n);
+        R() < 0.25 ? K.crumble(x, x + 9, f) : (K.rock(x, f, x + 9, f + 3), m && K.mat(x, f, x + 9, f + 3, m));
+      }
+      if (n === 1) K.stairway(a.x, a.f, b.x, b.f, 2, m);
+    } else {
+      K.stairway(a.x, a.f, b.x, b.f, 2, m);
+      // 긴 돌다리는 아래 아치 기둥
+      if (opt.arches && b.x - a.x > 40) for (let x = a.x + 16; x < b.x - 10; x += 22) {
+        const f = Math.round(a.f + ((b.f - a.f) * (x - a.x)) / (b.x - a.x));
+        K.rock(x, f + 2, x + 3, f + 9), m && K.mat(x, f + 2, x + 3, f + 9, m);
+      }
+    }
+    return;
+  }
+  if (kind === "v") return void skyVert(K, a.x, a.f, b.f, R() < opt.liftP ? "lift" : opt.vert);
+  const [up, lo] = a.f < b.f ? [a, b] : [b, a];
+  if (R() < opt.zipP && Math.abs(b.x - a.x) > 16) return void zipWind(K, up, lo, m);
+  const mx = a.x + 3 + Math.floor(R() * Math.max(1, b.x - a.x - 6));
+  K.stairway(a.x, a.f, mx + 2, a.f, 2, m);
+  K.stairway(mx - 1, b.f, b.x, b.f, 2, m);
+  skyVert(K, mx, up.f, lo.f, R() < opt.liftP ? "lift" : opt.vert);
+}
+
+// ══════════════════════════════════════════════════════════════
+// 스톤브리지 「공중 도시」: 하늘 전체에 떠 있는 벽돌 도시
+//   꼭대기 가운데 성(층마다 사다리, 맨 위 = ▲) · 집(안에 사다리로 지붕), 탑(층층 마루·사다리/승강기), 광장, 정원, 무너진 폐허
+//   다리: 돌다리(아치 기둥) · 판자 다리 · 낡은 출렁다리(무너지는 판) / 세로: 사다리·승강기 / 짚라인으로 내려가고 바람 기둥으로 올라온다
+// ══════════════════════════════════════════════════════════════
+function stonebridge(K, o) {
+  const { NX, R } = K;
+  const BF = Math.round(o.base / 8);
+  // 성
+  const CX0 = 470, CX1 = 620, CF = [100, 150, 200];
+  K.rock(CX0, 64, CX1, 210), K.mat(CX0, 56, CX1, 226, "brick");
+  K.belly(CX0, CX1, 210, 40, "brick");
+  for (let i = 0; i < CF.length; i++) {
+    const f = CF[i], h = f - (i ? CF[i - 1] : 64) - 6;
+    K.air(CX0 + 4, f - h, CX1 - 4, f), K.wall(CX0 + 4, f - h, CX1 - 4, f, "brick");
+    for (let x = CX0 + 20; x < CX1 - 16; x += 26) K.wall(x, f - h, x + 3, f, "stem");
+    K.tag(CX0 + 4, f - h, CX1 - 4, f, i === 0 ? "rest" : "arena");
+    if (i) {
+      const x = i % 2 ? CX0 + 14 : CX1 - 16;
+      K.air(x - 1, CF[i - 1], x + 2, f - h), K.plank(x - 1, x + 2, CF[i - 1]), K.ladder(x, CF[i - 1], f);
+    }
+  }
+  // 성가퀴 + 망루
+  for (let x = CX0; x < CX1; x += 8) K.rock(x, 58, x + 4, 64);
+  K.peak(544, 100);
+  K.air(CX0 - 2, 193, CX0 + 4, 200), K.air(CX1 - 4, 193, CX1 + 2, 200);
+  const fixed = [
+    { id: "EL", x0: 0, x1: 40, f: BF, h: 10, type: "ground" }, { id: "ER", x0: NX - 40, x1: NX, f: BF, h: 10, type: "ground" },
+    { id: "G1", x0: 230, x1: 270, f: BF, h: 10, type: "ground" }, { id: "G2", x0: 700, x1: 740, f: BF, h: 10, type: "ground" },
+    { id: "CW", x0: CX0 - 46, x1: CX0 - 2, f: 200, h: 10, type: "plaza" }, { id: "CE", x0: CX1 + 2, x1: CX1 + 46, f: 200, h: 10, type: "plaza" },
+  ];
+  const rooms = network(K, {
+    fixed, n: 120, margin: 7, top: 40, bot: BF - 30, vw: 1.2, extra: 2, maxLen: 110, loopP: 0.75, tries: 12000,
+    reserve: [{ x0: CX0 - 4, x1: CX1 + 4, f: 252, h: 200 }],
+    pick: (() => {
+      const pk = picker(R, [["house", 6, [24, 44], [12, 18]], ["tower", 3, [16, 24], [40, 66]], ["plaza", 3, [44, 84], [10, 12]], ["garden", 2, [40, 70], [10, 12]], ["ruin", 2, [30, 50], [12, 20]]]);
+      return () => {
+        const q = pk();
+        q.below = 14;
+        return q;
+      };
+    })(),
+    shape(K, r) {
+      if (r.type === "ground") return;
+      const w = r.x1 - r.x0, m = r.type === "garden" ? "leaf" : "brick";
+      K.slab(r.x0 - 3, r.x1 + 3, r.f, 3, "brick");
+      K.belly(r.x0 - 3, r.x1 + 3, r.f + 3, Math.min(14, Math.round(w / 3)), "brick");
+      r.type === "garden" && K.mat(r.x0 - 3, r.f, r.x1 + 3, r.f + 1, "leaf");
+      if (r.type === "house" || r.type === "tower") {
+        const top = r.f - r.h;
+        K.rock(r.x0 - 2, top - 3, r.x0, r.f), K.rock(r.x1, top - 3, r.x1 + 2, r.f), K.rock(r.x0 - 2, top - 3, r.x1 + 2, top);
+        K.mat(r.x0 - 2, top - 3, r.x1 + 2, r.f, m);
+        K.air(r.x0 - 2, r.f - 7, r.x0, r.f), K.air(r.x1, r.f - 7, r.x1 + 2, r.f);
+        K.wall(r.x0, top, r.x1, r.f, "brick");
+        // 지붕 성가퀴
+        for (let x = r.x0 - 2; x < r.x1 + 2; x += 6) K.rock(x, top - 5, x + 3, top - 3), K.mat(x, top - 5, x + 3, top - 3, m);
+        // 안: 탑은 층층 마루 + 사다리, 집은 지붕으로 오르는 사다리
+        let y = r.f, side = R() < 0.5;
+        const step = r.type === "tower" ? 11 : r.h + 3;
+        while (y - step >= top - 3) {
+          const ny = y - step, lx = side ? r.x0 + 2 : r.x1 - 3;
+          if (ny > top) K.plank(r.x0, r.x1, ny);
+          K.air(lx - 1, ny, lx + 2, ny + 1), K.plank(lx - 1, lx + 2, ny);
+          K.ladder(lx, ny, y);
+          y = ny, (side = !side);
+        }
+      } else if (r.type === "ruin") {
+        // 무너진 폐허: 바닥 일부가 무너지는 판, 부서진 벽 토막
+        const a = r.x0 + 6, b = r.x1 - 6;
+        K.air(a, r.f, b, r.f + 3);
+        for (let x = a; x < b; x += 8) K.crumble(x, Math.min(b, x + 6), r.f);
+        K.rock(r.x0 - 2, r.f - 9, r.x0, r.f - 7), K.rock(r.x1, r.f - 12, r.x1 + 2, r.f - 7);
+      } else if (r.type === "plaza" && w > 50) {
+        const cx = Math.round(r.cx);
+        K.rock(cx - 6, r.f - 1, cx + 6, r.f), K.air(cx - 5, r.f, cx + 5, r.f + 2), K.water(cx - 5, r.f, cx + 5, r.f + 2);
+      }
+    },
+    link(K, a, b, kind) {
+      skyLink(K, a, b, kind, { mat: "brick", plankP: 0.4, oldP: 0.4, stones: 0, arches: 1, liftP: 0.3, vert: "ladder", zipP: 0.45 });
+    },
+    inside(K, r) {
+      if (r.type === "ground") return;
+      K.tag(r.x0, r.f - Math.min(r.h, 14), r.x1, r.f, r.type === "tower" || r.type === "ruin" ? "arena" : r.type === "garden" ? "rest" : R() < 0.3 ? "treasure" : "arena");
+    },
+  });
+  return rooms;
+}
+
+// ══════════════════════════════════════════════════════════════
+// 그린스텝 「떠 있는 산」: 거꾸로 선 산 모양 섬이 하늘 가득한 군도 + 가운데 거대한 떠 있는 산(걸어 오르는 비탈, 산속 굴, 꼭대기 = ▲)
+//   섬: 작은 섬 · 굴 뚫린 큰 섬(위 구멍 덩굴로 내려가 보물) · 바위 첨탑(옆 턱으로 오른다) · 구름 둑(밑에서 뚫고 오른다)
+//   잇기: 디딤돌(가끔 무너지는 돌)·구름 다리 / 섬을 뚫고 늘어진 덩굴 / 짚라인으로 내려가고 바람 기둥으로 올라온다
+// ══════════════════════════════════════════════════════════════
+function greenstep(K, o) {
+  const { NX, R } = K;
+  const BF = Math.round(o.base / 8);
+  // 가운데 떠 있는 산: 밑변 330칸 (줄 330) → 꼭대기 40칸 (줄 110), 비탈은 기울기 1 이하라 걸어 오른다
+  const MX = 544, MB = 320, MT = 150;
+  const hwAt = (y) => 20 + (y - MT) * 1.2;
+  for (let y = MT; y <= MB; y++) K.rock(Math.round(MX - hwAt(y)), y, Math.round(MX + hwAt(y)), y + 1);
+  K.belly(MX - 224, MX + 224, MB, 100);
+  K.peak(MX, MT);
+  // 산속 굴: 서쪽 비탈에서 들어가 동쪽 비탈로 빠지는 굽은 굴 + 가운데 보물 방 (꼭대기 옆 구멍으로 바람 타고 나온다)
+  K.wiggle([[Math.round(MX - hwAt(306)) + 1, 306], [MX - 44, 262], [MX + 44, 262], [Math.round(MX + hwAt(306)) - 1, 306]], 8, 1.2, "rock");
+  K.ell(MX, 250, 30, 11);
+  K.wall(MX - 30, 238, MX + 30, 262, "rock"), K.wall(MX + 10, MT + 6, MX + 16, 254, "rock");
+  K.rock(MX - 30, 262, MX + 30, 266), K.air(MX - 28, 254, MX + 28, 262);
+  K.tag(MX - 28, 240, MX + 28, 262, "treasure");
+  K.air(MX + 10, MT + 6, MX + 16, 254);
+  K.wind(MX + 10, MX + 16, MT - 4, 262);
+  const fixed = [
+    { id: "EL", x0: 0, x1: 40, f: BF, h: 10, type: "ground" }, { id: "ER", x0: NX - 40, x1: NX, f: BF, h: 10, type: "ground" },
+    { id: "G1", x0: 300, x1: 340, f: BF, h: 10, type: "ground" }, { id: "G2", x0: 760, x1: 800, f: BF, h: 10, type: "ground" },
+    { id: "ML", x0: MX - 252, x1: MX - 225, f: MB, h: 10, type: "ledge" }, { id: "MR", x0: MX + 225, x1: MX + 252, f: MB, h: 10, type: "ledge" },
+  ];
+  network(K, {
+    fixed, n: 110, margin: 8, top: 60, bot: BF - 40, vw: 1.2, extra: 2, maxLen: 110, loopP: 0.8, tries: 12000,
+    reserve: [{ x0: MX - 232, x1: MX + 232, f: MB + 100, h: MB + 100 - MT + 10 }],
+    pick: (() => {
+      const pk = picker(R, [["isle", 8, [22, 56], [10, 14]], ["mesa", 3, [60, 100], [10, 14]], ["spire", 2, [12, 18], [12, 14]], ["cloud", 2, [36, 70], [8, 10]]]);
+      return () => {
+        const q = pk();
+        q.below = q.type === "cloud" ? 3 : q.type === "spire" ? 50 : Math.round(q.w * 0.45);
+        return q;
+      };
+    })(),
+    shape(K, r) {
+      if (r.type === "ground") return;
+      const w = r.x1 - r.x0;
+      if (r.type === "cloud") return void K.cloud(r.x0, r.x1, r.f);
+      if (r.type === "ledge") return void K.slab(r.x0, r.x1 + 4, r.f, 3);
+      if (r.type === "spire") {
+        // 바위 첨탑: 꼭대기 받침 + 아래로 긴 기둥, 옆에 엇갈린 턱
+        K.slab(r.x0 - 4, r.x1 + 4, r.f, 3);
+        K.rock(r.x0 + 2, r.f + 3, r.x1 - 2, r.f + 50);
+        for (let y = r.f + 8, i = 0; y < r.f + 48; y += 7, i++) i % 2 ? K.rock(r.x1 - 2, y, r.x1 + 8, y + 3) : K.rock(r.x0 - 8, y, r.x0 + 2, y + 3);
+        return;
+      }
+      K.slab(r.x0, r.x1, r.f, 3);
+      K.belly(r.x0, r.x1, r.f + 3, Math.round(w * 0.42));
+      if (r.type === "mesa") {
+        // 굴 뚫린 큰 섬: 위 구멍으로 덩굴 타고 내려가면 섬 속 방
+        const cx = Math.round(r.cx);
+        K.air(cx - 18, r.f + 6, cx + 18, r.f + 15), K.air(cx - 1, r.f, cx + 2, r.f + 6);
+        K.plank(cx - 1, cx + 2, r.f), K.ladder(cx, r.f, r.f + 15, "vine");
+        K.tag(cx - 18, r.f + 6, cx + 18, r.f + 15, "treasure");
+      }
+    },
+    link(K, a, b, kind) {
+      skyLink(K, a, b, kind, { mat: null, plankP: 0.15, oldP: 0, stones: 0.85, arches: 0, liftP: 0, vert: "vine", zipP: 0.45 });
+    },
+    inside(K, r) {
+      if (r.type === "ground" || r.type === "ledge") return;
+      K.tag(r.x0, r.f - 12, r.x1, r.f, r.type === "mesa" ? "arena" : R() < 0.3 ? "rest" : "arena");
+    },
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// 리프크라운 「세계수」: 기초 땅에서 하늘 꼭대기까지 한 그루
+//   줄기 속: 층마다 자리가 다른 방 (덩굴 벽·밧줄로 오른다), 맨 위 수관 = ▲
+//   가지: 층마다 양쪽으로 갈라져 뻗고(위는 걷는 길), 다시 위로 잔가지가 갈라진다, 끝마다 잎 덤불(위에 튕김 잎)
+//   가지 사이: 늘어진 덩굴(위아래) · 가지 끝에서 다른 가지로 짚라인 · 뿌리 둘레 꽃가루 바람
+// ══════════════════════════════════════════════════════════════
+function leafcrown(K, o) {
+  const { NX, R } = K;
+  const BF = Math.round(o.base / 8);
+  const TX0 = 496, TX1 = 592;
+  K.rock(TX0, 60, TX1, BF), K.mat(TX0, 60, TX1, BF, "wood");
+  // 뿌리 퍼짐 (기초 땅 위)
+  for (let k = 0; k < 6; k++) K.stairway(TX0 - 40 + k * 4, BF - 1, TX0, BF - 6 - k * 3, 2, "wood"), K.stairway(TX1, BF - 6 - k * 3, TX1 + 40 - k * 4, BF - 1, 2, "wood");
+  // 줄기 속 방 + 가지 높이
+  const FL = [[110, 0], [170, 1], [228, 2], [290, 0], [352, 1], [410, 2], [470, 0], [534, 1], [596, 2], [660, 0], [722, 1], [786, 2], [850, 0], [912, 1], [BF, 0]];
+  const span = (k) => (k === 0 ? [TX0 + 6, TX1 - 6] : k === 1 ? [TX0 + 6, TX0 + 60] : [TX1 - 60, TX1 - 6]);
+  let prevF = 70;
+  const branchF = [];
+  FL.forEach(([f, k], i) => {
+    const [a, b] = span(k), h = Math.min(f - prevF - 5, 40);
+    K.air(a, f - h, b, f), K.wall(a, f - h, b, f, "wood");
+    i > 0 && K.vine(i % 2 ? a : b - 3, i % 2 ? a + 3 : b, f - h, f);
+    K.tag(a, f - h, b, f, i === 0 ? "rest" : i % 3 === 1 ? "treasure" : "arena");
+    if (i > 0) {
+      const [pa, pb] = span(FL[i - 1][1]), x = Math.round((Math.max(a, pa) + Math.min(b, pb)) / 2) + (i % 3) * 4 - 4;
+      K.air(x - 2, prevF, x + 2, f - h + 1), K.plank(x - 2, x + 2, prevF), K.rope(x, prevF - 3, f);
+    }
+    // 바깥 문 (가지 나가는 자리)
+    if (f < BF) {
+      k !== 2 && (K.air(TX0 - 1, f - 8, TX0 + 7, f), branchF.push([f, -1]));
+      k !== 1 && (K.air(TX1 - 7, f - 8, TX1 + 1, f), branchF.push([f, 1]));
+    } else K.air(TX0 - 1, f - 9, TX1 + 1, f);
+    prevF = f;
+  });
+  K.peak(544, 110);
+  // 수관 꼭대기 잎 지붕
+  K.ell(544, 58, 90, 18, 1), K.mat(450, 36, 640, 78, "leaf"), K.air(TX0 + 6, 70, TX1 - 6, 110);
+  // 가지: 문에서 뻗어 나가며 살짝 오르내리고, 잔가지가 위로 갈라진다
+  const tips = [];
+  const grow = (x, f, dir, len, depth) => {
+    let cx = x, cf = f;
+    const pts = [];
+    for (let s = 0; s < len; s++) {
+      cx += dir;
+      if (cx < 8 || cx > NX - 8) break;
+      // 6칸마다 한 칸씩 위아래 (걸어서 간다)
+      s % 6 === 5 && (cf += R() < 0.62 ? -1 : 1);
+      const t = depth === 0 ? 5 : 3;
+      K.rock(cx, cf, cx + 1, cf + t), K.mat(cx, cf, cx + 1, cf + t, "wood");
+      pts.push([cx, cf]);
+      // 잔가지: 위로 비스듬히 (기울기 1 이하)
+      if (depth < 2 && s > 20 && s % 37 === 0 && R() < 0.75) {
+        let sx = cx, sf = cf;
+        const sl = 18 + Math.floor(R() * 26);
+        for (let j = 0; j < sl; j++) {
+          (sx += dir), j % 2 === 1 && (sf -= 1);
+          if (sx < 8 || sx > NX - 8 || sf < 30) break;
+          K.rock(sx, sf, sx + 1, sf + 3), K.mat(sx, sf, sx + 1, sf + 3, "wood");
+        }
+        grow(sx, sf, dir, 20 + Math.floor(R() * 60), depth + 1);
+      }
+    }
+    if (pts.length) tips.push({ x: cx, f: cf, dir, depth });
+    // 가지 밑으로 늘어진 덩굴 (아래 가지에 닿게 길게)
+    for (let i = 24; i < pts.length; i += 40 + Math.floor(R() * 30)) {
+      const [vx, vf] = pts[i], t = depth === 0 ? 5 : 3;
+      K.air(vx - 1, vf, vx + 2, vf + t), K.plank(vx - 1, vx + 2, vf);
+      K.vine(vx - 1, vx + 2, vf - 3, Math.min(BF, vf + 50 + Math.floor(R() * 40)));
+    }
+    return pts;
+  };
+  for (const [f, dir] of branchF) grow(dir < 0 ? TX0 : TX1 - 1, f, dir, 160 + Math.floor(R() * 260), 0);
+  // 가지 끝 잎 덤불 (위는 걷는 잎, 가운데 튕김 잎)
+  for (const t of tips) {
+    const cx = t.x + t.dir * 6, w = t.depth === 0 ? 26 : 18;
+    K.ell(cx, t.f - 2, w, 7, 1, 0.12), K.mat(cx - w - 2, t.f - 10, cx + w + 2, t.f + 6, "leaf");
+    K.air(cx - w, t.f - 20, cx + w, t.f - 7);
+    K.rock(cx - w + 2, t.f - 7, cx + w - 2, t.f - 5), K.mat(cx - w + 2, t.f - 7, cx + w - 2, t.f - 5, "leaf");
+    R() < 0.5 && K.bounce(cx - 3, cx + 3, t.f - 7);
+    K.tag(cx - w, t.f - 20, cx + w, t.f - 7, R() < 0.25 ? "treasure" : R() < 0.5 ? "rest" : "arena");
+  }
+  // 짚라인: 높은 가지 끝 → 반대쪽이 아닌 같은 쪽 더 낮은 가지 끝
+  const T2 = tips.filter((t) => t.depth === 0).sort((p, q) => p.f - q.f);
+  for (let i = 0; i + 2 < T2.length; i += 2) {
+    const a = T2[i], b = T2.slice(i + 1).find((q) => q.dir === a.dir && q.f - a.f > 30 && Math.abs(q.x - a.x) > 40);
+    b && K.zip(a.x, a.f - 10, b.x, b.f - 10);
+  }
+  // 뿌리 둘레 꽃가루 바람 (기초 땅에서 첫 가지까지)
+  K.wind(TX0 - 12, TX0 - 4, FL[FL.length - 2][0] - 6, BF);
+  K.wind(TX1 + 4, TX1 + 12, FL[FL.length - 3][0] - 6, BF);
+}
+
+// ══════════════════════════════════════════════════════════════
+// 모스바크 「이끼 거목 숲」 (지상): 땅 위·아래를 다른 뼈대로
+//   땅속: 이끼 무덤(벽돌 방·석관 기둥) · 늪(물 + 무너지는 판자 길) · 뿌리 굴 · 덩굴 숲 굴 — 덩굴 세로 굴로 오르내린다
+//         지표에서 들어가는 구멍 셋 (둔덕 · 협곡 바닥 싱크홀 · 동쪽 언덕), 맨 아래 ▼
+//   하늘: 거목들 위에 지은 나무 위 마을 — 발판마다 거목 줄기가 땅까지 (밑동은 지나가는 굴), 줄기 옆 사다리(높으면 나무 승강기)
+//         오두막 · 망대 · 잎 지붕 발판(튕김 잎) · 출렁다리(무너지는 판) · 짚라인, 꼭대기 망대 = ▲
+// ══════════════════════════════════════════════════════════════
+function mossbark(K, o) {
+  const { NX, R } = K;
+  if (o.stage === "under") {
+    const fixed = [];
+    // 지표에서 내려가는 덩굴 구멍
+    for (const [id, cx, f] of [["M1", 240, 712], ["M2", 556, 716], ["M3", 862, 712]]) {
+      const s = o.surfRow(cx);
+      K.air(cx - 2, s, cx + 2, f);
+      K.plank(cx - 2, cx + 2, s);
+      K.ladder(cx, s, f, "vine");
+      fixed.push({ id, x0: cx - 18, x1: cx + 18, f, h: 10, type: "burrow" });
+    }
+    fixed.push({ id: "DP", x0: 396, x1: 436, f: 1012, h: 12, type: "crypt" });
+    network(K, {
+      fixed, n: 150, margin: 6, top: 704, bot: 1032, vw: 1.2, extra: 2, maxLen: 110, loopP: 0.8, tries: 12000,
+      pick: picker(R, [["crypt", 4, [40, 80], [12, 16]], ["bog", 3, [50, 90], [12, 18]], ["burrow", 6, [16, 36], [11, 18]], ["hall", 4, [50, 100], [9, 12]], ["grove", 2, [30, 50], [24, 32]], ["hollow", 2, [12, 18], [9, 11]]]),
+      shape(K, r) {
+        if (r.type === "crypt" || r.type === "hall") {
+          K.air(r.x0, r.f - r.h, r.x1, r.f);
+          if (r.type === "crypt") {
+            K.mat(r.x0 - 2, r.f - r.h - 2, r.x1 + 2, r.f + 2, "brick"), K.wall(r.x0, r.f - r.h, r.x1, r.f, "brick");
+            for (let x = r.x0 + 8; x < r.x1 - 6; x += 12) K.wall(x, r.f - r.h, x + 2, r.f, "stem");
+          } else
+            for (let x = r.x0; x < r.x1; x++) {
+              const v = Math.round(Math.sin(x * 0.27 + r.f) * 1.4 + Math.sin(x * 0.09) * 1.2);
+              v > 0 ? K.air(x, r.f - r.h - v, x + 1, r.f - r.h) : K.rock(x, r.f - r.h, x + 1, r.f - r.h - v);
+            }
+          return;
+        }
+        roundRoom(K, r, 0.12);
+      },
+      link(K, a, b, kind) {
+        if (kind === "h") return void tube(K, a, b, 8, 1.3);
+        const vert = (x, up, lo) => (K.air(x - 2, up, x + 2, lo), K.plank(x - 2, x + 2, up), K.ladder(x, up, lo, "vine"));
+        if (kind === "v") return void vert(a.x, a.f, b.f);
+        const mx = a.x + 3 + Math.floor(K.R() * Math.max(1, b.x - a.x - 6));
+        K.wiggle([[a.x, a.f], [mx + 4, a.f]], 8, 1);
+        K.wiggle([[mx - 3, b.f], [b.x + 1, b.f]], 8, 1);
+        vert(mx, Math.min(a.f, b.f), Math.max(a.f, b.f));
+      },
+      inside(K, r) {
+        const R = K.R, top = r.f - Math.round(r.h * 1.05);
+        if (r.type === "crypt") {
+          // 석관 (낮은 돌 상자, 넘어 다닌다)
+          for (let x = r.x0 + 4; x < r.x1 - 10; x += 14) R() < 0.6 && (K.rock(x, r.f - 2, x + 7, r.f), K.mat(x, r.f - 2, x + 7, r.f, "brick"));
+          K.tag(r.x0, r.f - r.h, r.x1, r.f, R() < 0.3 ? "treasure" : "arena");
+        } else if (r.type === "bog") {
+          const a = r.x0 + 5, b = r.x1 - 5;
+          K.air(a, r.f, b, r.f + 6), K.water(a, r.f, b, r.f + 6);
+          for (let x = a; x < b; x += 10) R() < 0.35 ? K.crumble(x, Math.min(b, x + 7), r.f) : K.plank(x, Math.min(b, x + 7), r.f);
+          K.tag(r.x0, r.f - r.h, r.x1, r.f, "arena");
+        } else if (r.type === "grove") {
+          for (let x = r.x0 + 5; x < r.x1 - 4; x += 7 + Math.floor(R() * 5)) {
+            let y = r.f - 8;
+            while (y > 2 && K.get(x, y - 1) === -1) y--;
+            K.vine(x, x + 2, y, r.f - 3 - Math.floor(R() * 10));
+          }
+          K.tag(r.x0, r.f - r.h, r.x1, r.f, "rest");
+        } else if (r.type === "hollow") {
+          K.wall(r.x0, r.f - r.h, r.x1, r.f, "wood");
+          if (r.deg === 1) (K.crack(r.x0, r.f - 7, r.x0 + 3, r.f), K.crack(r.x1 - 3, r.f - 7, r.x1, r.f));
+          K.tag(r.x0, r.f - r.h, r.x1, r.f, "treasure");
+        } else K.tag(r.x0, r.f - r.h, r.x1, r.f, R() < 0.5 ? "arena" : "rest");
+      },
+    });
+    K.deep(416, 1012);
+    return;
+  }
+  // ── 하늘: 나무 위 마을 ──
+  const fixed = [{ id: "PK", x0: 524, x1: 564, f: 96, h: 12, type: "nest" }];
+  const trunks = [];
+  const rooms = network(K, {
+    fixed, n: 70, margin: 8, top: 60, bot: 500, vw: 1.2, extra: 2, maxLen: 120, loopP: 0.8, tries: 10000,
+    pick: picker(R, [["hut", 5, [24, 40], [12, 14]], ["deck", 4, [30, 60], [10, 12]], ["nest", 2, [16, 24], [10, 12]], ["canopy", 3, [50, 90], [10, 12]]]),
+    shape(K, r) {
+      const m = r.type === "canopy" ? "leaf" : "wood";
+      K.slab(r.x0 - 3, r.x1 + 3, r.f, 3, m);
+      // 거목 줄기: 발판 가운데에서 땅까지, 밑동은 지나가는 굴
+      const cx = Math.round(r.cx), s = o.surfRow(cx), tw = r.type === "deck" ? 7 : 9;
+      // 줄기는 큰 발판에만, 서로 70칸 넘게 떨어져서 — 나머지는 수관 덤불 (잎 배 + 늘어진 덩굴)
+      const trunk = r.type !== "nest" && trunks.every((t) => Math.abs(t - cx) > 70) && K.R() < 0.85;
+      if (!trunk) {
+        K.belly(r.x0 - 3, r.x1 + 3, r.f + 3, 7, "leaf");
+        for (let x = r.x0 + 3; x < r.x1 - 2; x += 9 + Math.floor(K.R() * 6)) K.R() < 0.5 && K.vine(x, x + 2, r.f + 4, r.f + 18 + Math.floor(K.R() * 24));
+      }
+      if (trunk && s > r.f + 6) {
+        trunks.push(cx);
+        K.rock(cx - tw, r.f + 3, cx + tw, s + 2), K.mat(cx - tw, r.f + 3, cx + tw, s + 2, "wood");
+        K.air(cx - tw - 1, s - 7, cx + tw + 1, s), K.wall(cx - tw, s - 7, cx + tw, s, "wood");
+        // 줄기 옆 사다리 (아주 높으면 나무 승강기)
+        const lx = cx + tw + 2;
+        if (s - r.f > 150 && K.R() < 0.4) (K.air(lx - 1, r.f - 1, lx + 6, s), K.lift(lx, lx + 5, r.f, s, r.f - 10));
+        else (K.air(lx - 1, r.f, lx + 2, s), K.plank(lx - 1, lx + 2, r.f), K.ladder(lx, r.f, s));
+      }
+      if (r.type === "hut") {
+        const top = r.f - r.h;
+        K.rock(r.x0, top - 2, r.x0 + 1, r.f - 7), K.rock(r.x1 - 1, top - 2, r.x1, r.f - 7), K.rock(r.x0 - 2, top - 3, r.x1 + 2, top);
+        K.mat(r.x0 - 2, top - 3, r.x1 + 2, r.f, "wood"), K.wall(r.x0 + 1, top, r.x1 - 1, r.f, "wood");
+        K.mat(r.x0 - 4, top - 6, r.x1 + 4, top - 3, "leaf"), K.rock(r.x0 - 4, top - 6, r.x1 + 4, top - 3);
+      } else if (r.type === "canopy") {
+        K.mat(r.x0 - 3, r.f, r.x1 + 3, r.f + 1, "leaf");
+        K.R() < 0.6 && K.bounce(Math.round(r.cx) - 3 + 14, Math.round(r.cx) + 3 + 14, r.f);
+      }
+    },
+    link(K, a, b, kind) {
+      skyLink(K, a, b, kind, { mat: "wood", plankP: 0.75, oldP: 0.35, stones: 0, arches: 0, liftP: 0.1, vert: "ladder", zipP: 0.4 });
+    },
+    inside(K, r) {
+      K.tag(r.x0, r.f - 12, r.x1, r.f, r.type === "hut" ? (K.R() < 0.4 ? "treasure" : "rest") : "arena");
+    },
+  });
+  K.peak(544, 96);
+  return rooms;
+}
+
+export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone, g1_m1: stonebridge, g0_m1: greenstep, gm1_m1: leafcrown, gm1_0: mossbark };

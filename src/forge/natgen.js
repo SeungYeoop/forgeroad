@@ -1168,7 +1168,9 @@ function buildGround(P) {
     for (let x = q.xa; x <= q.xb; x += 16) top = Math.min(top, hAt(x));
     (P.roomTags ??= []).push({ x0: q.xa, x1: q.xb, y0: top - 200, y1: hAt((q.xa + q.xb) / 2) + 24, role: q.role });
   }
-  if (bp?.dungeon) {
+  const AR = ARCHI[P.z.id];
+  if (AR) AR(kit(P, C), { stage: "under", surfRow, NXl });
+  else if (bp?.dungeon) {
     const dg = dungeonWorld(P, C, bp.dungeon);
     caveWorld(P, C, {
       y0: base / BLK + 18,
@@ -1206,7 +1208,13 @@ function buildGround(P) {
   if (P.deep) flatFloor(P, P.deep.x - 40, P.deep.x + 40, P.deep.y, 12, 30, 18);
   // 하늘: 산만 한 하늘섬(▲ 문) + 큰 섬 + 디딤돌 길 (땅 위 구조물은 두지 않는다)
   bp?.feats && bpFeats(P, hAt, bp.feats);
-  skyWorld(P, hAt, S.islands.style, bp?.sky ? { design: bp.sky } : {});
+  if (AR) {
+    // 지역 설계 코드: 땅 위 하늘도 (지표·구조물 위에 짓는다)
+    const C2 = cellsOf(P);
+    AR(kit(P, C2), { stage: "sky", surfRow: (cx) => Math.floor(hAt(clamp(cx, 0, C2.NX - 1) * BLK + 4) / BLK) });
+    writeCells(P, C2);
+    applySpecReq(P);
+  } else skyWorld(P, hAt, S.islands.style, bp?.sky ? { design: bp.sky } : {});
   P.ugTop = Math.max(UG_TOP, Math.ceil(Math.max(...Array.from(h)) / TS) + 3);
 }
 // ── 지상 지형 덩어리 (8px 블록 사각형으로 짓는다, 재질은 그림에만 쓰인다) ──
@@ -2870,7 +2878,14 @@ function buildSky(P) {
     for (const [a, b, y] of gapY) if (x >= a && x < b) return y;
     return yB;
   };
-  skyWorld(P, groundAt, S.islands.style, P.bp?.sky ? { design: P.bp.sky, walk: 1 } : { walk: 1 });
+  // 지역 설계 코드가 있으면 하늘 전체를 그것으로 (기초 땅 위에 짓는다)
+  const AR = ARCHI[P.z.id];
+  if (AR) {
+    const C = cellsOf(P);
+    AR(kit(P, C), { base });
+    writeCells(P, C);
+    applySpecReq(P);
+  } else skyWorld(P, groundAt, S.islands.style, P.bp?.sky ? { design: P.bp.sky, walk: 1 } : { walk: 1 });
   P.ugTop = P.Ft + 20;
 }
 
