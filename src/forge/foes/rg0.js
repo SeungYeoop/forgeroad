@@ -4,7 +4,8 @@
 import { register } from "./core.js";
 import { pxSlime, pxSlimeMini } from "./pg0.js";
 import { slimeFx, splash, puddle, groundBelow } from "./slimefx.js";
-import { goblin, plainsWolf, tuskBoar, giantWasp, mandrake, meadowOgre, centaur } from "./mg0.js";
+import { pxGoblin } from "./pgob.js";
+import { plainsWolf, tuskBoar, giantWasp, mandrake, meadowOgre, centaur } from "./mg0.js";
 
 const DT = 1 / 60;
 const POIS = (p = 0.15, d = 3) => ({ type: "poison", chance: 1, dur: d, power: p });
@@ -178,58 +179,146 @@ register("gm_slime_mini", {
   },
 });
 
-// ════ 고블린 정찰병 ════ 멀면 돌팔매, 가까우면 단검으로 재빨리 찌르고 뒤로 깡충
+// ════ 고블린 정찰병 ════ 약하고 날랜 정통 RPG 고블린. 혼자 어슬렁거리다 알아채면 펄쩍 뛰고,
+//   멀면 돌팔매(가끔 두 번 연속), 가까우면 칼 젖혔다 돌진 찌르기 → 가끔 내려베기 연타 → 뒤로 깡충 빠지고 낄낄 비웃는다.
+//   체력이 바닥나면 한 번 도망쳤다가 다시 돌을 던진다
+const DUST = 0xc8c0a0;
 register("gm_goblin", {
   atkMul: 0.9,
-  ...goblin, speed: 105, sight: 240,
+  ...pxGoblin, speed: 105, sight: 240,
   *brain(e, A) {
-    const M = e.fz.mem;
-    M.cd = 0.4;
-    M.tcd = 1 + Math.random();
+    const M = e.fz.mem, now = () => e.life;
+    M.atkT = now() + 0.5;
+    M.thT = now() + 0.8 + Math.random();
+    M.dustT = 0;
+    const puff = (n = 2) => A.burst("dust", -5, -1, n, DUST);
+    // 착지할 때까지 기다리며 공중 자세 유지
+    function* land() {
+      yield 0.06;
+      for (let t = 0; !A.ground && t < 2; t += DT) yield 0;
+      puff(3);
+      A.sound("land", 0.3);
+    }
     for (;;) {
-      M.cd -= DT, M.tcd -= DT;
+      // ── 평소: 어슬렁 걷다가 멈춰서 두리번 ──
       if (!e.aggro) {
-        A.play("move", 8);
-        A.walk(M.wd ?? 1, 30);
-        Math.random() < 0.008 && (M.wd = -(M.wd ?? 1));
+        if (M.lookT > 0) {
+          M.lookT -= DT;
+          A.play("idle"), A.stop(0.3);
+          Math.random() < 0.012 && (e.facing = -e.facing);
+        } else {
+          A.play("walk");
+          A.walk(M.wd ?? 1, 32);
+          Math.random() < 0.006 && (M.wd = -(M.wd ?? 1));
+          Math.random() < 0.004 && (M.lookT = 1 + Math.random() * 1.5);
+        }
         yield 0;
         continue;
       }
-      const d = Math.abs(A.dx);
-      if (d > 140 && d < 300 && M.tcd <= 0) {
-        // 돌팔매: 팔을 크게 젖혔다가 던진다 (포물선)
+      // ── 처음 알아챔: 펄쩍 뛰며 놀라고, 가끔 낄낄 ──
+      if (!M.seen) {
+        M.seen = 1;
         A.face(), A.stop(1);
-        A.tele(0.35);
-        yield A.once("throw", 10) * 0.5;
-        const p = A.p, ox = e.cx + e.facing * 6, oy = e.body.y - 22, T = 0.75;
-        A.shoot({ sprite: "p_rock", speed: 240, gravity: 520, life: 2.2, radius: 5 }, ox, oy, 0, 0.7, { el: "earth", opts: { vx: (p.cx - ox) / T, vy: (p.body.y - 10 - oy - 0.5 * 520 * T * T) / T, scale: 1.3 } });
-        A.sound("swing", 0.4);
-        yield 0.35;
-        M.tcd = 2.6 + Math.random();
+        A.once("alert");
+        yield 1 / 12;
+        A.ground && hop(e, e.facing, 0, 210);
+        A.sound("jump", 0.4);
+        yield* land();
+        yield 0.15;
+        if (Math.random() < 0.4) (A.play("laugh"), yield 0.6);
         continue;
       }
-      if (d < 46 && Math.abs(A.dy) < 30 && M.cd <= 0) {
-        A.face(), A.stop(1);
-        A.tele(0.3);
-        yield A.once("wind");
-        A.once("atk");
-        e.body.vx = e.facing * 230;
-        A.sound("swing", 0.6);
-        for (let t = 0; t < 0.18; t += DT) {
-          A.melee(28, 22, 1);
+      const d = Math.abs(A.dx), ay = Math.abs(A.dy);
+      // ── 체력이 바닥나면 한 번 도망 ──
+      if (!M.fled && e.hp < e.maxHp * 0.35) {
+        M.fled = 1;
+        const dir = -Math.sign(A.dx) || 1;
+        A.once("hop");
+        A.ground && hop(e, dir, 200, 230);
+        e.facing = -dir;
+        yield* land();
+        for (let t = 0; t < 0.9; t += DT) {
+          A.play("move"), A.walk(dir, e.speed * 1.25);
+          (M.dustT -= DT) <= 0 && ((M.dustT = 0.18), puff(1));
           yield 0;
         }
-        A.fxSlash(16, -16, 0.7, 0xffffff);
-        // 뒤로 깡충
-        A.once("hop");
-        hop(e, -e.facing, 170, 240);
-        e.facing = -e.facing; // 뒤로 뛰어도 얼굴은 플레이어 쪽
-        yield 0.45;
-        M.cd = 1 + Math.random() * 0.5;
+        M.thT = Math.min(M.thT, now() + 0.2);
         continue;
       }
-      if (d > 40) (A.play("move"), A.walk(Math.sign(A.dx), e.speed));
-      else (A.play("idle"), A.stop(), A.face());
+      // ── 가까우면: 칼 젖혔다가 돌진 찌르기 (+ 가끔 내려베기 연타) → 뒤로 깡충 ──
+      if (d < 54 && ay < 30 && now() >= M.atkT && A.ground) {
+        A.face(), A.stop(1);
+        A.tele(0.28);
+        yield A.once("wind");
+        A.once("atk");
+        e.body.vx = e.facing * 260;
+        puff(3);
+        A.sound("swing", 0.6);
+        let hit = !1;
+        for (let t = 0; t < 0.2; t += DT) {
+          !hit && A.melee(26, 22, 1, { knock: 0.8 }) && ((hit = !0), A.burst("spark", 18, -16, 6, 0xfff0c0));
+          yield 0;
+        }
+        A.fxSlash(14, -16, 0.7, 0xf0f0e0);
+        A.stop(0.6);
+        if (Math.random() < 0.4) {
+          // 연타: 칼을 머리 위로 → 내려베기
+          A.face();
+          yield A.once("wind2");
+          A.once("atk2");
+          e.body.vx = e.facing * 150;
+          A.sound("swing", 0.7);
+          hit = !1;
+          for (let t = 0; t < 0.16; t += DT) {
+            !hit && A.melee(30, 30, 1.15, { knock: 1.1 }) && ((hit = !0), A.burst("spark", 18, -12, 8, 0xfff0c0), A.shake(1));
+            yield 0;
+          }
+          A.fxHeavy(14, -14, 0.6, 0xf0f0e0);
+          yield 0.12;
+        }
+        yield A.once("rec") * 0.6;
+        // 뒤로 깡충 (얼굴은 플레이어 쪽)
+        A.once("hop");
+        A.ground && hop(e, -e.facing, 170, 240);
+        e.facing = -e.facing;
+        puff(2);
+        yield* land();
+        e.facing = A.dx > 0 ? 1 : -1;
+        if (Math.random() < 0.35) (A.play("laugh"), yield 0.7);
+        M.atkT = now() + 0.9 + Math.random() * 0.7;
+        continue;
+      }
+      // ── 멀면: 돌팔매 (가끔 두 번) ──
+      if (d > 110 && d < 300 && ay < 120 && now() >= M.thT && A.ground) {
+        A.face(), A.stop(1);
+        const n = Math.random() < 0.3 ? 2 : 1;
+        for (let k = 0; k < n; k++) {
+          k === 0 && A.tele(0.3);
+          A.once("throw");
+          yield 3 / 15;
+          const p = A.p, ox = e.cx + e.facing * 4, oy = e.body.y - 26, g = 560;
+          const tx = p.cx + (p.body.vx ?? 0) * 0.3 + (k ? (Math.random() - 0.5) * 30 : 0);
+          const T = Math.max(0.5, Math.min(0.95, Math.abs(tx - ox) / 260));
+          A.shoot({ sprite: "p_rock", speed: 0, gravity: g, life: 2.4, radius: 5 }, ox, oy, 0, 0.7, {
+            el: "earth",
+            opts: {
+              vx: (tx - ox) / T, vy: (p.body.y - 10 - oy - 0.5 * g * T * T) / T, scale: 1.2,
+              onDone: (pr) => (e.host.fx.burst("chunk", pr.x, pr.y, 4, 0x8a8478), e.host.fx.burst("dust", pr.x, pr.y, 2, DUST)),
+            },
+          });
+          A.sound("swing", 0.45);
+          yield 3 / 15 + (k < n - 1 ? 0.05 : 0.2);
+        }
+        M.thT = now() + 2.3 + Math.random();
+        continue;
+      }
+      // ── 쫓기 / 너무 붙으면 살짝 물러남 ──
+      if (d > 46) {
+        A.play("move"), A.walk(Math.sign(A.dx), e.speed);
+        (M.dustT -= DT) <= 0 && A.ground && ((M.dustT = 0.22), puff(1));
+      } else if (d < 26) {
+        A.play("walk"), A.walk(-Math.sign(A.dx) || 1, e.speed * 0.5), A.face();
+      } else (A.play("idle"), A.stop(), A.face());
       yield 0;
     }
   },

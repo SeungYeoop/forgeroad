@@ -42,7 +42,7 @@ try {
     fs.writeFileSync(out + "/" + name + ".png", Buffer.from(s.result.data, "base64"));
     return o.a;
   };
-  const r = await ev(`(() => { const sc = window.__run, p = sc.player; for (const e of sc.enemies) e.remove?.(); const e = sc.spawnEnemy("gm_slime", p.cx + Number(${process.env.DIST || 120}), p.body.y - 4); if (!e) return "fail"; window.__tf = e; return JSON.stringify({ hp: e.hp, atk: e.atk }); })()`);
+  const r = await ev(`(() => { const sc = window.__run, p = sc.player; for (const e of sc.enemies) e.remove?.(); const e = sc.spawnEnemy(${JSON.stringify(process.env.ID || "gm_slime")}, p.cx + Number(${process.env.DIST || 120}), p.body.y - 4); if (!e) return "fail"; window.__tf = e; return JSON.stringify({ hp: e.hp, atk: e.atk }); })()`);
   console.log(r);
   const N = Number(process.env.N || 24), STEP = Number(process.env.STEP || 160);
   for (let i = 0; i < N; i++) {
@@ -53,8 +53,8 @@ try {
   }
   await ev("(() => { const e = window.__tf; e.receive(e.hp + 5, null, { knock: 1, dir: 1, stagger: 0.3 }); })()");
   for (let i = 0; i < 6; i++) { await sleep(120); console.log("d" + i, await shot("d" + i)); }
-  await ev("window.__tf = window.__run.enemies.find((z) => !z.dead && z.def.id === \"gm_slime_mini\")");
-  for (let i = 0; i < 8; i++) { await sleep(200); console.log("m" + i, await shot("m" + i)); }
+  if (!process.env.ID || process.env.ID === "gm_slime") await ev("window.__tf = window.__run.enemies.find((z) => !z.dead && z.def.id === \"gm_slime_mini\")");
+  if (!process.env.ID || process.env.ID === "gm_slime") for (let i = 0; i < 8; i++) { await sleep(200); console.log("m" + i, await shot("m" + i)); }
 } finally {
   console.log(JSON.stringify({ errors: errors.slice(0, 20) }));
   ws.close();
