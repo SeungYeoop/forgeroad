@@ -96,6 +96,7 @@ for (const [a, b] of bp.drops ?? []) {
   const ov = Math.min(U.x1, Dn.x1) - Math.max(U.x0, Dn.x0), rock = Dn.fy - Dn.h - U.fy;
   if (ov < 200) bad.push(`구멍 겹침 부족 ${a}-${b}`);
   if (rock < 40 || rock > 600) bad.push(`구멍 바위 두께 ${a}-${b} ${Math.round(rock)}`);
+  uni(a, b); // 떨어지는 구멍도 이어짐 (아래로만)
 }
 const off = Object.keys(by).filter((k) => !by[k].tower && find(k) !== find("OUT"));
 off.length && bad.push(`입구와 끊긴 방: ${off.join(",")}`);

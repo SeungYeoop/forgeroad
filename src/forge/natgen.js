@@ -1193,14 +1193,13 @@ function buildGround(P) {
   applySpecReq(P);
   if (P.deep) flatFloor(P, P.deep.x - 40, P.deep.x + 40, P.deep.y, 12, 30, 18);
   // 하늘: 산만 한 하늘섬(▲ 문) + 큰 섬 + 디딤돌 길 (땅 위 구조물은 두지 않는다)
+  bp?.feats && bpFeats(P, hAt, bp.feats);
   skyWorld(P, hAt, S.islands.style, bp?.sky ? { design: bp.sky } : {});
   P.ugTop = Math.max(UG_TOP, Math.ceil(Math.max(...Array.from(h)) / TS) + 3);
 }
 // ── 지상 지형 덩어리 (8px 블록 사각형으로 짓는다, 재질은 그림에만 쓰인다) ──
-function groundFeatures(P, hAt) {
-  const { R, WP, arenaFrom } = P;
+function featKit(P, R) {
   const th = P.z.reg?.theme ?? "plains", id = P.z.reg?.bgId ?? "";
-  const lim = Math.min(WP, arenaFrom);
   const sn = (v) => Math.round(v / BLK) * BLK;
   const rs = (x0, y0, x1, y1) => (px, py) => Math.min(px - x0, x1 - px, py - y0, y1 - py) + 0.5;
   const add = (x0, y0, x1, y1, m) => {
@@ -1224,17 +1223,12 @@ function groundFeatures(P, hAt) {
     pond: th === "fortress" ? 0 : th === "snow" ? 3 : th === "desert" ? 1 : 2,
     watch: th === "forest" || th === "snow" || th === "desert" ? 1 : 2,
   };
-  const pickKind = () => {
-    let t = Object.values(W).reduce((a, b) => a + b, 0) * R();
-    for (const [k, w] of Object.entries(W)) if ((t -= w) <= 0) return k;
-    return "arch";
-  };
   const FW = { tree: 520, arch: 520, ruin: 260, shroom: 460, log: 380, pillars: 360, pond: 360, watch: 260 };
   const pine = th === "snow";
   const builders = {
     // 거대 나무: 줄기 + 한쪽에 엇갈린 가지 사다리 + 넓은 잎 지붕(위를 걸어 다닌다), 반은 줄기 속이 비어 안에서도 오른다
-    tree(x, yb) {
-      const tw = sn(R.range(56, 88)), H = sn(R.range(300, 560)), cw = sn(R.range(320, 480)), ct = sn(R.range(72, 88));
+    tree(x, yb, o = {}) {
+      const tw = sn(o.tw ?? R.range(56, 88)), H = sn(o.H ?? R.range(300, 560)), cw = sn(o.cw ?? R.range(320, 480)), ct = sn(o.ct ?? R.range(72, 88));
       const yT = yb - H - ct + 40;
       add(x - tw / 2, yT + 24, x + tw / 2, yb + 16, "wood");
       add(x - tw / 2 - 16, yb - 16, x + tw / 2 + 16, yb + 16, "wood");
@@ -1250,14 +1244,14 @@ function groundFeatures(P, hAt) {
         add(x - cw * 0.38, yT + ct - 24, x + cw * 0.38, yT + ct, "leaf");
       }
       // 가지 사다리 (한쪽, 80px마다, 길고 짧게 번갈아) — 맨 위 가지는 잎 지붕 끝 너머까지
-      const side = R() < 0.5 ? -1 : 1;
+      const side = o.side ?? (R() < 0.5 ? -1 : 1);
       const yTop = yT + ct + 16;
       let k = 0;
-      for (let y = yb - 80; y > yTop + 40; y -= 80, k++) {
-        const L = k % 2 ? 152 : 72;
-        const a = x + side * (tw / 2), b = a + side * L;
+      // 안쪽 가지(줄기에 붙음)와 바깥 가지(떨어져 잎 뭉치)가 번갈아 — 한 가지가 바로 위 가지 밑에 갇히지 않게
+      for (let y = yb - 72; y > yTop + 40; y -= 72, k++) {
+        const e = x + side * (tw / 2), a = k % 2 ? e + side * 104 : e, b = k % 2 ? e + side * 184 : e + side * 80;
         spec(P, Math.min(a, b), y, Math.max(a, b), y + 8, "plank");
-        k % 2 && add(Math.min(b, b - side * 48), y - 16, Math.max(b, b - side * 48), y, "leaf");
+        k % 2 && add(Math.min(b, b - side * 40), y - 16, Math.max(b, b - side * 40), y, "leaf");
       }
       {
         const a = x + side * (tw / 2), b = x + side * (cw / 2 + 48);
@@ -1266,35 +1260,77 @@ function groundFeatures(P, hAt) {
       // 밑동은 양쪽으로 뚫린 굴 (땅 위를 걸어서 지나간다)
       cut(x - tw / 2 - 40, yb - 48, x + tw / 2 + 40, yb, "wood");
       // 속 빈 줄기: 엇갈린 발판 → 잎 지붕 위로 나온다
-      if (R() < 0.55 && tw >= 64) {
-        cut(x - 20, yT - 8, x + 20, yb, "wood");
-        for (let y = yb - 72, j = 0; y > yT + 16; y -= 72, j++) {
-          const l = j % 2 ? x - 20 : x;
-          spec(P, l, y, l + 20, y + 8, "plank");
+      if ((o.hollow ?? R() < 0.55) && tw >= 64) {
+        const hw = o.H ? Math.min(32, tw / 2 - 16) : 20, pw = o.H ? hw - 8 : 20;
+        cut(x - hw, yT - 8, x + hw, yb, "wood");
+        for (let y = yb - 56, j = 0; y > yT + 16; y -= 56, j++) {
+          // (손 설계 나무: 왼 발판은 16px — 오른쪽에서 뛰어 오를 때 머리가 걸리지 않게. x는 16의 배수 + 8)
+          const l = j % 2 ? x - hw : x + hw - pw, w = j % 2 && o.H ? 16 : pw;
+          spec(P, l, y, l + w, y + 8, "plank");
         }
       }
       return { x0: x - cw / 2, x1: x + cw / 2, top: pine ? yT + ct - 120 : yT };
     },
-    // 바위 아치: 두 기둥 + 위 다리, 바깥쪽 계단으로 오른다
-    arch(x, yb) {
-      const pw = sn(R.range(56, 96)), span = sn(R.range(160, 320)), ah = sn(R.range(120, 220)), tt = sn(R.range(40, 64));
+    // 바위 아치: 두 기둥 + 위 다리, 바깥쪽 계단으로 오른다 (o.m: 재질 — 숲은 뿌리 아치)
+    arch(x, yb, o = {}) {
+      const pw = sn(o.pw ?? R.range(56, 96)), span = sn(o.span ?? R.range(160, 320)), ah = sn(o.ah ?? R.range(120, 220)), tt = sn(o.tt ?? R.range(40, 64)), m = o.m;
       const L = x - span / 2 - pw, Rr = x + span / 2 + pw, top = yb - ah - tt;
-      add(L, top, x - span / 2, yb + 16);
-      add(x + span / 2, top, Rr, yb + 16);
-      add(L, top, Rr, yb - ah);
+      add(L, top, x - span / 2, yb + 16, m);
+      add(x + span / 2, top, Rr, yb + 16, m);
+      add(L, top, Rr, yb - ah, m);
       // 둥근 맛: 안쪽 모서리 계단
       for (let k = 1; k <= 3; k++) {
-        add(x - span / 2, yb - ah, x - span / 2 + 8 * (4 - k) * 2, yb - ah + 8 * k);
-        add(x + span / 2 - 8 * (4 - k) * 2, yb - ah, x + span / 2, yb - ah + 8 * k);
+        add(x - span / 2, yb - ah, x - span / 2 + 8 * (4 - k) * 2, yb - ah + 8 * k, m);
+        add(x + span / 2 - 8 * (4 - k) * 2, yb - ah, x + span / 2, yb - ah + 8 * k, m);
       }
       // 바깥 계단 (한쪽 또는 양쪽)
       const n = Math.ceil((ah + tt) / 64);
-      for (const sd of R() < 0.5 ? [-1] : [-1, 1])
+      for (const sd of o.steps ?? (R() < 0.5 ? [-1] : [-1, 1]))
         for (let i = 1; i < n; i++) {
           const ex = sd < 0 ? L : Rr, w = 40 * i;
-          add(Math.min(ex, ex + sd * w), top + 64 * i, Math.max(ex, ex + sd * w), yb + 16);
+          add(Math.min(ex, ex + sd * w), top + 64 * i, Math.max(ex, ex + sd * w), yb + 16, m);
         }
+      o.moss && add(L + 8, top - 8, Rr - 8, top, "leaf");
       return { x0: L, x1: Rr, top };
+    },
+    // 쓰러진 거목 다리: 골짜기를 가로지르는 속 빈 통나무 — 위(껍질 위)·속(굴)·아래(골짜기 바닥) 세 길
+    //   o.x0·o.x1: 양 끝, yb: 속 바닥 높이
+    bridge(x, yb, o) {
+      const x0 = sn(o.x0), x1 = sn(o.x1), T = 104;
+      add(x0, yb - T + 16, x1, yb + 16, "wood");
+      cut(x0 - 8, yb - T + 40, x1 + 8, yb, "wood");
+      add(x0 + 40, yb - T + 8, x0 + 40 + sn((x1 - x0) * 0.3), yb - T + 16, "leaf");
+      add(x1 - 40 - sn((x1 - x0) * 0.25), yb - T + 8, x1 - 40, yb - T + 16, "leaf");
+      // 양 끝 디딤 (땅에서 한 번 뛰어 속으로) — 통나무 밑은 비탈이 지나간다
+      for (const [e, sd] of o.ground != null ? [[x0, -1], [x1, 1]] : []) {
+        const g = o.ground, mid = sn((g + yb + 40) / 2);
+        add(Math.min(e, e + sd * 88), yb + 40, Math.max(e, e + sd * 88), g + 16, "wood");
+        add(Math.min(e + sd * 88, e + sd * 176), mid, Math.max(e + sd * 88, e + sd * 176), g + 16, "wood");
+      }
+      // 껍질에 난 구멍: 속에서 위로 올라오는 곳 / 아래로 떨어지는 곳
+      for (const u of o.holes ?? []) cut(x0 + (x1 - x0) * u - 24, yb - T + 8, x0 + (x1 - x0) * u + 24, yb - T + 48);
+      for (const u of o.drops ?? []) cut(x0 + (x1 - x0) * u - 24, yb - 8, x0 + (x1 - x0) * u + 24, yb + 24);
+      // 바닥 구멍 (절대 x): 골짜기 비탈이 바로 밑이라 아래에서 뛰어 올라온다
+      for (const hx of o.dropX ?? []) cut(hx - 32, yb - 8, hx + 32, yb + 24);
+      return { x0, x1, top: yb - T + 8 };
+    },
+    // 거대 그루터기: 속이 빈 방 — 옆 구멍으로 들어가 안쪽 버섯 선반을 밟고 윗면 테두리로 나온다
+    stump(x, yb, o = {}) {
+      const w = sn(o.w ?? 320), H = sn(o.H ?? 240), L = x - w / 2, Rr = x + w / 2, wl = 32, sd = o.side ?? -1;
+      add(L, yb - H, Rr, yb + 16, "wood");
+      add(L - 24, yb - 40, Rr + 24, yb + 16, "wood");
+      cut(L + wl, yb - H - 8, Rr - wl, yb, "wood");
+      // 옆 구멍 (o.side 쪽) + 반대쪽 작은 창
+      sd < 0 ? cut(L - 32, yb - 56, L + wl, yb) : cut(Rr - wl, yb - 56, Rr + 32, yb);
+      // 안쪽 선반 (엇갈려 72px마다)
+      const sw = Math.max(72, sn((w - 2 * wl - 64) / 2));
+      for (let y = yb - 72, j = 0; y > yb - H + 24; y -= 72, j++) {
+        const a = j % 2 ? L + wl : Rr - wl - sw;
+        add(a, y, a + sw, y + 8, "cap");
+      }
+      // 윗면: 들쭉날쭉 테두리
+      for (let xx = L; xx < Rr; xx += 48) (xx - L) % 96 === 0 && cut(xx, yb - H - 8, xx + 24, yb - H + 16);
+      return { x0: L, x1: Rr, top: yb - H };
     },
     // 폐허 탑: 벽돌 벽, 층마다 바닥(구멍이 번갈아), 아래 문, 창, 부서진 윗면
     ruin(x, yb) {
@@ -1320,13 +1356,13 @@ function groundFeatures(P, hAt) {
       return { x0: L, x1: Rr, top: yb - H };
     },
     // 거대 버섯: 줄기 + 둥근 지붕(계단형), 작은 버섯 발판들로 오른다
-    shroom(x, yb) {
-      const sw = sn(R.range(32, 48)), H = sn(R.range(180, 300)), cw = sn(R.range(200, 320)), yc = yb - H;
+    shroom(x, yb, o = {}) {
+      const sw = sn(R.range(32, 48)), H = sn(o.H ?? R.range(180, 300)), cw = sn(o.cw ?? R.range(200, 320)), yc = yb - H;
       back(x - sw / 2, yc + 24, x + sw / 2, yb, "stem");
       add(x - cw / 2, yc, x + cw / 2, yc + 24, "cap");
       add(x - cw / 2 + 24, yc - 16, x + cw / 2 - 24, yc, "cap");
       add(x - cw / 2 + 56, yc - 32, x + cw / 2 - 56, yc - 16, "cap");
-      const side = R() < 0.5 ? -1 : 1;
+      const side = o.side ?? (R() < 0.5 ? -1 : 1);
       const n = Math.max(1, Math.floor((H - 40) / 80));
       for (let i = 1; i <= n; i++) {
         const sx = x + side * (cw / 2 + 40 + (n - i) * 56), sy = yb - i * 80 + 40;
@@ -1339,8 +1375,8 @@ function groundFeatures(P, hAt) {
       return { x0: x - cw / 2, x1: x + cw / 2, top: yc - 32 };
     },
     // 속 빈 통나무: 위로 넘거나 안으로 지나간다
-    log(x, yb) {
-      const lw = sn(R.range(200, 360));
+    log(x, yb, o = {}) {
+      const lw = sn(o.w ?? R.range(200, 360));
       add(x - lw / 2, yb - 64, x + lw / 2, yb + 8, "wood");
       cut(x - lw / 2 - 8, yb - 40, x + lw / 2 + 8, yb, "wood");
       cut(x - lw / 2 - 8, yb - 72, x - lw / 2 + 8, yb - 56);
@@ -1393,6 +1429,45 @@ function groundFeatures(P, hAt) {
       }
       return { x0: x - 170, x1: xx, top };
     },
+  };
+  return { builders, add, cut, back, sn, W, FW };
+}
+// 자리 고르기: 가운데 높이로 위는 깎고 아래는 채운다 (지표 높이도 고친 대로)
+function levelBed(P, hAt, K, a, b, yb) {
+  const { sn, cut, add } = K;
+  for (let xx = sn(a) - 16; xx < sn(b) + 16; xx += 8) {
+    const g = hAt(xx + 4);
+    if (g < yb - 2) cut(xx, g - 16, xx + 8, yb);
+    else if (g > yb + 2) add(xx, yb, xx + 8, g + 16);
+  }
+  for (let i = Math.max(0, Math.floor((sn(a) - 16) / Q)); i <= Math.min(P.h.length - 1, Math.ceil((sn(b) + 16) / Q)); i++) P.h[i] = yb;
+}
+// 설계도 지표 구조물: 자리·크기를 손으로 정한다 (bp.feats)
+function bpFeats(P, hAt, list) {
+  const R = rng((P.seed ^ 0x5fea7) >>> 0), K = featKit(P, R);
+  for (const q of list) {
+    const fw = q.bed ?? K.FW[q.kind] ?? 300, a = q.x - fw / 2, b = q.x + fw / 2;
+    let yb = q.y;
+    if (yb == null) {
+      let lo = 1e9, hi = -1e9;
+      for (let xx = a; xx <= b; xx += 8) ((lo = Math.min(lo, hAt(xx))), (hi = Math.max(hi, hAt(xx))));
+      yb = (lo + hi) / 2;
+    }
+    yb = K.sn(yb);
+    q.y == null && !q.noBed && levelBed(P, hAt, K, a, b, yb);
+    const box = K.builders[q.kind](K.sn(q.x), yb, q);
+    box.kind = q.kind;
+    P.feats.push(box);
+  }
+}
+function groundFeatures(P, hAt) {
+  const { R, WP, arenaFrom } = P;
+  const lim = Math.min(WP, arenaFrom);
+  const { builders, W, FW, sn, cut, add } = featKit(P, R);
+  const pickKind = () => {
+    let t = Object.values(W).reduce((a, b) => a + b, 0) * R();
+    for (const [k, w] of Object.entries(W)) if ((t -= w) <= 0) return k;
+    return "arch";
   };
   const avoid = (a, b) =>
     (P.pads ?? []).some((p) => b > p.xa - 16 && a < p.xb + 16) ||
@@ -3532,11 +3607,16 @@ function caveWorld(P, C, o) {
         const lo = Math.max(u.x0, d.x0) + 10, hi = Math.min(u.x1, d.x1) - 10;
         if (hi - lo < 4) break;
         const x = R.int(lo, hi), hw = 2, fu = u.fy - u.lv[x - u.x0], td = d.tops[x - d.x0];
-        if (td - fu < 6 || td - fu > 80 || !rectRock(x - hw - 3, fu + 1, x + hw + 4, td - 1)) continue;
+        // 바위 검사는 아래 방 천장이 가장 높은 곳까지만 (둥근 천장이 구멍 옆에서 조금 올라와도 된다)
+        let tdm = td;
+        for (let xx = x - hw - 3; xx < x + hw + 4; xx++) { const tt = d.tops[xx - d.x0]; tt != null && tt < tdm && (tdm = tt); }
+        if (td - fu < 6 || td - fu > 80 || tdm - fu < 4 || !rectRock(x - hw - 3, fu + 1, x + hw + 4, tdm - 1)) { globalThis.__dbgDrop && console.log("dropwhy", a, b, x * BLK, fu * BLK, td * BLK, tdm * BLK); continue; }
         // 구멍 밑이 아래 방 바닥까지 트여 있어야 (기둥 꼭대기 같은 데 떨어지지 않게)
         let open = true;
-        for (let y = td + 1; y < d.fy - 3 && open; y++) cell[y * NX + x] !== -1 && (open = false);
-        if (!open) continue;
+        // (둔덕·계단 바닥은 그 자리 바닥 높이까지)
+        const fd = d.lv ? d.fy - d.lv[x - d.x0] : d.fy;
+        for (let y = td + 1; y < fd - 3 && open; y++) cell[y * NX + x] !== -1 && (open = false);
+        if (!open) { globalThis.__dbgDrop && console.log("dropclosed", a, b, x * BLK); continue; }
         // 깔때기: 아래로 갈수록 넓어지기만 한다 (벽에 발 디딜 턱이 생기지 않게)
         const n = td - fu + 2, spread = Math.min(0.3, 6 / Math.max(1, n));
         let wl = 0, wr = 0;

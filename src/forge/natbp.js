@@ -388,13 +388,21 @@ BLUEPRINTS.g0_m1 = {
 BLUEPRINTS.gm1_0 = {
   surface: [
     { kind: "flat", a: 0, b: 800 }, // 숲 입구
-    { kind: "hills", a: 800, b: 2300, bumps: [{ c: 1200, h: 160, w: 250 }, { c: 1850, h: 240, w: 300 }], role: "arena" }, // 이끼 둔덕
-    { kind: "hills", a: 2300, b: 3900, bumps: [{ c: 2750, h: 120, w: 300 }, { c: 3400, h: 200, w: 380 }] }, // 고사리 언덕
+    { kind: "hills", a: 800, b: 2300, bumps: [{ c: 1850, h: 240, w: 300 }], role: "arena" }, // 거목 아래 + 이끼 둔덕
+    { kind: "hills", a: 2300, b: 3900, bumps: [{ c: 3500, h: 200, w: 300 }] }, // 그루터기 터 + 고사리 언덕
     { kind: "valley", a: 3900, b: 5600, c: 4750, d: 420, w: 700, p: 0.25, pond: 260 }, // 개울 협곡
     { kind: "mountain", a: 5600, b: 7000, c: 6300, h: 380, wl: 600, wr: 700, top: 0.3 }, // 쓰러진 거목 언덕
     { kind: "flat", a: 7000, b: 8192 }, // 출구 숲
   ],
   pads: [],
+  // 지표 구조물 (손으로 자리·크기): 입구 버섯 → 속 빈 거목 → 그루터기 방 → 협곡 위 쓰러진 거목 다리(위·속·아래 세 길) → 출구 거목
+  feats: [
+    { kind: "shroom", x: 380, H: 200, cw: 220, side: -1, bed: 260 }, // 숲 입구 큰 버섯 (튕김 버섯 계단)
+    { kind: "tree", x: 840, H: 520, cw: 420, tw: 96, side: -1, hollow: 1, bed: 440 }, // 속 빈 거목: 줄기 속 발판 → 수관 위
+    { kind: "stump", x: 2650, w: 320, H: 176, side: -1, bed: 400 }, // 그루터기 방 (서쪽 구멍, 안쪽 버섯 선반)
+    { kind: "bridge", x: 4750, y: 4800, x0: 3980, x1: 5520, holes: [0.3, 0.72], drops: [0.5], dropX: [4210, 5290] }, // 쓰러진 거목 다리
+    { kind: "tree", x: 7784, H: 480, cw: 360, tw: 96, side: -1, hollow: 1, bed: 480 }, // 출구 거목
+  ],
   spots: [{ xa: 900, xb: 2200, role: "arena" }, { xa: 6000, xb: 6600, role: "arena" }, { xa: 4500, xb: 5000, role: "treasure" }],
   mouths: [{ x: 6900, to: "E1" }],
   noClimb: 1,
@@ -409,8 +417,17 @@ BLUEPRINTS.gm1_0 = {
     ["E8", 4800, 6300, 8000, 400, "lake", "basin", "vista"], // 지하 늪
     ["W1", 100, 600, 6300, 280, "small", "flat", "treasure"], // 무덤 끝 보물굴
     ["W2", 100, 650, 6900, 300, "hall", "flat", "arena"], // 무덤 뒷굴
-    ["W3", 100, 1500, 7700, 380, "hall", "mound", "arena"], // 이끼 바닥 굴
-    ["DP", 2900, 3800, 8100, 360, "hall", "flat", "rest", { deep: 1 }], // ▼ 심연
+    ["W3", 100, 900, 7600, 300, "hall", "mound", "arena"], // 이끼 바닥 굴
+    ["S1", 250, 1050, 8250, 280, "lake", "basin", "rest"], // 가라앉은 샘 (늪 서쪽 밑)
+    // 가라앉은 묘지 늪: 무덤 밑 두 줄 회랑 — 윗줄에서 구멍 셋으로 아랫줄에 떨어지고, 아랫줄은 다시 갈라져 ▼ 심연으로
+    ["A1", 1400, 1900, 7250, 260, "pillared", "mound", "arena"], // 뿌리 기둥 회랑
+    ["A2", 2350, 2850, 7250, 260, "hall", "steps", "arena"], // 무너진 관 무더기
+    ["A3", 3300, 3800, 7250, 260, "pillared", "flat", "arena"], // 이끼 석관 회랑
+    ["A4", 4250, 4650, 7250, 240, "small", "flat", "treasure"], // 늪 끝 껴묻거리 굴
+    ["B1", 1600, 2200, 7800, 260, "lake", "basin", "rest"], // 검은 물웅덩이
+    ["B2", 2650, 3250, 7800, 260, "hall", "mound", "arena"], // 늪 한가운데
+    ["B3", 3600, 4150, 7800, 260, "small", "flat", "treasure"], // 빠진 관 보물굴
+    ["DP", 2900, 3800, 8250, 280, "hall", "flat", "rest", { deep: 1 }], // ▼ 심연
   ]),
   dungeon: {
     x0: 1024, y0: 5600, cols: 8, stories: 3, wall: "rock", step: 6, stairs: 1,
@@ -433,9 +450,10 @@ BLUEPRINTS.gm1_0 = {
   },
   links: [
     ["E2", "E1"], ["R06", "E2"], ["R17", "E3"], ["E3", "E4"], ["R27", "E5"], ["E5", "E6"],
-    ["W1", "R10"], ["W2", "R20"], ["W3", "DP"], ["DP", "E8"], ["E8", "E7"],
+    ["W1", "R10"], ["W2", "R20"], ["DP", "E8"], ["E8", "E7"],
+    ["W3", "A1"], ["A1", "A2"], ["A2", "A3"], ["A3", "A4"], ["S1", "B1"], ["B1", "B2"], ["B2", "B3"],
   ],
-  drops: [["E6", "E7"], ["W2", "W3"]],
+  drops: [["E6", "E7"], ["W2", "W3"], ["W3", "S1"], ["A1", "B1"], ["A2", "B2"], ["A3", "B3"], ["B2", "DP"]],
   sky: {
     peakY: 2400,
     gate: {
@@ -454,16 +472,15 @@ BLUEPRINTS.gm1_0 = {
       { id: "W1", cx: 2650, top: 4210, w: 700, t: 260, shape: "lumpy", role: "rest", mat: "leaf" }, // 서쪽 낮은 수관
       { id: "W2", cx: 1600, top: 3860, w: 600, t: 240, shape: "lumpy", role: "arena", mat: "leaf" },
       { id: "W3", cx: 2600, top: 3510, w: 600, t: 240, shape: "lumpy", role: "arena", mat: "leaf" },
-      { id: "K1", cx: 7250, top: 4070, w: 800, t: 260, shape: "lumpy", role: "arena", mat: "leaf" }, // 동쪽 낮은 수관
+      { id: "K1", cx: 7150, top: 4040, w: 700, t: 260, shape: "lumpy", role: "arena", mat: "leaf" }, // 동쪽 낮은 수관
       { id: "K2", cx: 6200, top: 3720, w: 500, t: 240, shape: "lumpy", role: "rest", mat: "leaf" },
-      { id: "T1", cx: 7950, top: 4450, w: 300, t: 160, shape: "spire", role: "treasure", mat: "wood" }, // 출구 숲 위 보물 가지
       { id: "T2", cx: 2150, top: 2250, w: 700, t: 260, shape: "lumpy", role: "treasure", mat: "leaf" }, // 정상 서쪽 보물 잎
       { id: "T3", cx: 6550, top: 2250, w: 700, t: 260, shape: "lumpy", role: "treasure", mat: "leaf" }, // 정상 동쪽 보물 잎
     ],
     links: [
       ["g:1850", "W1"], ["W1", "W2"], ["W2", "W3"], ["W3", "G<"],
       ["g:6300", "K1"], ["K1", "K2"], ["K2", "G>"],
-      ["g:6900", "T1"], ["G", "T2"], ["G", "T3"],
+      ["G", "T2"], ["G", "T3"],
     ],
   },
 };
