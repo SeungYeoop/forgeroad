@@ -22,7 +22,7 @@ for (const id of ids) {
     host.time = { now: 0, delayedCall: (ms, f) => f() };
     const e = { host, def: { id, flying: !!S.flying }, body: { x: sc.dx * -1 + 0, y: sc.dy * -1, vx: 0, vy: 0, w: 10, h: 10, onGround: !S.flying }, facing: 1, life: 0, hp: 50, maxHp: 100, opts: { camp: null, layer: "x" }, aggro: !0, speed: S.speed ?? 80, atk: 10, homeX: 0, _hy: 0, sinceHit: 9, stunT: 0, dead: !1,
       get cx() { return this.body.x; }, get cy() { return this.body.y - 5; },
-      hit() {}, playerInRect: () => !1, clearWarn() {}, sprite: { setFrame() {}, setVisible() {}, setTint() {}, clearTint() {}, setAlpha() {}, anims: { isPlaying: !1, stop() {} } } };
+      hit() {}, playerInRect: () => !1, clearWarn() {}, die() { this.dead = !0; }, remove() {}, sprite: { setFrame() {}, setVisible() {}, setTint() {}, clearTint() {}, setAlpha() {}, anims: { isPlaying: !1, stop() {} } } };
     player.cx = 0;
     e.body.x = -sc.dx, e.body.y = -sc.dy;
     try {
