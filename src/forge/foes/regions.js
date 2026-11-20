@@ -3,3 +3,4 @@ import "./rgm.js";
 import "./rsb.js";
 import "./rds.js";
 import "./rmb.js";
+import "./rgs.js";
