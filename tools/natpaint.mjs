@@ -19,7 +19,7 @@ o.biome = biomeOf(z);
 o.patterns = z.y === 0 ? z.reg?.patterns : null;
 // PLANFILE: 미리 만든 설계(natpaintp가 한 번만 만든다)
 const P = process.env.PLANFILE ? adoptPlan(z, seed, v8.deserialize(fs.readFileSync(process.env.PLANFILE))) : planOf(z, o);
-const region = { pal: z.reg.pal, theme: z.reg.theme };
+const region = { pal: z.reg.pal, theme: z.reg.theme, look: z.reg.look };
 const [cx = 0, cy = 0, cw = P.WP, chh = P.HP] = crop.map(Number);
 const W = cw, Hh = chh, img = new Uint8Array(W * Hh * 4);
 // 하늘 배경

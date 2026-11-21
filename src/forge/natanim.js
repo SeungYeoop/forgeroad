@@ -10,9 +10,10 @@ export const bindAnim = (r) => (R = r);
 const LIGHT = {
   p_torch: [70, 0xffa040, 0.24, 1], p_brazier: [92, 0xff9038, 0.3, 1], p_candles: [40, 0xffc060, 0.17, 1], p_chand: [84, 0xffc060, 0.24, 1],
   p_altar: [52, 0xffc060, 0.17, 1], p_niche: [34, 0xffc060, 0.15, 1], p_crystal: [56, 0, 0.2, 0], p_shroom: [44, 0, 0.18, 0], p_window: [70, 0xd0ecff, 0.13, 0],
+  p_font: [52, 0x9af4ff, 0.22, 0],
 };
 // 빛 중심: 그림 높이에 대한 비율 (바닥 소품은 붙는 점에서 위로, 매단 소품은 아래로)
-const AT = { p_torch: 0.86, p_brazier: 0.72, p_candles: 0.6, p_chand: 0.78, p_altar: 0.72, p_niche: 0.35, p_crystal: 0.45, p_shroom: 0.5, p_window: 0.5 };
+const AT = { p_torch: 0.86, p_brazier: 0.72, p_candles: 0.6, p_chand: 0.78, p_altar: 0.72, p_niche: 0.35, p_crystal: 0.45, p_shroom: 0.5, p_window: 0.5, p_font: 0.5 };
 
 function mkTex(sc) {
   if (sc.textures.exists("na_halo")) return;

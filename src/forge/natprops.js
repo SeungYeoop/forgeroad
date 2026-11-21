@@ -701,6 +701,158 @@ const KINDS = {
     for (let q = 1; q <= 3; q++) parts.push({ d: ((rr) => (x, y, z) => Math.max(Math.abs(Math.hypot(x, y - top) - rr) - 0.3, Math.abs(z) - 0.3, y - top))(q * sp * 0.3), m: 0 });
     return { W: sp * 2 + 8, H: sp + 8, parts, mats: [{ c: 0xd8d8e8 }], hang: true, top, pitch: 0.05 };
   },
+  // ── 그린스텝 (고원 목초지·수도원) ──
+  // 돌탑 (납작한 돌을 쌓음)
+  p_cairn(s, R, c) {
+    const parts = [], n = 4 + s;
+    let y = 0, r = 6 + s * 1.5;
+    for (let k = 0; k < n; k++) {
+      const h = r * 0.45;
+      parts.push({ d: ((f, sd) => (X, Y, Z) => f(X, Y, Z) + (vn3(X * 0.4, Y * 0.4, Z * 0.4, sd) - 0.5) * 1.2)(S.ellip((R() - 0.5) * 2, y + h, (R() - 0.5) * 2, r, h, r * 0.8), k), m: 0, k: 0.6 });
+      y += h * 1.7;
+      r *= 0.78;
+    }
+    return { W: 26 + s * 6, H: Math.ceil(y) + 10, parts, mats: [{ c: mix(c.rock, 0xc8c0b0, 0.35), tex: stoneTex(12) }] };
+  },
+  // 선돌 (위는 이끼 모자, 밑동 풀)
+  p_menhir(s, R, c) {
+    const h = 26 + s * 8, w = 5 + s;
+    const stone = ((f, sd) => (X, Y, Z) => f(X, Y, Z) + (vn3(X * 0.3, Y * 0.12, Z * 0.3, sd) - 0.5) * 2.2)(S.taper(0, 0, w, w * 0.7, 0, h), 3);
+    const parts = [{ d: stone, m: 0 }, { d: S.ellip(0, h * 0.96, 0, w * 0.8, 2.4, w * 0.62), m: 1, k: 1 }, { d: S.ellip(0, 0.6, 0, w + 3, 1.5, w), m: 2 }];
+    return { W: w * 2 + 16, H: h + 10, parts, mats: [{ c: mix(c.rock, 0xa8a8a0, 0.4), tex: stoneTex(14) }, { c: sh(c.top, -0.15), tex: leafTex(5) }, { c: sh(c.top, -0.2), tex: leafTex(6) }] };
+  },
+  // 양 (복슬복슬한 털, 검은 얼굴·다리)
+  p_sheep(s, R, c) {
+    const parts = [];
+    for (let k = 0; k < 7; k++) parts.push({ d: S.sphere(-5 + k * 1.7 + (R() - 0.5), 8 + (R() - 0.5) * 2, (R() - 0.5) * 3, 4 + R() * 1.2), m: 0, k: 1.6 });
+    parts.push({ d: S.ellip(7.5, 9.5, 0, 2.6, 2.2, 2), m: 1, k: 0.5 });
+    parts.push({ d: S.ellip(6.8, 11.6, 1.8, 1.4, 0.7, 0.8), m: 1 });
+    for (const [x, z] of [[-4, 1.5], [-3, -1.5], [3.5, 1.5], [4.5, -1.5]]) parts.push({ d: S.capsule(x, 0.5, z, x, 5, z, 0.8), m: 1 });
+    return { W: 30, H: 22, parts, mats: [{ c: 0xf0ece2, tex: leafTex(8) }, { c: 0x3a3030 }] };
+  },
+  // 나무 울타리 한 칸
+  p_fence(s, R, c) {
+    const parts = [], L = 10;
+    for (const x of [-L, L]) parts.push({ d: S.box(x, 6, 0, 1, 6, 1, 0.3), m: 0 });
+    for (const y of [5, 9.5]) parts.push({ d: S.box(0, y, 0, L + 1, 0.7, 0.6, 0.2), m: 0 });
+    return { W: L * 2 + 10, H: 18, parts, mats: [{ c: 0x8a6440, tex: woodTex(4, "x") }] };
+  },
+  // 건초 더미
+  p_hay(s, R, c) {
+    const parts = [{ d: S.log(0, 5, 0, 5, 7), m: 0 }];
+    s > 0 && parts.push({ d: S.log(-3, 14, 0, 4.5, 6), m: 0 });
+    return { W: 30, H: s > 0 ? 28 : 18, parts, mats: [{ c: 0xd8b860, tex: (x, y, z) => (Math.abs((((x + 20) % 4) + 4) % 4 - 2) < 0.4 ? -0.15 : 0) + (vn3(x * 0.8, y * 0.8, z * 0.8, 3) - 0.5) * 0.3 }] };
+  },
+  // 기도 깃발 (장대에서 비스듬히 늘어진 줄)
+  p_flags(s, R, c) {
+    const H = 26 + s * 6, parts = [{ d: S.capsule(0, 0, 0, 0, H, 0, 0.7), m: 0 }];
+    const cols = [0xe84a4a, 0xf0d050, 0x4a9ae8, 0x5ac870, 0xf0f0f0];
+    for (let k = 0; k < 5; k++) {
+      const t = (k + 1) / 6, x = 2 + t * 14, y = H - t * (H - 6) - 2;
+      parts.push({ d: S.box(x, y - 2.2, 0, 1.6, 2.2, 0.3, 0.1), m: 1 + k });
+    }
+    parts.push({ d: S.capsule(0, H - 1, 0, 16, 6, 0, 0.25), m: 0 });
+    return { W: 34, H: H + 8, parts, mats: [{ c: 0x7a5a3a }, ...cols.map((cc) => ({ c: cc }))] };
+  },
+  // 종틀 (나무 틀에 청동 종)
+  p_bell(s, R, c) {
+    const parts = [
+      { d: S.box(-7, 9, 0, 1, 9, 1, 0.2), m: 0 },
+      { d: S.box(7, 9, 0, 1, 9, 1, 0.2), m: 0 },
+      { d: S.box(0, 18.5, 0, 9, 1, 1.4, 0.3), m: 0 },
+      { d: S.taper(0, 0, 3.6, 2, 10, 17), m: 1, k: 0.6 },
+      { d: S.sphere(0, 17, 0, 2.2), m: 1, k: 0.8 },
+      { d: S.ellip(0, 10, 0, 4, 0.8, 4), m: 1, k: 0.5 },
+    ];
+    return { W: 26, H: 28, parts, mats: [{ c: 0x7a5434, tex: woodTex(5) }, { c: 0xc8963c, gloss: 0.8 }] };
+  },
+  // 독서대 (펼친 책)
+  p_lectern(s, R, c) {
+    const tilt = (b) => (x, y, z) => b(x, y - x * 0.3, z);
+    const parts = [
+      { d: S.box(0, 0.8, 0, 4, 0.8, 3, 0.2), m: 0 },
+      { d: S.box(0, 6, 0, 1, 5.5, 1, 0.2), m: 0 },
+      { d: tilt(S.box(0, 12, 0, 5, 0.8, 3.5, 0.3)), m: 0 },
+      { d: tilt(S.box(0, 13.2, 0, 4.4, 0.4, 3, 0.2)), m: 1 },
+    ];
+    return { W: 20, H: 22, parts, mats: [{ c: 0x7a5030, tex: woodTex(6) }, { c: 0xf0e8d0 }] };
+  },
+  // 거대한 새 둥지 (나뭇가지 고리 + 알)
+  p_nest(s, R, c) {
+    const parts = [{ d: ((f, sd) => (X, Y, Z) => f(X, Y, Z) + (vn3(X * 0.6, Y * 0.6, Z * 0.6, sd) - 0.5) * 1.6)(S.torus(0, 4, 0, 11, 4), 9), m: 0 }, { d: S.ellip(0, 2.5, 0, 11, 2.5, 7), m: 0, k: 1.5 }];
+    for (let k = 0; k < 3; k++) parts.push({ d: S.ellip(-3 + k * 3, 5.5, (R() - 0.5) * 3, 1.8, 2.4, 1.8), m: 1 });
+    return { W: 40, H: 16, parts, mats: [{ c: 0x8a6a42, tex: woodTex(7, "x") }, { c: 0xe8e0d0, gloss: 0.4 }] };
+  },
+  // 회복 샘 돌확 (빛나는 물)
+  p_font(s, R, c) {
+    const st = mix(c.rock, 0xc8c0b8, 0.45);
+    const parts = [
+      { d: S.cyl(0, 0, 3, 0, 6, 0.4), m: 0 },
+      { d: S.cyl(0, 0, 8, 6, 10, 0.8), m: 0, k: 1 },
+      { d: S.cyl(0, 0, 6.6, 8, 11, 0.4), m: 0, sub: 1 },
+      { d: S.cyl(0, 0, 6.8, 8.4, 9.2, 0.2), m: 1 },
+    ];
+    return { W: 26, H: 18, parts, mats: [{ c: st, tex: stoneTex(15) }, { c: 0x7af0ff, emit: [0xe0ffff, 0x80f0ff, 0x40b0e0] }], glow: 0x9af4ff };
+  },
+  // 물레방아 바퀴 (살 6개 · 물받이 판 · A자 받침)
+  p_wheel(s, R, c) {
+    const Rr = 13 + s * 3, cy = Rr + 3, parts = [];
+    parts.push({ d: (x, y, z) => Math.hypot(Math.hypot(x, y - cy) - Rr, z) - 1.3, m: 0 });
+    parts.push({ d: (x, y, z) => Math.hypot(Math.hypot(x, y - cy) - Rr * 0.55, z) - 0.8, m: 0 });
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 + 0.3;
+      parts.push({ d: S.capsule(0, cy, 0, Math.cos(a) * Rr, cy + Math.sin(a) * Rr, 0, 0.7), m: 0 });
+    }
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2, r = Rr + 1.6;
+      parts.push({ d: S.box(Math.cos(a) * r, cy + Math.sin(a) * r, 0, 1.5, 1.5, 2.6, 0.2), m: 0 });
+    }
+    parts.push({ d: S.capsule(0, cy, -4, 0, cy, 4, 1.6), m: 1 });
+    for (const sx of [-1, 1]) parts.push({ d: S.capsule(sx * (Rr * 0.6), 0, -4, 0, cy, -4, 1), m: 0 });
+    return { W: Rr * 2 + 14, H: cy + Rr + 7, parts, mats: [{ c: 0x7a5434, tex: woodTex(21) }, { c: 0x4a4a52, gloss: 0.5 }] };
+  },
+  // 베틀 (나무 틀 · 날실 · 짜던 줄무늬 천)
+  p_loom(s, R, c) {
+    const cols = [0xc84a3a, 0x3a7ac8, 0xd8b040, 0x5aa860][s % 4];
+    const parts = [
+      { d: S.box(-11, 13, 0, 1.2, 13, 1.2, 0.3), m: 0 },
+      { d: S.box(11, 13, 0, 1.2, 13, 1.2, 0.3), m: 0 },
+      { d: S.box(0, 25.5, 0, 12.5, 1.2, 1.4, 0.3), m: 0 },
+      { d: S.box(0, 8, 0, 12, 1, 1.4, 0.3), m: 0 },
+      { d: S.box(0, 13, 0.4, 9.5, 4.5, 0.3, 0.1), m: 1 },
+      { d: S.box(0, 4, 3, 10, 0.8, 1, 0.2), m: 0 },
+    ];
+    for (let k = 0; k < 7; k++) parts.push({ d: S.box(-8.5 + k * 2.85, 21, -0.4, 0.16, 4.2, 0.16), m: 2 });
+    return { W: 32, H: 34, parts, mats: [{ c: 0x7a5434, tex: woodTex(9) }, { c: cols, tex: (x, y) => (Math.floor(y * 0.9) % 3 === 0 ? -0.22 : 0.04) }, { c: 0xf0e8d8 }] };
+  },
+  // 벌통 (짚 꼬아 만든 둥근 벌통, 나무 받침)
+  p_hive(s, R, c) {
+    const dome = S.ellip(0, 4, 0, 6.5, 9.5, 6.5);
+    const parts = [
+      { d: S.box(0, 3, 0, 7.5, 0.8, 5, 0.3), m: 1 },
+      { d: S.box(-5.5, 1.2, 0, 0.8, 1.3, 0.8), m: 1 },
+      { d: S.box(5.5, 1.2, 0, 0.8, 1.3, 0.8), m: 1 },
+      { d: (x, y, z) => Math.max(dome(x, y, z), 3.6 - y), m: 0 },
+      { d: S.ellip(0, 5.6, 6.2, 1.7, 1.2, 2), m: 2, sub: 1 },
+    ];
+    return { W: 22, H: 20, parts, mats: [{ c: 0xd0a850, tex: (x, y) => ((((y * 1.2) % 2.4) + 2.4) % 2.4 < 0.6 ? -0.22 : 0.02) }, { c: 0x6a4a2e, tex: woodTex(11) }, { c: 0x2a2018 }] };
+  },
+  // 치즈 선반 (둥근 치즈가 세 칸에)
+  p_cheese(s, R, c) {
+    const parts = [{ d: S.box(-11, 13, 0, 1, 13, 1, 0.2), m: 0 }, { d: S.box(11, 13, 0, 1, 13, 1, 0.2), m: 0 }];
+    for (const y of [1, 10, 19]) parts.push({ d: S.box(0, y, 0, 11.5, 0.7, 3.4, 0.2), m: 0 });
+    for (const y of [1, 10, 19]) for (let k = 0; k < 3; k++) R() < 0.85 && parts.push({ d: S.cyl(-6.5 + k * 6.5 + (R() - 0.5), 0, 2.8, y + 0.7, y + 3.7, 0.8), m: 1 });
+    return { W: 30, H: 30, parts, mats: [{ c: 0x7a5434, tex: woodTex(13) }, { c: 0xf0c050, gloss: 0.3 }] };
+  },
+  // 양털 말리는 줄 (장대 둘 · 줄에 걸린 털뭉치)
+  p_wool(s, R, c) {
+    const parts = [{ d: S.capsule(-13, 0, 0, -13, 19, 0, 0.7), m: 0 }, { d: S.capsule(13, 0, 0, 13, 19, 0, 0.7), m: 0 }, { d: S.capsule(-13, 18, 0, 13, 17, 0, 0.3), m: 0 }];
+    for (let k = 0; k < 3; k++) {
+      const x = -7.5 + k * 7.5;
+      for (let j = 0; j < 4; j++) parts.push({ d: S.sphere(x + (R() - 0.5) * 3, 15 - j * 1.9, (R() - 0.5) * 1.2, 2.5), m: 1, k: 1.2 });
+    }
+    return { W: 34, H: 26, parts, mats: [{ c: 0x7a5a3a, tex: woodTex(17) }, { c: 0xf0ece2, tex: leafTex(8) }] };
+  },
 };
 export const PROP_KINDS = Object.keys(KINDS);
 // 대략 크기 (자리 고를 때): [폭, 높이]

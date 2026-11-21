@@ -164,7 +164,7 @@ export function prepaint(scene, ch, base, raw, region, band = 0, force = !1) {
     if (ch.fine) {
       // 자연 지형: 칸 대신 밀도장 조각(좌우 여유 포함)을 보낸다 — 옆 구역을 만들지 않는다
       const fine = fineSlice(ch, band);
-      post({ id, fine, base, band, ch: { n: ch.grid.length, ug: ch.ug }, region: { pal: region.pal, theme: region.theme } }, [fine.d.buffer]);
+      post({ id, fine, base, band, ch: { n: ch.grid.length, ug: ch.ug }, region: { pal: region.pal, theme: region.theme, look: region.look } }, [fine.d.buffer]);
       return;
     }
     const ROWS = Math.round(ch.grid.length / COLS), CW = COLS + MARGIN * 2;
@@ -173,7 +173,7 @@ export function prepaint(scene, ch, base, raw, region, band = 0, force = !1) {
       const wc = base + c - MARGIN;
       for (let r = 0; r < ROWS; r++) codes[r * CW + c] = wc < 0 ? 1 : raw(wc, r);
     }
-    post({ id, codes, CW, ROWS, margin: MARGIN, base, band, bandTop: band * BANDH, bandH: PH, ch: { n: ch.grid.length, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, region: { pal: region.pal, theme: region.theme } }, [codes.buffer]);
+    post({ id, codes, CW, ROWS, margin: MARGIN, base, band, bandTop: band * BANDH, bandH: PH, ch: { n: ch.grid.length, ug: ch.ug, clouds: ch.clouds, pools: ch.pools }, region: { pal: region.pal, theme: region.theme, look: region.look } }, [codes.buffer]);
   } else j.gen = paintSteps(scene, S, ch, base, raw, region, band);
 }
 // 늦게 끝난 띠: 기다리던 그림판이 아직 같은 띠면 그린다

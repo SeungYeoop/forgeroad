@@ -172,6 +172,10 @@ export function* pixFine(ch, base, region, S) {
     desert: mix(P.soil, P.rock, 0.35), snow: mix(P.rock, 0xa8d0f0, 0.45), fortress: mix(P.rock, 0x8a5a48, 0.25),
     kingdom: mix(P.rock, 0xf0ecf4, 0.4), abyss: P.rock,
   }[th] ?? mix(P.rock, P.soil, 0.3);
+  // 그린스텝: 붉은 사암 탁상 고원 — 가로 지층(크림·연어·녹·황토), 세로로 갈라진 결, 두꺼운 풀 덮개, 흘러내린 이끼 줄
+  const STEP = region.look === "greenstep";
+  const SANDS = STEP ? [0xe6c49a, 0xd89a76, 0xc07a58, 0xd8aa6a, 0xead2b2, 0xb86a4e, 0xcc8c64].map((c) => rampOf(mix(c, P.rock, 0.45))) : null;
+  const MOSSR = STEP ? rampOf(mix(P.top, 0x2e5a22, 0.45)) : null;
   // 지역 팔레트가 땅속 바위·뒷벽 색을 정하면 생물군계 색보다 먼저 (동굴 구역마다 다른 바위색)
   const ugBase = P.ugRock ?? (BI ? BI.rock : mix(regionBase, 0x3a3448, 0.35));
   // 종유석 끝 색: 지역 바위색을 따른다 (석회 동굴은 하얗게)
@@ -320,7 +324,7 @@ export function* pixFine(ch, base, region, S) {
       const CR = rampOf(cTop);
       const soft = capT === "grass" || capT === "moss" || capT === "snow" || capT === "sand";
       const sw = s + OY;
-      const capN = soft ? (capT === "snow" ? 6 : capT === "sand" ? 4 : 5) + Math.floor(H(wx >> 1, sw, 11) * 3) - (up < 0.75 ? 1 : 0) : 3;
+      const capN = soft ? (capT === "snow" ? 6 : capT === "sand" ? 4 : 5) + Math.floor(H(wx >> 1, sw, 11) * 3) - (up < 0.75 ? 1 : 0) + (STEP ? 3 : 0) : 3;
       const drip = soft ? Math.floor(H(wx >> 1, sw >> 2, 12) * 3) + (H(wx >> 2, sw >> 2, 13) > 0.82 ? 3 : 0) : 0;
       const hasCap = realTop && up > (soft ? 0.5 : 0.42);
       const soilN = hasCap && soft && !ugTop && soilT > 0 ? soilT + Math.floor((vn1(wx / 40, 14) - 0.5) * 10) : 0;
@@ -360,6 +364,19 @@ export function* pixFine(ch, base, region, S) {
           L = lvq(wx * 1.3 + 900, yw * 1.3, 6);
           L = L === 5 ? (H(wx, yw, 96) < 0.5 ? 4 : 5) : Math.min(4, L + 1);
           dt < capN + drip + 2 && (L = Math.min(4, L + 1));
+        } else if (STEP && !ugc) {
+          // 사암 지층: 띠마다 색이 다르고, 띠 안은 가로로 긴 얼룩, 띠 사이 금, 세로 골
+          // 띠 두께 16~34px (띠마다 다르게), 띠 안은 거의 한 톤 (가끔 가로로 긴 밝은·어두운 결)
+          const warp = vn1(wx / 110, 83) * 12 + vn1(wx / 37, 84) * 3;
+          const yy = yw + warp, f0 = Math.floor(yy / 26), th = 16 + Math.floor(H(f0, 3, 85) * 18), band = f0 * 2 + (yy - f0 * 26 < th * 0.6 ? 0 : 1), fr = ((yy % 26) + 26) % 26 / 26;
+          ramp5 = SANDS[Math.floor(H(band, 7, 85) * SANDS.length)];
+          L = 2 + (vn2(wx / 60, yw / 7, 86) > 0.74 ? -1 : vn2(wx / 48, yw / 6, 87) < 0.2 ? 1 : 0);
+          H(wx >> 1, yw >> 1, 88) > 0.985 && (L = Math.min(4, L + 1));
+          fr < 0.05 && H(wx >> 4, band, 89) < 0.85 && (L = Math.min(4, L + 1));
+          const gx = wx + Math.floor(vn1(yw / 40, 90) * 8), per = 54 + Math.floor(H(Math.floor(gx / 70), 1, 91) * 30);
+          gx % per < 2 && H(Math.floor(gx / per), Math.floor(yw / 60), 92) < 0.7 && (L = 4);
+          // 윗면 풀에서 흘러내린 이끼 줄
+          if (hasCap && dt < capN + drip + soilN + 40 && H(wx >> 1, 3, 93) > 0.86 && dt < capN + drip + soilN + 8 + H(wx >> 1, 4, 94) * 34) ((ramp5 = MOSSR), (L = Math.min(4, Math.max(1, L))));
         } else {
           // 바위: 지층 지역은 결 따라 납작해지고 층 사이 금이 간다
           const layered = strata > 0 && !(ugc && BI);
@@ -482,8 +499,11 @@ export function* pixFine(ch, base, region, S) {
               if (stem) put(x, y, VIN[3]);
               else if (leaf) put(x, y, VIN[H(wx, yw, 92) > 0.5 ? 0 : 1]);
             } else if (r.t === 10) {
-              // 바람 기둥: 옅은 흰 결 (뒷그림이 비치게)
-              if (wx % 11 === 0 && (yw + wx * 3) % 26 < 9) ap(k, 0xf4fbff, 38);
+              // 바람: 옅은 흰 결 (위로 부는 기둥은 세로, 옆으로 부는 바람 길은 가로)
+              if (r.dx) {
+                if (yw % 9 === 0 && (wx + yw * 3) % 30 < 11) ap(k, 0xf4fbff, 34);
+                else if (yw % 9 === 4 && (wx + yw * 7) % 38 < 7) ap(k, 0xffffff, 22);
+              } else if (wx % 11 === 0 && (yw + wx * 3) % 26 < 9) ap(k, 0xf4fbff, 38);
               else if (wx % 11 === 5 && (yw + wx * 5) % 34 < 6) ap(k, 0xffffff, 24);
             } else if (r.t === 15) {
               // 승강기 길: 양옆 쇠 레일 + 64px마다 버팀목

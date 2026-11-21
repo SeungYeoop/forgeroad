@@ -114,7 +114,7 @@ const CFG = {
   _: 0,
   grassmere: { fg: "grass", critter: ["at_bird", 0x2a3a52, 1], rays: 0xfff4d0, sun: 0xfff2c8 },
   mossbark: { dark: 0.16, fg: "grass", top: "vines", critter: ["at_fly", 0xf0e870, 1], fog: [0xd8f4ec, 0.35], rays: 0xfff8d0 },
-  greenstep: { fg: "grass", critter: ["at_bird", 0x405070, 1.2], rays: 0xfff8e0, sun: 0xfffbe0 },
+  greenstep: { critter: ["at_bird", 0x4a3438, 0.7], rays: 0xffe2b8, sun: 0xfff0cc, fog: [0xfff4ec, 0.42], wind: 1, fluff: 1 },
   stonebridge: { fg: "rubble", critter: ["at_bird", 0x405070, 1], rays: 0xfff8e0, sun: 0xfffbe0 },
   leafcrown: { fg: "grass", top: "vines", critter: ["at_bird", 0x3a5a30, 1.2], rays: 0xfff0b0, sun: 0xfff4c0 },
   ironvein: { dark: 0.58, fg: "rubble", top: "chains", critter: ["at_bat", 0x101018, 0.6], glow: 0xffa050, motes: 1 },
@@ -176,6 +176,9 @@ export function regionFx(sc, reg) {
   if (c.rain) A.rain = add(sc.add.particles(0, 0, "vx_streak", { x: { min: -40, max: W + 40 }, y: -10, speedY: { min: 420, max: 560 }, speedX: { min: -90, max: -60 }, lifespan: 900, frequency: 14, alpha: { start: 0.35, end: 0.1 }, scale: { start: 0.8, end: 0.8 }, rotate: 100, tint: 0xb0b8ff }).setScrollFactor(0).setDepth(42));
   if (c.motes) add(sc.add.particles(0, 0, "vx_soft", { x: { min: 0, max: W }, y: { min: 0, max: H }, speedY: { min: -6, max: 6 }, speedX: { min: -6, max: 6 }, lifespan: 4000, frequency: 120, alpha: { start: 0, end: 0.5 }, scale: { start: 0.25, end: 0.1 }, tint: 0x80f0e0, blendMode: ADD }).setScrollFactor(0).setDepth(-94));
   if (c.glints) add(sc.add.particles(0, 0, "vx_star", { x: { min: 0, max: W }, y: { min: 40, max: H - 40 }, lifespan: 700, frequency: 160, scale: { start: 0, end: 1.2 }, alpha: { start: 1, end: 0 }, tint: [0xffffff, 0xc0f8ff, 0xffd0f0], blendMode: ADD }).setScrollFactor(0).setDepth(-94));
+  // 바람결 (화면을 가로지르는 옅은 줄) · 민들레 씨앗 (천천히 떠다닌다)
+  if (c.wind) add(sc.add.particles(0, 0, "vx_streak", { x: -30, y: { min: 0, max: H * 0.9 }, speedX: { min: 260, max: 400 }, speedY: { min: -14, max: 6 }, lifespan: 2600, frequency: 120, alpha: { start: 0.22, end: 0 }, scale: { start: 1.3, end: 1.6 }, rotate: { min: -4, max: 2 }, tint: 0xffffff, blendMode: ADD }).setScrollFactor(0).setDepth(-94));
+  if (c.fluff) add(sc.add.particles(0, 0, "vx_soft", { x: { min: -20, max: W }, y: { min: 0, max: H }, speedX: { min: 18, max: 46 }, speedY: { min: -16, max: 6 }, lifespan: 7000, frequency: 260, alpha: { start: 0.85, end: 0 }, scale: { start: 0.16, end: 0.1 }, tint: 0xfffaf0 }).setScrollFactor(0).setDepth(41));
   if (c.smoke) add(sc.add.particles(0, 0, "vx_smoke", { x: { min: 0, max: W }, y: H + 10, speedY: { min: -30, max: -14 }, speedX: { min: 4, max: 16 }, lifespan: 9000, frequency: 260, alpha: { start: 0.35, end: 0 }, scale: { start: 2, end: 6 }, tint: 0x3a3030 }).setScrollFactor(0).setDepth(-95));
   // 어두운 지역 조명
   if (c.dark) {

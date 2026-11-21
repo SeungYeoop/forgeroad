@@ -1,6 +1,7 @@
 // 지역 배경 (원경 0 · 중경 1 · 근경 2) — 3D 픽셀 리메이크
 import * as G from "./bg3d.js";
 import { paintGrass } from "./bggrass.js";
+import { paintSteppe } from "./bgsteppe.js";
 const W = 640, HH = 360;
 const mix = (a, b, t) => {
   t = Math.max(0, Math.min(1, t));
@@ -19,13 +20,14 @@ export const THEME = {
   glassdesert: "desert", thunderspire: "spire", crystalsanctum: "crystal", skyruins: "sky", shadowcapital: "abyss", forgeheart: "forge",
   grassmere: "grass",
   // 파랑 지역 (새 설계)
-  mossbark: "forest", greenstep: "sky", stonebridge: "sky", leafcrown: "sky", ironvein: "cave", dripstone: "cave", roothollow: "cave",
+  mossbark: "forest", greenstep: "steppe", stonebridge: "sky", leafcrown: "sky", ironvein: "cave", dripstone: "cave", roothollow: "cave",
 };
 const DARK = { cave: 1, abyss: 1 };
 
 export function paintLayer3d(T, S, E, h, id) {
   const th = THEME[id] ?? (/forest|wood/.test(id) ? "forest" : "plains");
   if (th === "grass") return paintGrass(T, S, E, h);
+  if (th === "steppe") return paintSteppe(T, S, E, h);
   const B = G.buffer(W, T.h ?? HH);
   const skyC = E.sky[1], seed = h.int(1, 9999);
   const R = (a, b) => h.int(a, b);

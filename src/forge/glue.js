@@ -4455,7 +4455,7 @@ function devSrc(sc) {
   const z = zoneOfPlayer(sc);
   if (!z || !planReady(sc, z)) return null;
   const P = ZG.planOf(z, planOpts(sc, z));
-  if (!P || !P.spec || !P.spec.some((r) => r.t >= 13)) return null;
+  if (!P || !P.spec || !P.spec.some((r) => r.t >= 13 || r.t === 10)) return null;
   return { key: z.id + ":" + P.seed, P, ox: sc.world.lx(z.c0 * 32), gx0: z.c0 * 512 };
 }
 function natAnimSrc(sc) {

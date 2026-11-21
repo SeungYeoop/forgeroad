@@ -14,7 +14,7 @@
 import { ARCHI, kit } from "./archi.js";
 import { decoKinds, decoKey, decoHeight, decoWidth } from "./natdeco.js";
 import { makeNoise, rng, strHash, clamp, lerp, smooth } from "./noise.js";
-import { propSize } from "./natprops.js";
+import { propSize, propHangs } from "./natprops.js";
 import { profileOf, profileKey } from "./terrprof.js";
 import { BLUEPRINTS } from "./natbp.js";
 
@@ -87,7 +87,7 @@ export function planOf(z, o) {
 // ── 다른 스레드(natworker)에서 만든 설계를 주고받기 ──
 export const planKey = (z, seed) => `${z.id}:${seed}`;
 export const hasPlan = (z, seed) => PLANS.has(planKey(z, seed));
-const KEEP = ["base", "props", "kind", "pkey", "seed", "attempt", "W", "WP", "HP", "Ft", "LW", "LH", "isZone", "arenaFrom", "upX", "downX", "gy", "h", "spots", "hzSpots", "pads", "peak", "chest", "deep", "ugTop", "islands", "check", "tries", "ms", "repairs", "trees", "mats", "walls", "feats", "spec", "roomTags"];
+const KEEP = ["base", "props", "kind", "pkey", "seed", "attempt", "W", "WP", "HP", "Ft", "LW", "LH", "isZone", "arenaFrom", "upX", "downX", "gy", "h", "spots", "hzSpots", "pads", "peak", "chest", "deep", "ugTop", "islands", "check", "tries", "ms", "repairs", "trees", "mats", "walls", "feats", "spec", "roomTags", "structs"];
 export function packPlan(P) {
   const data = { d: P.F.d };
   for (const k of KEEP) data[k] = P[k];
@@ -213,8 +213,9 @@ function clipWalls(P) {
 //   매달려 오르내리는 곳: 6 사다리 7 밧줄 8 덩굴 (위아래 키) · 9 짚라인(줄, ax·ay→bx·by) · 10 바람 기둥(떠오른다)
 //   11·12 물살(왼쪽·오른쪽으로 미는 물) · 13 무너지는 발판 · 14 금 간 벽(때려 부순다) · 15 승강기 길(발판이 오르내린다)
 //   13·14는 검사 때는 바위, 마지막에 장에서 빼고 장치(gizmo.js)가 그리고 막는다
-export const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5, ladder: 6, rope: 7, vine: 8, zip: 9, wind: 10, curL: 11, curR: 12, crumble: 13, crack: 14, lift: 15, fall: 16, geyser: 17 };
-const SOLID_SPEC = new Set([1, 2, 4, 5, 13, 14]);
+export const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5, ladder: 6, rope: 7, vine: 8, zip: 9, wind: 10, curL: 11, curR: 12, crumble: 13, crack: 14, lift: 15, fall: 16, geyser: 17, heal: 18, lever: 19 };
+// 금 간 벽(14)은 길찾기에서 지나갈 수 있는 것으로 본다 (언제든 부수고 지나간다) — 뒤 숨은 방에도 상자가 놓인다
+const SOLID_SPEC = new Set([1, 2, 4, 5, 13]);
 export const CLIMB_SPEC = new Set([6, 7, 8, 10, 15, 17]);
 const DYN_SPEC = new Set([1, 2, 13, 14]);
 function spec(P, x0, y0, x1, y1, kind, ex) {
@@ -339,6 +340,15 @@ function placeProps(P) {
     out.push({ x: Math.round(x), y: Math.round(hang ? yy - 6 : yy + 2), k, s, v: SCALED.includes(k) ? 0 : R.int(0, 1), sc, acc: o.acc ?? null, hang: hang ? 1 : 0, g: o.g ?? 0, ...(fall ? { fall } : {}) });
     return true;
   };
+  // 설계에서 정한 자리 소품 (자리 검사 없이 먼저 놓는다)
+  for (const q of P.fixedProps ?? []) {
+    const hang = (q.hang ?? propHangs(q.k)) ? 1 : 0, s = q.s ?? 1, sc = q.sc ?? 1;
+    const [w0] = propSize(q.k, s);
+    placed.push({ x: q.x, y: q.y, w: w0 * sc });
+    out.push({ x: Math.round(q.x), y: Math.round(hang ? q.y - 6 : q.y + 2), k: q.k, s, v: q.v ?? 0, sc, acc: q.acc ?? null, hang, g: 0 });
+  }
+  // 지역 장식 표: 그린스텝은 고원 풀밭 소품, 굴·계단엔 종유석·수정 대신 이끼·뿌리·고사리
+  const GS = P.z?.reg?.look === "greenstep";
   // 동굴 구역 짜임별 소품 (설계도 cave.style): 바닥·천장 소품표, 뒷벽 큰 소품, 수정·버섯 색
   const CS = P.bp?.cave?.style ?? null;
   const CRY = CS === "drip" ? [0x80e0ff, 0xd8f4ff, 0x60c8e8] : CS === "mine" ? [0xc080ff, 0xffa040, 0xa070f0] : [0x60d0ff, 0xc080ff, 0xffd070];
@@ -347,8 +357,9 @@ function placeProps(P) {
     drip: [["p_stalag", 44], ["p_boulder", 16], ["p_crystal", 10], ["p_rubble", 8], ["p_bones", 5], ["p_shroom", 4]],
     mine: [["p_crates", 16], ["p_rubble", 18], ["p_crystal", 20], ["p_boulder", 10], ["p_rack", 8], ["p_log", 8], ["p_bones", 6], ["p_skulls", 3], ["p_stalag", 6]],
     root: [["p_shroom", 34], ["p_fern", 18], ["p_log", 10], ["p_boulder", 8], ["p_flowers", 6], ["p_stalag", 6], ["p_bones", 5]],
-  }[CS];
-  const CAVE_CEIL = { drip: [["p_stalac", 70], ["p_moss", 8], ["p_web", 6]], mine: [["p_chain", 20], ["p_web", 18], ["p_stalac", 14], ["p_cage", 6], ["p_moss", 6]], root: [["p_roots", 50], ["p_moss", 26], ["p_web", 8], ["p_stalac", 6]] }[CS];
+    green: [["p_fern", 18], ["p_boulder", 14], ["p_rubble", 10], ["p_crates", 6], ["p_flowers", 4]],
+  }[GS ? "green" : CS];
+  const CAVE_CEIL = { drip: [["p_stalac", 70], ["p_moss", 8], ["p_web", 6]], mine: [["p_chain", 20], ["p_web", 18], ["p_stalac", 14], ["p_cage", 6], ["p_moss", 6]], root: [["p_roots", 50], ["p_moss", 26], ["p_web", 8], ["p_stalac", 6]], green: [["p_roots", 44], ["p_moss", 36], ["p_web", 6]] }[GS ? "green" : CS];
   const woodAt = (x, y) => (P.walls ?? []).some((w) => w.m === "wood" && x >= w.x0 && x < w.x1 && y >= w.y0 && y < w.y1);
   // 구름 디딤돌: 위에도 아래에도 아무것도 두지 않는다
   const CL = (P.spec ?? []).filter((s) => s.t === 2);
@@ -363,9 +374,9 @@ function placeProps(P) {
     T.conv = 1;
   }
   P.trees = (P.trees ?? []).filter((T) => !T.conv);
-  const T_OPEN = [["p_bush", 34], ["p_flowers", 26], ["p_boulder", 18], ["p_fern", 16], ["p_log", 6]];
+  const T_OPEN = GS ? [["p_flowers", 30], ["p_bush", 16], ["p_fern", 14], ["p_boulder", 12], ["p_cairn", 6], ["p_menhir", 3], ["p_sheep", 3]] : [["p_bush", 34], ["p_flowers", 26], ["p_boulder", 18], ["p_fern", 16], ["p_log", 6]];
   const T_UGB = [["p_sarcoph", 12], ["p_skulls", 14], ["p_rubble", 16], ["p_brokencol", 10], ["p_urn", 10], ["p_brazier", 8], ["p_rack", 8], ["p_altar", 5], ["p_crates", 6], ["p_candles", 8]];
-  const T_SKB = [["p_statue", 14], ["p_urn", 16], ["p_brazier", 12], ["p_candles", 12], ["p_altar", 8], ["p_shelf", 7], ["p_crates", 5], ["p_brokencol", 8], ["p_rubble", 6]];
+  const T_SKB = GS ? [["p_candles", 16], ["p_urn", 12], ["p_lectern", 10], ["p_shelf", 10], ["p_statue", 8], ["p_brazier", 8], ["p_crates", 4]] : [["p_statue", 14], ["p_urn", 16], ["p_brazier", 12], ["p_candles", 12], ["p_altar", 8], ["p_shelf", 7], ["p_crates", 5], ["p_brokencol", 8], ["p_rubble", 6]];
   const torchAt = [], bgAt = [];
   for (let x = 40; x < WP - 40; x += 8) {
     let prevSolid = solid(x, 0);
@@ -397,7 +408,7 @@ function placeProps(P) {
           bgAt.push({ x, y: yy });
           const tap = clear >= 170 && R() < 0.35;
           out.push({ x, y: tap ? yy - clear + 6 : yy - 30 - R.int(0, 20), k: tap ? "p_tapestry" : "p_niche", s: 1, v: R.int(0, 1), sc: tap ? 1 : R() < 0.5 ? 1 : 1.25, acc: null, hang: tap ? 1 : 0, bg: 1, g: 1 });
-        } else if (ctx === "cave" && clear >= 150 && !out.some((q) => q.bg && !q.hang && Math.abs(q.x - x) < 170 && Math.abs(q.y - yy) < 140) && R() < 0.85) {
+        } else if (ctx === "cave" && !GS && clear >= 150 && !out.some((q) => q.bg && !q.hang && Math.abs(q.x - x) < 170 && Math.abs(q.y - yy) < 140) && R() < 0.85) {
           const big = Math.min(2.6, clear / 70);
           const bk = CS === "root" ? (R() < 0.6 ? "p_shroom" : "p_stalag") : CS === "mine" ? (R() < 0.6 ? "p_crystal" : "p_rockcol") : R() < (CS === "drip" ? 0.85 : 0.7) ? "p_stalag" : "p_crystal";
           bk === "p_rockcol"
@@ -425,7 +436,7 @@ function placeProps(P) {
         if (!ug && !brk && !wallAt(x, yy + 30)) continue;
         const ctx = brk ? (ug ? "ugb" : "skb") : "cave";
         // 큰 동굴 천장 뒷벽: 흐릿한 큰 종유석 (바위에 묻혀 붙는다)
-        if (ctx === "cave" && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < (CS === "drip" ? 130 : 190) && Math.abs(q.y - yy) < 120) && R() < (CS === "mine" ? 0.35 : 0.8) && ceilOK(x, yy, 30, 60))
+        if (ctx === "cave" && !GS && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < (CS === "drip" ? 130 : 190) && Math.abs(q.y - yy) < 120) && R() < (CS === "mine" ? 0.35 : 0.8) && ceilOK(x, yy, 30, 60))
           out.push({ x, y: yy - 6, k: CS === "root" && R() < 0.7 ? "p_roots" : "p_stalac", s: 2, v: R.int(0, 1), sc: snapSc(Math.min(2.6, 1.25 + R() * below / 160)), acc: null, hang: 1, bg: 1, g: 1 });
         if (R() > (ctx === "cave" ? (CS === "drip" ? 0.2 : 0.12) : 0.08)) continue;
         const tall = below > 170;
@@ -5077,6 +5088,8 @@ export function analyze(P) {
     };
     for (const r of P.spec ?? []) {
       // 물(3·11·12)도: 점프 키로 헤엄쳐 올라 물 밖으로 뛰어나온다
+      // 레버로 잠긴 승강기는 없는 것으로 (지름길: 주 길이 따로 있어야 한다)
+      if (r.t === 15 && r.lock) continue;
       if (CLIMB_SPEC.has(r.t) || r.fallw || ((r.t === 3 || r.t === 11 || r.t === 12) && r.y1 - r.y0 >= 16)) {
         const X = new Set(nodesIn(r.x0 - 12, r.x1 + 12, r.y0 - 6, r.y1 + 24));
         const cols = [];
@@ -5567,7 +5580,8 @@ function planEnc(P, z, rs) {
     if (p.x < safe || p.x > end || !stand(p)) continue;
     if (doors.some((d) => Math.abs(d.x - p.x) < 180 && Math.abs(d.y - p.y) < 140)) continue;
     const role = tagOf(p)?.role;
-    if (role === "rest" || role === "sanctum") continue;
+    // 쉼터·성소·시련(장치를 다루는 길)엔 무리를 세우지 않는다
+    if (role === "rest" || role === "sanctum" || role === "trial") continue;
     cand[layerAt(P, p.x, p.y)]?.push({ x: p.x, y: p.y, role });
   }
   // 언덕진 지표는 "평평한 자리"가 드물다: 완만한 주 지면 칸도 지표 후보로 (머리 위 40px 트임)
@@ -5577,7 +5591,7 @@ function planEnc(P, z, rs) {
       if (y <= 0 || x < safe || x > end || Math.abs(P.gy[t - 1] - P.gy[t + 1]) > 8 || P.F.solid(x, y - 40) || P.F.solid(x, y - 20) || P.F.solid(x, y - 6) || !P.F.solid(x, y + 3)) continue;
       if (doors.some((d) => Math.abs(d.x - x) < 180 && Math.abs(d.y - y) < 140) || layerAt(P, x, y) !== "ground") continue;
       const role = tagOf({ x, y })?.role;
-      role !== "rest" && role !== "sanctum" && cand.ground?.push({ x, y, role });
+      role !== "rest" && role !== "sanctum" && role !== "trial" && cand.ground?.push({ x, y, role });
     }
   const shuffle = (a) => {
     for (let i = a.length - 1; i > 0; i--) {
@@ -5635,7 +5649,7 @@ function planEnc(P, z, rs) {
       const cx = (t.x0 + t.x1) / 2;
       const c = P.spots.filter((p) => p.x >= t.x0 && p.x < t.x1 && p.y >= t.y0 && p.y <= t.y1).sort((a, b) => Math.abs(a.x - cx) - Math.abs(b.x - cx))[0];
       const lay = layerAt(P, c?.x ?? 0, c?.y ?? 0);
-      c && cand[lay] && chests.push({ x: c.x, y: c.y, lay, big: t.big ? 1 : 0 });
+      c && cand[lay] && chests.push({ x: c.x, y: c.y, lay, big: t.big ? 1 : 0, elite: t.elite ? 1 : 0, safe: t.safe ? 1 : 0 });
     }
     for (const lay of BANDS) {
       const C = cand[lay];
@@ -5665,6 +5679,8 @@ function planEnc(P, z, rs) {
       return q.length ? q[Math.floor(R() * q.length)] : null;
     };
     for (const c of chests) {
+      // 거점 안 상자: 지키는 무리 없이
+      if (c.safe) continue;
       const pool = L[c.lay]?.enemies;
       let g = camps.filter((k) => k.lay === c.lay).map((k) => [k, Math.hypot(k.pts[0].x - c.x, (k.pts[0].y - c.y) * 1.5)]).filter(([, d]) => d < 260).sort((a, b) => a[1] - b[1])[0]?.[0];
       if (!g && pool?.length) {
@@ -5681,7 +5697,8 @@ function planEnc(P, z, rs) {
     const surf = (x) => (P.h ? P.h[Math.max(0, Math.min(P.h.length - 1, Math.round(x / Q)))] : P.HP / 2);
     // 찾기 어려운 정도: 지상 구역은 지표에서 멀수록, 하늘 구역은 높을수록, 동굴 구역은 깊을수록
     const remote = (c) => (P.kind === "sky" ? P.HP - c.y : P.kind === "cave" ? c.y : c.lay === "sky" ? surf(c.x) - c.y : c.lay === "under" ? c.y - surf(c.x) : R() * 1500);
-    for (const c of chests) c.score = remote(c) + (c.big ? 900 : 0) + R() * 600;
+    // 정예 방(설계에서 정한 곳)은 가장 높은 등급부터
+    for (const c of chests) c.score = remote(c) + (c.big ? 900 : 0) + (c.elite ? 1e6 : 0) + R() * 600;
     const gd = chests.filter((c) => c.camp != null).sort((a, b) => b.score - a.score), N = gd.length;
     const nL = Math.max(1, Math.round(N * 0.12)), nG = Math.round(N * 0.28), nI = Math.round(N * 0.35);
     gd.forEach((c, i) => (c.tier = i < nL ? 3 : i < nL + nG ? 2 : i < nL + nG + nI ? 1 : 0));

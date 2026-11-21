@@ -2,6 +2,7 @@
 //   칸 = 8px 블록 (C.cell: 1 바위, -1 공기). 장치(사다리·승강기·짚라인…)는 P.specReq로 (natgen SPEC)
 //   ARCHI[구역 id](K) — K는 아래 kit: 파기·채우기·비탈 굴·장치·뒷벽·재질·방 역할
 import { rng } from "./noise.js";
+import { greenstep as greenstepTepui } from "./archi_greenstep.js";
 
 export function kit(P, C) {
   const { cell, NX, NY } = C;
@@ -96,8 +97,29 @@ export function kit(P, C) {
       P.specReq.push({ x0, x1, y0, y1: f, k: "fall" });
     },
     // 승강기: 길 [x0, x1), 발판 윗면이 위 바닥 fu ~ 아래 바닥 fd를 오간다 (줄은 top칸부터)
-    lift(x0, x1, fu, fd, top) {
-      P.specReq.push({ x0, x1, y0: fu, y1: fd, k: "lift", ex: { top: (top ?? fu - 8) * 8 } });
+    //   lock: 레버 이름 — 그 레버를 당기기 전엔 park("up"|"down") 끝에 멈춰 있다 (길찾기 검사는 없는 것으로 본다)
+    lift(x0, x1, fu, fd, top, lock, park = "up") {
+      P.specReq.push({ x0, x1, y0: fu, y1: fd, k: "lift", ex: { top: (top ?? fu - 8) * 8, ...(lock ? { lock, park } : {}) } });
+    },
+    // 회복 샘: 들어가 있으면 체력이 찬다
+    heal(x0, x1, y0, f) {
+      P.specReq.push({ x0, x1, y0, y1: f, k: "heal" });
+    },
+    // 레버: 때리면 켜진다 (id로 승강기·문을 깨운다). 바닥 f 위 3칸
+    lever(x, f, id) {
+      P.specReq.push({ x0: x - 1, x1: x + 1, y0: f - 3, y1: f, k: "lever", ex: { id } });
+    },
+    // 가로 바람: dx 방향으로 밀고 살짝 띄운다 (lift px/s)
+    windH(x0, x1, y0, y1, dx, pow = 300, lift = 40) {
+      P.specReq.push({ x0, x1, y0, y1, k: "wind", ex: { dx, pow, lift } });
+    },
+    // 정한 자리 소품 (칸 좌표, 바닥 f)
+    prop(x, f, k, o = {}) {
+      (P.fixedProps ??= []).push({ x: x * 8 + 4, y: f * 8, k, ...o });
+    },
+    // 구조물 이름표 (검사 도구 · 역할 지도)
+    struct(name, role, x0, y0, x1, y1) {
+      (P.structs ??= []).push({ name, role, x0: x0 * 8, y0: y0 * 8, x1: x1 * 8, y1: y1 * 8 });
     },
     // 짚라인: 칸 좌표 끝점 (줄 높이) — 높은 쪽에서 낮은 쪽으로
     zip(ax, ay, bx, by) {
@@ -109,8 +131,8 @@ export function kit(P, C) {
     mat(x0, y0, x1, y1, m) {
       P.mats.push({ x0: x0 * 8, y0: y0 * 8, x1: x1 * 8, y1: y1 * 8, m });
     },
-    tag(x0, y0, x1, y1, role) {
-      (P.roomTags ??= []).push({ x0: x0 * 8, x1: x1 * 8, y0: y0 * 8, y1: y1 * 8 + 8, role });
+    tag(x0, y0, x1, y1, role, ex) {
+      (P.roomTags ??= []).push({ x0: x0 * 8, x1: x1 * 8, y0: y0 * 8, y1: y1 * 8 + 8, role, ...(ex ?? {}) });
     },
     // ── 하늘에 짓기 ──
     // 받침판: 바닥 f부터 t칸 두께 (재질 m)
@@ -1079,4 +1101,4 @@ function mossbark(K, o) {
   return rooms;
 }
 
-export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone, g1_m1: stonebridge, g0_m1: greenstep, gm1_m1: leafcrown, gm1_0: mossbark };
+export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone, g1_m1: stonebridge, g0_m1: greenstepTepui, gm1_m1: leafcrown, gm1_0: mossbark };

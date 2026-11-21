@@ -73,9 +73,13 @@ export function devMove(pl, C, T, dt, spd, h) {
     h && (pl.facing = h);
     return;
   }
-  // 바람 기둥
+  // 바람: 위로 부는 기둥 / 옆으로 부는 바람 길 (밀면서 살짝 띄운다 — 틈을 건넌다)
   if (d.wind) {
-    C.vy = near(C.vy, T.down ? 70 : -(d.wind.pow ?? 250), 1500 * dt);
+    if (d.wind.dx) {
+      C.vx = near(C.vx, d.wind.dx * (d.wind.pow ?? 300), 1500 * dt);
+      C.vy = near(C.vy, T.down ? 120 : -(d.wind.lift ?? 40), 1100 * dt);
+      pl.facing = d.wind.dx > 0 ? 1 : -1;
+    } else C.vy = near(C.vy, T.down ? 70 : -(d.wind.pow ?? 250), 1500 * dt);
     pl.airJumps = Math.max(pl.airJumps, 1);
   }
   // 물살
@@ -123,8 +127,25 @@ function mkTex(sc) {
     }
   });
   cv("dv_px", 2, 2, (x) => ((x.fillStyle = "#fff"), x.fillRect(0, 0, 2, 2)));
+  cv("dv_streak", 10, 1, (x) => {
+    const g = x.createLinearGradient(0, 0, 10, 0);
+    g.addColorStop(0, "rgba(255,255,255,0)"), g.addColorStop(0.7, "rgba(255,255,255,0.9)"), g.addColorStop(1, "rgba(255,255,255,0)");
+    (x.fillStyle = g), x.fillRect(0, 0, 10, 1);
+  });
+  // 레버 (꺼짐·켜짐): 돌 받침 + 손잡이
+  for (const on of [0, 1])
+    cv(on ? "dv_lever1" : "dv_lever0", 16, 24, (x) => {
+      (x.fillStyle = "#5a5464"), x.fillRect(3, 18, 10, 6);
+      (x.fillStyle = "#7a7484"), x.fillRect(3, 18, 10, 2);
+      x.fillStyle = "#3a2a1e";
+      for (let i = 0; i < 14; i++) x.fillRect(on ? 8 + Math.round(i * 0.45) : 8 - Math.round(i * 0.45), 18 - i, 2, 1);
+      x.fillStyle = on ? "#7af07a" : "#e05a4a";
+      x.fillRect(on ? 12 : 1, 2, 4, 4);
+    });
 }
 const KEYGONE = new Set(); // 부서진 벽 (구역:자리) — 그 판 동안
+const SWITCH = new Set(); // 켠 레버 (구역:이름) — 그 판 동안
+let HEALMSG = 0;
 function build(sc, src) {
   const A = { key: src.key, items: [], parts: [] };
   for (const r of src.P.spec ?? []) {
@@ -133,7 +154,11 @@ function build(sc, src) {
     else if (r.t === 15) A.items.push({ k: "lift", r, y: r.y1 - 0, dir: -1, wait: 1, spr: null, cab: null });
     else if (r.t === 16) A.items.push({ k: "fall", r, st: "hang", y: r.y0, vy: 0, t: 0, spr: null });
     else if (r.t === 17) A.items.push({ k: "geyser", r, t: (r.x0 % 7) * 0.4, on: 0 });
+    else if (r.t === 18) A.items.push({ k: "heal", r, t: 0 });
+    else if (r.t === 19) A.items.push({ k: "lever", r, cd: 0, spr: null });
   }
+  // 레버로 잠긴 승강기: 처음엔 정한 끝(park)에 멈춰 있다
+  for (const it of A.items) if (it.k === "lift" && it.r.lock) it.r.park === "up" ? ((it.y = it.r.y0), (it.dir = 1)) : ((it.y = it.r.y1), (it.dir = -1));
   return A;
 }
 function hide(it) {
@@ -209,7 +234,9 @@ export function update(sc, dt, src) {
       // 발판 윗면 it.y: r.y0(위 끝) ~ r.y1(아래 끝)
       const w = r.x1 - r.x0;
       let dy = 0;
-      if (it.wait > 0) it.wait -= dt;
+      const locked = r.lock && !SWITCH.has(src.key + ":" + r.lock);
+      if (locked) it.wait = 0.5;
+      else if (it.wait > 0) it.wait -= dt;
       else {
         const ny = it.y + it.dir * 95 * dt;
         if (ny <= r.y0) ((dy = r.y0 - it.y), (it.y = r.y0), (it.dir = 1), (it.wait = 1.4));
@@ -252,11 +279,52 @@ export function update(sc, dt, src) {
         sc.fx?.burst?.("glow", x, r.y1 - 4 - Math.random() * (r.y1 - r.y0) * 0.8, 1, r.tint ?? 0xa8e0ff);
       }
       if (vis && !it.on && it.t < 0.6 && Math.random() < dt * 10) sc.fx?.burst?.("dust", ox + (r.x0 + r.x1) / 2, r.y1 - 2, 1, r.tint ?? 0xa8e0ff);
+    } else if (it.k === "heal") {
+      // 회복 샘: 안에 있으면 체력이 찬다 (초당 30%), 위로 오르는 빛 알갱이
+      const inside = px > r.x0 && px < r.x1 && py > r.y0 && py - 20 < r.y1;
+      if (inside && pl.hp < pl.maxHp && !pl.dead) {
+        pl.heal(pl.maxHp * 0.3 * dt, !1);
+        (it.t -= dt) <= 0 && ((it.t = 0.25), sc.fx?.burst?.("glow", px + (Math.random() - 0.5) * 12, py - 8, 2, 0x9af4ff));
+        if (!HEALMSG) ((HEALMSG = 1), sc.fx?.text?.(px, py - 34, "회복 샘", "#9af4ff"), R.j.play("heal", 0.6));
+      }
+      vis && Math.random() < dt * 3 && sc.fx?.burst?.("glow", ox + r.x0 + Math.random() * (r.x1 - r.x0), r.y1 - 6, 1, 0xc8fff4);
+    } else if (it.k === "lever") {
+      const key = src.key + ":" + r.id;
+      it.cd = Math.max(0, it.cd - dt);
+      if (!SWITCH.has(key) && atk && it.cd <= 0 && Math.abs(px - (r.x0 + r.x1) / 2) < 34 && Math.abs(py - r.y1) < 30) {
+        SWITCH.add(key);
+        it.cd = 1;
+        R.j.play("open");
+        sc.fx?.shake?.(2);
+        sc.fx?.text?.(ox + (r.x0 + r.x1) / 2, r.y0 - 12, "철컥! 승강기가 움직인다", "#c8f0a0");
+      }
+      if (!vis) {
+        hide(it);
+        continue;
+      }
+      it.spr ??= sc.add.image(0, 0, "dv_lever0").setOrigin(0.5, 1).setDepth(2.4);
+      it.spr.setVisible(true).setTexture(SWITCH.has(key) ? "dv_lever1" : "dv_lever0").setPosition(ox + (r.x0 + r.x1) / 2, r.y1);
     }
   }
-  // 바람 기둥: 떠오르는 결 (화면 근처)
+  // 바람: 떠오르는 결 / 옆으로 흐르는 바람결 (화면 근처)
+  A.st ??= [];
   for (const r of src.P.spec ?? []) {
     if (r.t !== 10 || r.x1 < vx0 || r.x0 > vx1 || r.y1 < vy0 || r.y0 > vy1) continue;
-    if (Math.random() < dt * (r.x1 - r.x0) * 0.08) sc.fx?.burst?.("glow", ox + r.x0 + Math.random() * (r.x1 - r.x0), r.y0 + Math.random() * (r.y1 - r.y0), 1, r.tint ?? 0xe8f8ff);
+    const area = ((r.x1 - r.x0) * (r.y1 - r.y0)) / 4000;
+    if (Math.random() < dt * (4 + area * 6)) {
+      let q = A.st.find((p) => !p.on);
+      if (!q && A.st.length < 90) A.st.push((q = { img: sc.add.image(0, 0, "dv_streak").setDepth(2.5).setBlendMode(1) }));
+      if (q) {
+        const hor = !!r.dx, x = r.x0 + Math.random() * (r.x1 - r.x0), y = r.y0 + Math.random() * (r.y1 - r.y0);
+        Object.assign(q, { on: true, age: 0, life: 0.6 + Math.random() * 0.5, x, y, vx: hor ? r.dx * (220 + Math.random() * 120) : 0, vy: hor ? -(r.lift ?? 30) * 0.4 : -(180 + Math.random() * 120) });
+        q.img.setVisible(true).setAngle(hor ? 0 : 90).setScale(hor ? 1.6 : 1.2, 1).setTint(0xf4fbff).setAlpha(0);
+      }
+    }
+  }
+  for (const q of A.st) {
+    if (!q.on) continue;
+    q.age += dt;
+    if (q.age >= q.life) ((q.on = false), q.img.setVisible(false));
+    else ((q.x += q.vx * dt), (q.y += q.vy * dt), q.img.setPosition(ox + q.x, q.y).setAlpha(0.55 * Math.sin((Math.PI * q.age) / q.life)));
   }
 }

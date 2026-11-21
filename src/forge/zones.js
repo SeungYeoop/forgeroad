@@ -36,7 +36,7 @@ const REMADE = {
   gm1_0: { name: "모스바크", look: "mossbark", particle: "fireflies",
     pal: { sky: [0x3e6e66, 0xbfe0c8], far: 0x6a8e7c, mid: 0x3e6a48, near: 0x203c28, top: 0x4e9436, topHi: 0x9ad060, soil: 0x5c4834, soilDark: 0x2e2218, soilHi: 0x7c6246, rock: 0x6e7c64, accent: 0xd8f070, fog: 0xd8f0e0, glow: 0xf0f8c0 } },
   g0_m1: { name: "그린스텝", look: "greenstep", particle: "pollen", theme: "plains",
-    pal: { sky: [0x4a9ae8, 0xe4f6ff], far: 0xa8c8f0, mid: 0x7ab8d8, near: 0x4a8ab0, top: 0x78c850, topHi: 0xc4f286, soil: 0x8a6e4e, soilDark: 0x4a3628, soilHi: 0xaa8e64, rock: 0xb0a894, accent: 0xfff080, fog: 0xffffff, glow: 0xfff8d8 } },
+    pal: { sky: [0x3f74c6, 0xffe2c0], far: 0xd2a89c, mid: 0xb08a7c, near: 0x7a5a52, top: 0x8cc240, topHi: 0xd8ee7a, soil: 0x9c5c3e, soilDark: 0x5a3020, soilHi: 0xc27a50, rock: 0xd09a72, accent: 0xffd27a, fog: 0xfff2e6, glow: 0xfff0d0 } },
   g1_m1: { name: "스톤브리지", look: "stonebridge", particle: "clouds",
     pal: { sky: [0x5a8ad0, 0xd8ecfa], far: 0x9ab4d8, mid: 0x7a94b8, near: 0x4a6488, top: 0x86b456, topHi: 0xc8e488, soil: 0x9a8a72, soilDark: 0x5a4e40, soilHi: 0xbaa88a, rock: 0xc8bca4, accent: 0x9ad8ff, fog: 0xf0f6ff, glow: 0xfff4d8 } },
   gm1_m1: { name: "리프크라운", look: "leafcrown", particle: "pollen", theme: "forest",
