@@ -1,375 +1,710 @@
 // ══════════════════════════════════════════════════════════════
-// 리프크라운 「하늘에 뜬 숲」 — 뿌리 덩이 흙섬마다 종이 다른 거대한 나무가 서고, 나무와 나무를 가지·덩굴 그네로 건넌다
-//   지도 = 칸(8px) 1024 × 1056 · 맨 아래 뿌리섬 길 줄 1000 (좌우 출구) · ▲ = 가운데 거목 수관 꼭대기
-//   나무 (모양·속 짜임이 모두 다르다)
-//     거목 (가운데): 줄기 속 다섯 마디 — 뿌리 홀 · 선반 버섯 굴뚝 · 옹이 웅덩이 · 덩굴 굴뚝 · 심장 방(정예), 위 수관 잎 홀
-//     참나무 (서): 속 빈 줄기의 나무집 네 층, 둥근 수관 속 잎 방 · 버드나무: 수관에서 늘어진 덩굴 커튼
-//     소나무 (동): 줄기를 감은 덩굴과 층층 잎 단 · 자작나무 숲섬: 가는 줄기 셋에 매단 오두막과 출렁다리
-//     거대 버섯 섬 · 죽은 고목(속 빈 거미 굴) · 어미새 둥지 섬 · 반딧불 이끼 연못 섬
-//   길: 줄기 속을 올라 가지 문으로 나가 가지를 걸어 이웃 나무로 · 덩굴 그네(새) · 튕김 버섯 · 늘어진 뿌리 덩굴
+// 리프크라운 「뿌리섬 숲」 — 하늘 가득 뿌리 덩이 흙섬이 층층이 엇갈려 떠 있고, 섬마다 나무가 선다
+//   지도 = 칸(8px) 1024 × 1056 · 맨 아래 뿌리섬 길 줄 1000 (좌우 출구) · ▲ = 맨 위 가운데 고목 섬
+//   섬 쉰 남짓: 섬마다 속 짜임(쌍굴·겹굴·뿌리 기둥 홀·샘 굴·굴토끼 굴·움막+굴·고리 굴·둥지 굴·긴 회랑)과
+//              나무(참나무·자작·소나무·버드나무·고사목·큰 버섯·덤불·쌍둥이 나무·속 빈 그루터기)가 이웃과 겹치지 않게 다르다
+//   잎은 바위가 아니다: 어두운 잎 뒷벽 + 3D 잎 덩어리 소품. 밟는 것은 흙섬·가지·통나무 다리·출렁다리
+//   길: 아래 섬에서 늘어진 덩굴로 위 섬 굴에 들어가 윗면으로 · 이웃 섬은 통나무·출렁다리 · 덩굴 그네 · 튕김 버섯
 // ══════════════════════════════════════════════════════════════
-import { PL, jag, fbm, nat, hollow, room, surf, climb, dropTo, rope_bridge, P_, mark, skyBegin, skyEnd } from "./archi_sky.js";
+import { PL, jag, H2, fbm, nat, hollow, room, surf, climb, hang, dropTo, rope_bridge, P_, mark, skyBegin, skyEnd } from "./archi_sky.js";
 
-const wood = (K, x0, y0, x1, y1) => (K.rock(x0, y0, x1, y1), K.mat(x0, y0, x1, y1, "wood"));
-// 줄기: 아래 반폭 wb → 위 반폭 wt, 밑동은 벌어진다, 껍질 결 흔들림
-function trunk(K, cx, yb, yt, wb, wt, s) {
+const wood = (K, x0, y0, x1, y1, m = "wood") => (K.rock(x0, y0, x1, y1), K.mat(x0, y0, x1, y1, m));
+const rnd = (i, s) => H2(i, s, 777);
+let CR = null; // 수관 가지 자리 (위 섬 덩굴은 뚫고 지나간다)
+function knob(K, cx, cy, r, m, cr) {
+  for (let y = Math.floor(cy - r); y <= cy + r; y++)
+    for (let x = Math.floor(cx - r); x <= cx + r; x++) (x - cx) ** 2 + (y - cy) ** 2 <= r * r && (wood(K, x, y, x + 1, y + 1, m), cr && CR && x >= 0 && y >= 0 && x < K.NX && y < K.NY && (CR[y * K.NX + x] = 1));
+}
+// 휜 가지: 시작(줄기 속) → 굽이 → 끝, 둥근 마디를 이어 r0 → r1로 가늘게
+function bough(K, p0, p1, p2, r0, r1, m = "bough") {
+  const L = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) + Math.hypot(p2[0] - p1[0], p2[1] - p1[1]), n = Math.ceil(L * 1.6);
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
+    knob(K, a * p0[0] + b * p1[0] + c * p2[0], a * p0[1] + b * p1[1] + c * p2[1], r0 + (r1 - r0) * t, m);
+  }
+}
+const qpt = (p0, p1, p2, t) => [(1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0], (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1]];
+// 줄기: 굽으며 가늘어지고 밑동이 벌어진다
+function trunk(K, X, yb, yt, wb, wt, amp, s) {
+  const c = (y) => X + amp * Math.sin(y * 0.03 + s) + amp * 0.4 * Math.sin(y * 0.09 + s * 2);
+  const w = (y) => wt + (wb - wt) * Math.max(0, (y - yt) / (yb - yt)) ** 1.3 + (y > yb - 6 ? (y - (yb - 6)) * 0.9 : 0);
   for (let y = yt; y < yb; y++) {
-    const u = (y - yt) / (yb - yt), flare = y > yb - 16 ? (y - (yb - 16)) * 0.7 : 0;
-    const hw = wt + (wb - wt) * u ** 1.4 + flare + Math.sin(y * 0.21 + s) * 0.8 + Math.sin(y * 0.07 + s * 2) * 1.2;
-    const c = cx + Math.sin(y * 0.013 + s) * 3;
-    wood(K, Math.round(c - hw), y, Math.round(c + hw), y + 1);
+    const hw = w(y) + Math.sin(y * 0.4 + s) * 0.4;
+    wood(K, Math.round(c(y) - hw), y, Math.round(c(y) + hw), y + 1);
+  }
+  return { c, w };
+}
+// 밑동 문: 나무 밑을 지나다닌다 (섬 윗면이 둘로 갈리지 않게)
+function baseDoor(K, T, t) {
+  const c = T.c(t - 4), hw = T.w(t - 1) + 2;
+  for (let x = Math.round(c - hw); x <= Math.round(c + hw); x++) {
+    const u = Math.abs(x + 0.5 - c) / (hw + 0.5), h = Math.round(8 + 2 * Math.sqrt(Math.max(0, 1 - u * u)) - (u > 0.8 ? 2 : 0));
+    K.air(x, t - h, x + 1, t);
   }
 }
-// 가지: 윗면 점들을 잇는다 (걷는 길), 두께 t0 → t1로 가늘어진다
-function limb(K, pts, t0 = 5, t1 = 3) {
-  const n = pts.length - 1;
-  for (let k = 0; k < n; k++) {
-    const [xa, ya] = pts[k], [xb, yb] = pts[k + 1], dir = Math.sign(xb - xa) || 1;
-    for (let x = xa; x !== xb + dir; x += dir) {
-      const u = (x - xa) / ((xb - xa) || 1), y = Math.round(ya + (yb - ya) * u), t = Math.round(t0 + (t1 - t0) * ((k + u) / n));
-      wood(K, x, y, x + 1, y + t);
+// 잎 (마지막에 한꺼번에): 어두운 잎 뒷벽 + 3D 잎 덩어리 — 방 안·방 옆엔 두지 않는다
+const FOL = [];
+const leaves = (K, cx, cy, rx, ry, s, conif = 0) => FOL.push([cx, cy, rx, ry, s, conif]);
+function placeLeaves(K) {
+  const { NX, NY } = K, RM = new Uint8Array(NX * NY), NEAR = new Uint8Array(NX * NY);
+  for (const w of K.P.walls) {
+    if (w.m !== "wood" && w.m !== "brick" && w.m !== "rock") continue;
+    const x0 = Math.max(0, Math.floor(w.x0 / 8)), x1 = Math.min(NX, Math.ceil(w.x1 / 8)), y0 = Math.max(0, Math.floor(w.y0 / 8)), y1 = Math.min(NY, Math.ceil(w.y1 / 8));
+    for (let y = y0; y < y1; y++) RM.fill(1, y * NX + x0, y * NX + x1);
+    for (let y = Math.max(0, y0 - 6); y < Math.min(NY, y1 + 6); y++) NEAR.fill(1, y * NX + Math.max(0, x0 - 6), y * NX + Math.min(NX, x1 + 6));
+  }
+  const inRoom = (x, y, m) => x >= 0 && y >= 0 && x < NX && y < NY && (m ? NEAR : RM)[y * NX + x] === 1;
+  for (const [cx, cy, rx, ry, s, conif] of FOL) {
+    for (let y = Math.floor(cy - ry * 1.15); y <= cy + ry * 1.15; y++) {
+      let a = null;
+      for (let x = Math.floor(cx - rx * 1.2); x <= cx + rx * 1.2 + 1; x++) {
+        const dx = (x - cx) / rx, dy = (y - cy) / ry, inside = dx * dx + dy * dy < 0.82 + (fbm(x / 9, y / 7, s) - 0.5) * 0.7 && !inRoom(x, y, 0);
+        if (inside && a === null) a = x;
+        if (!inside && a !== null) (K.wall(a, y, x, y + 1, "leaf"), (a = null));
+      }
     }
   }
+  FOL.length = 0;
 }
-// 잎 덩어리 (수관): 잡음으로 흔든 타원, 위는 걷는 잎
-function canopy(K, cx, cy, rx, ry, s, amt = 0.35) {
-  for (let y = Math.floor(cy - ry * 1.3); y <= cy + ry * 1.3; y++)
-    for (let x = Math.floor(cx - rx * 1.3); x <= cx + rx * 1.3; x++) {
-      const dx = (x - cx) / rx, dy = (y - cy) / ry;
-      if (dx * dx + dy * dy < 1 + (fbm(x / 11, y / 9, s) - 0.5) * 2 * amt) K.rock(x, y, x + 1, y + 1), K.mat(x, y, x + 1, y + 1, "leaf");
-    }
-}
-// 늘어진 뿌리 (구불구불 가늘어진다), climbable이면 덩굴처럼 탄다
 function root(K, x, y, len, s, climbable) {
-  let cx = x;
   for (let j = 0; j < len; j++) {
-    const w = 2.2 * (1 - j / len) ** 0.6;
-    cx = x + Math.sin(j * 0.12 + s) * 3 + Math.sin(j * 0.05 + s * 2) * 2;
+    const w = 1.8 * (1 - j / len) ** 0.6, cx = x + Math.sin(j * 0.12 + s) * 3 + Math.sin(j * 0.05 + s * 2) * 2;
     w > 0.4 && wood(K, Math.round(cx - w), y + j, Math.round(cx + w) + 1, y + j + 1);
   }
   climbable && K.vine(Math.round(x) - 4, Math.round(x) + 5, y, y + len);
 }
-// 버섯: 대(크림) + 갓(붉은 점박이, 위는 튕김)
-function shroom(K, x, f, h, r, bounce = 1) {
-  // 대는 뒤에 선다 (밑으로 지나다닌다), 갓만 밟힌다
-  K.wall(x - 2, f - h, x + 3, f, "stem");
-  const top = f - h;
-  for (let y = top - Math.round(r * 0.55); y < top + 3; y++) {
-    const hw = Math.round(r * Math.sqrt(Math.max(0, 1 - ((y - top + 1) / (r * 0.6)) ** 2)));
-    hw > 0 && (K.rock(x - hw, y, x + hw + 1, y + 1), K.mat(x - hw, y, x + hw + 1, y + 1, "cap"));
-  }
-  bounce && K.bounce(x - Math.round(r * 0.4), x + Math.round(r * 0.4) + 1, top - Math.round(r * 0.55));
+// 둥근 굴방 (흔들린 타원, 바닥 평평)
+function cave(K, x0, y0, x1, y1, s) {
+  hollow(K, (x0 + x1) / 2, (y0 + y1) / 2 - 1, (x1 - x0) / 2, (y1 - y0) / 2 + 2, s, 0.12);
+  K.air(x0 + 2, y1 - 5, x1 - 2, y1);
+  K.rock(x0 - 1, y1, x1 + 1, y1 + 2);
+  return { x0, y0, x1, y1 };
 }
 
-// 잎 굴 (수관 속 방): 둥글고 울퉁불퉁하게 파고 바닥만 평평, 뒷벽은 잎
-function pocket(K, x0, y0, x1, y1, s) {
-  K.wall(x0 - 2, y0 - 3, x1 + 2, y1, "leaf");
-  hollow(K, (x0 + x1) / 2, (y0 + y1) / 2 - 1, (x1 - x0) / 2 + 1, (y1 - y0) / 2 + 3, s, 0.16);
-  K.air(x0 + 2, y1 - 5, x1 - 2, y1), K.rock(x0 - 2, y1, x1 + 2, y1 + 2), K.mat(x0 - 2, y1, x1 + 2, y1 + 2, "leaf");
-}
+// ══ 섬 표 ══ [x0, x1, 윗면, 깊이, 속 짜임, 나무, 나무 자리(0~1)] — 이웃 섬과 짜임·나무가 겹치지 않게
+const L = ["twin", "stack", "hall", "pool", "burrow", "cellar", "ring", "nest", "gallery"];
+const TREES = ["oak", "birch", "pine", "willow", "dead", "shroom", "bush", "twin", "stump"];
+const ISLES = [
+  // 라1 (≈900)
+  [36, 150, 904, 38, "pool", "oak", 0.4], [196, 324, 892, 44, "ring", "pine", 0.7], [372, 468, 910, 36, "burrow", "shroom", 0.5], [512, 654, 896, 44, "hall", "willow", 0.45], [700, 806, 906, 38, "twin", "stump", 0.55], [846, 990, 892, 42, "cellar", "oak", 0.3],
+  // 라2 (≈800)
+  [8, 118, 800, 38, "nest", "birch", 0.6], [160, 282, 812, 40, "gallery", "dead", 0.35], [318, 440, 792, 44, "stack", "oak", 0.6], [478, 600, 808, 38, "pool", "twin", 0.5], [640, 762, 790, 44, "burrow", "pine", 0.3], [802, 904, 814, 36, "ring", "bush", 0.5], [934, 1016, 798, 36, "twin", "willow", 0.5],
+  // 다1 (≈690)
+  [56, 190, 690, 44, "cellar", "willow", 0.55], [228, 342, 704, 38, "nest", "shroom", 0.4], [382, 520, 684, 46, "hall", "pine", 0.65], [560, 672, 700, 38, "gallery", "oak", 0.4], [710, 852, 688, 44, "stack", "birch", 0.35], [884, 1002, 704, 38, "burrow", "dead", 0.6],
+  // 다2 (≈580)
+  [18, 132, 586, 38, "ring", "stump", 0.5], [170, 300, 574, 44, "pool", "oak", 0.65], [340, 452, 592, 36, "twin", "bush", 0.4], [492, 622, 576, 44, "nest", "dead", 0.5], [662, 774, 590, 38, "cellar", "twin", 0.6], [812, 944, 578, 44, "gallery", "willow", 0.35],
+  // 나1 (≈470)
+  [58, 182, 470, 42, "hall", "birch", 0.35], [222, 350, 482, 38, "stack", "willow", 0.6], [392, 522, 466, 44, "burrow", "oak", 0.45], [560, 682, 480, 38, "ring", "shroom", 0.55], [722, 852, 468, 44, "pool", "pine", 0.4], [892, 1010, 482, 36, "nest", "stump", 0.5],
+  // 나2 (≈360)
+  [18, 150, 360, 42, "gallery", "pine", 0.6], [192, 312, 372, 38, "cellar", "dead", 0.4], [352, 482, 356, 44, "twin", "oak", 0.55], [522, 652, 372, 38, "hall", "bush", 0.5], [692, 812, 360, 42, "nest", "willow", 0.45], [852, 990, 368, 40, "stack", "birch", 0.6],
+  // 가1 (≈250)
+  [60, 190, 250, 42, "pool", "twin", 0.5], [232, 362, 262, 38, "burrow", "stump", 0.35], [400, 530, 246, 44, "ring", "pine", 0.6], [572, 702, 258, 38, "gallery", "shroom", 0.45], [742, 872, 248, 44, "cellar", "oak", 0.55], [904, 1012, 262, 36, "twin", "dead", 0.5],
+  // 가2 (≈140) — 가운데 = 고목 섬 (▲)
+  [120, 262, 142, 40, "stack", "willow", 0.5],
+  [30, 150, 110, 38, "twin", "bush", 0.5], [190, 310, 70, 36, "pool", "birch", 0.4], [700, 820, 74, 36, "ring", "twin", 0.5], [870, 1004, 56, 38, "gallery", "pine", 0.6],
+  [300, 420, 930, 36, "nest", "bush", 0.5], [600, 700, 936, 34, "burrow", "stump", 0.5], [296, 380, 560, 36, "cellar", "dead", 0.5], [640, 700, 470, 32, "twin", "bush", 0.5], [330, 460, 132, 42, "nest", "birch", 0.4], [500, 648, 112, 46, "elder", "elder", 0.5], [700, 832, 136, 40, "hall", "pine", 0.6], [880, 1004, 146, 38, "burrow", "oak", 0.45],
+];
 
 export function leafcrown(K) {
   skyBegin(K);
+  CR = new Uint8Array(K.NX * K.NY);
+  DECKS.length = 0;
   road(K);
-  mark(true);
-  greatTree(K);
-  oak(K);
-  mark(false);
-  willow(K), pine(K), birches(K), shroomIsle(K), deadTree(K), nestIsle(K), mossPond(K);
-  skyEnd(K);
+  // 섬마다 높이·폭·깊이를 흔들어 줄 맞춘 격자로 보이지 않게
+  giants(K);
+  // 섬 자리: 바위·나무가 이미 있거나 잎 뭉치 한가운데면 건너뛴다
+  const busy = (x0, x1, t, d) => {
+    let n = 0, m = 0;
+    for (let y = t - 30; y < t + d; y += 3) for (let x = x0 - 6; x < x1 + 6; x += 3) (m++, K.get(x, y) === 1 && n++);
+    const inLeaf = FOL.some(([cx, cy, rx, ry]) => (((x0 + x1) / 2 - cx) / rx) ** 2 + ((t - cy) / ry) ** 2 < 0.8);
+    return n / m > 0.01 || inLeaf;
+  };
+  const built = ISLES.map(([x0, x1, t, d, lay, tree, tp], i) => {
+    if (tree !== "elder" && busy(x0, x1, t, d)) return null;
+    if (tree === "elder") return isle(K, [x0, x1, t, d, lay, tree, tp], i);
+    const dt = Math.round((rnd(i, 1) - 0.5) * 34), g0 = Math.round(rnd(i, 2) * 12), g1 = Math.round(rnd(i, 4) * 12), dd = Math.round(rnd(i, 5) * 16);
+    return isle(K, [x0 - g0, x1 + g1, t + dt, d + dd, lay, tree, tp], i);
+  }).filter(Boolean);
+  // 나무 꼭대기 마루마다: 바로 위 섬에서 수관을 뚫고 마루까지 덩굴
+  for (const [d0, d1, dy] of DECKS) {
+    const I = built.filter((q) => q.x1 - 5 > d0 + 2 && q.x0 + 5 < d1 - 2 && q.t + q.d < dy - 10).sort((p, q) => q.t - p.t)[0];
+    if (!I) continue;
+    const x = Math.round(Math.max(I.x0 + 6, d0 + 3, Math.min(I.x1 - 6, d1 - 3, (d0 + d1) / 2)));
+    islandVine(K, x, surf(K, x, I.t), 500, false, true);
+  }
+  // 가운데 버섯 섬 ↔ 갈래 줄기 나무 서쪽 가지 끝: 통나무
+  {
+    const I = built.find((q) => q.x0 > 530 && q.x0 < 580 && q.t > 440 && q.t < 540);
+    if (I) {
+      const xa = I.x1 - 3, ya = surf(K, xa, I.t);
+      bough(K, [xa - 2, ya + 2], [(xa + 728) / 2, (ya + 506) / 2 + 2], [730, 506], 2.4, 2.4);
+    }
+  }
+  // 아래 층부터: 이웃 섬 잇기, 덩굴로 아래 섬까지 내리기 (아래가 먼저 지어진 뒤)
+  for (let i = built.length - 1; i >= 0; i--) linkDown(K, built[i], i);
+  linkSide(K, built);
+  const el = built.find((b) => b.tree === "elder"), lowE = el.R.slice().sort((a, b) => b.y1 - a.y1)[0];
+  islandVine(K, Math.max(el.x0 + 5, Math.round(G3.H[G3.H.length - 1].cx) + 1), el.t);
+  placeLeaves(K);
+  skyEnd(K, "rock");
 }
 leafcrown.own = 1;
 
-// ═══ 뿌리섬 길 (줄 1000) ═══
-function road(K) {
-  const F = 1000;
-  nat(K, 0, 100, () => F, jag(PL([[0, 1046], [30, 1040], [70, 1030], [100, 1008]]), 1.4, 1), { flat: 1, fingers: 3 });
-  room(K, 12, 1008, 60, 1020), climb(K, 54, F, 1020, "ladder");
-  P_(K, 24, 1020, "p_shroom", { acc: 0xc060e0 }), P_(K, 40, 1020, "p_log"), P_(K, 12, F, "p_fern"), P_(K, 30, F, "p_font"), K.heal(26, 34, F - 4, F);
-  K.tag(2, F - 14, 70, F, "rest", { safe: 1 }), K.tag(12, 1008, 60, 1020, "treasure");
-  K.struct("서쪽 뿌리섬", "거점·출구", 0, 986, 100, 1046);
-  // 통나무 다리
-  wood(K, 98, F, 126, F + 4), K.rock(99, F + 4, 125, F + 5), K.mat(99, F + 4, 125, F + 5, "wood");
-  nat(K, 124, 300, () => F, jag(PL([[124, 1006], [150, 1034], [210, 1048], [270, 1036], [300, 1006]]), 1.4, 2), { flat: 1, fingers: 4 });
-  for (const [x, l, s] of [[150, 30, 1], [182, 44, 2], [262, 36, 3]]) root(K, x, 1030, l, s, 0);
-  nat(K, 352, 470, () => F, jag(PL([[352, 1006], [380, 1032], [420, 1042], [460, 1028], [470, 1006]]), 1.3, 3), { flat: 1, fingers: 3 });
-  room(K, 366, 1008, 454, 1020), climb(K, 446, F, 1020, "rope");
-  P_(K, 380, 1020, "p_shroom", { acc: 0x40e0c0 }), P_(K, 410, 1020, "p_shroom", { acc: 0xffa040 }), P_(K, 430, 1020, "p_log");
-  K.tag(366, 1008, 440, 1020, "arena");
-  // 튕김 버섯 셋 (버드나무 섬 뿌리까지 튕겨 오른다)
-  shroom(K, 372, F, 34, 15), shroom(K, 410, F, 64, 20), shroom(K, 450, F, 48, 16);
-  K.struct("버섯 뿌리섬", "전투", 352, 900, 470, 1042);
-  wood(K, 468, F, 512, F + 4), K.rock(470, F + 4, 510, F + 5), K.mat(470, F + 4, 510, F + 5, "wood");
-  nat(K, 510, 880, () => F, jag(PL([[510, 1006], [540, 1034], [620, 1048], [760, 1050], [840, 1036], [880, 1006]]), 1.4, 4), { flat: 1, fingers: 6 });
-  for (const [x, l, s] of [[560, 30, 4], [610, 46, 5], [790, 40, 6], [830, 28, 7]]) root(K, x, 1036, l, s, 0);
-  nat(K, 920, 1024, () => F, jag(PL([[920, 1006], [950, 1034], [990, 1046], [1024, 1048]]), 1.3, 5), { flat: 1, fingers: 3 });
-  room(K, 940, 1008, 1000, 1020), climb(K, 948, F, 1020, "ladder");
-  P_(K, 970, 1020, "p_nest"), P_(K, 990, 1020, "p_shroom", { acc: 0xc060e0 }), P_(K, 960, F, "p_fern"), P_(K, 1000, F, "p_bush");
-  K.tag(966, F - 14, 1022, F, "rest", { safe: 1 }), K.tag(940, 1008, 1000, 1020, "treasure");
-  K.struct("동쪽 뿌리섬", "거점·출구", 920, 986, 1024, 1048);
-  // 길 위 소품
-  for (const [x, k] of [[140, "p_fern"], [270, "p_flowers"], [540, "p_bush"], [600, "p_log"], [800, "p_fern"], [850, "p_flowers"]]) P_(K, x, F, k);
-  K.tag(130, F - 12, 190, F, "arena"), K.tag(520, F - 12, 640, F, "arena"), K.tag(770, F - 12, 870, F, "arena");
+// 나무집: 통나무 벽, 지붕이 집마다 다르다 (peak 박공 · round 잎 얹은 둥근 · leaf 잎 덩이), 양옆 문, 가지에 얹으면 받침 기둥
+function hut(K, x0, x1, f, h, roof, opt = {}) {
+  wood(K, x0, f - h - 2, x1, f + 2), room(K, x0 + 2, f - h, x1 - 2, f, "wood");
+  K.air(x0, f - 8, x0 + 2, f), K.air(x1 - 2, f - 8, x1, f);
+  const w = x1 - x0, cx = (x0 + x1) / 2, top = f - h - 2;
+  if (roof === "peak") for (let k = 0; k < w / 2 + 2; k++) wood(K, x0 - 2 + k, top - Math.floor(k * 0.7), x1 + 2 - k, top - Math.floor(k * 0.7) + 1);
+  else if (roof === "round") for (let x = x0 - 2; x < x1 + 2; x++) wood(K, x, top - Math.round(Math.sqrt(Math.max(0, 1 - ((x + 0.5 - cx) / (w / 2 + 2)) ** 2)) * 6), x + 1, top);
+  else if (roof === "leaf") (wood(K, x0 - 3, top - 2, x1 + 3, top), leaves(K, cx, top - 6, w * 0.6, 7, x0));
+  opt.posts && (wood(K, x0 + 1, f + 2, x0 + 3, f + opt.posts), wood(K, x1 - 3, f + 2, x1 - 1, f + opt.posts));
 }
-
-// ═══ 가운데 거목 ═══
-function greatTree(K) {
-  const X = 700;
-  // 수관 (먼저 — 줄기·가지가 그 위를 덮는다)
-  canopy(K, X, 142, 180, 62, 11, 0.3);
-  canopy(K, X - 150, 196, 60, 26, 12), canopy(K, X + 150, 190, 64, 28, 13);
-  trunk(K, X, 1000, 196, 50, 34, 1);
-  // 뿌리 (길 섬 밑으로)
-  for (const [x, l, s] of [[662, 40, 8], [690, 54, 9], [724, 48, 10], [748, 36, 11]]) root(K, x, 1040, l, s, 0);
-  // ── 줄기 속 ──
-  // 1 뿌리 홀 (길에서 양옆 문)
-  room(K, 664, 948, 736, 1000, "wood"), K.air(628, 990, 664, 1000), K.air(736, 990, 774, 1000);
-  P_(K, 680, 1000, "p_shroom", { acc: 0x60f0c0 }), P_(K, 700, 1000, "p_log"), P_(K, 722, 1000, "p_fern");
-  K.tag(664, 960, 736, 1000, "arena");
-  // 홀 안 선반 버섯 셋 + 벽 덩굴 (굴뚝 첫 선반까지)
-  for (const [a, b, y] of [[706, 724, 988], [680, 698, 975], [700, 718, 962], [704, 722, 950]]) K.rock(a, y, b, y + 2), K.mat(a, y, b, y + 2, "stem");
-  K.vine(664, 668, 936, 1000);
-  // 2 선반 버섯 굴뚝 (선반을 밟아 오른다)
-  K.air(674, 770, 726, 948), K.wall(674, 770, 726, 948, "wood");
-  const shelves = [[674, 690, 938], [706, 726, 926], [680, 698, 913], [702, 720, 900], [674, 688, 888], [692, 712, 876], [710, 726, 863], [678, 696, 851], [700, 718, 838], [674, 692, 825], [704, 726, 812], [682, 700, 799], [698, 716, 786], [674, 690, 776]];
-  for (const [a, b, y] of shelves) K.rock(a, y, b, y + 2), K.mat(a, y, b, y + 2, "stem");
-  K.tag(676, 800, 724, 948, "trial");
-  K.vine(722, 726, 770, 948);
-  // 3 옹이 웅덩이 (바닥 770, 물 + 벽 덩굴)
-  room(K, 668, 704, 732, 770, "wood"), K.air(676, 770, 724, 776), K.water(676, 764, 724, 776), K.vine(668, 672, 704, 770);
-  K.plank(674, 690, 776), K.rope(700, 637, 768);
-  P_(K, 712, 764, "p_moss", { hang: 0 }), K.tag(680, 704, 724, 760, "treasure");
-  // 가지 문 (770): 서 — 긴 가지 끝 잎 다발, 동 — 가지 위 오두막 둘
-  K.air(640, 762, 668, 770), K.air(732, 762, 762, 770);
-  limb(K, [[650, 770], [600, 760], [548, 748]], 6, 4), canopy(K, 532, 742, 26, 10, 14);
-  limb(K, [[750, 770], [810, 762], [880, 760]], 6, 3), canopy(K, 896, 754, 22, 9, 15);
-  wood(K, 790, 742, 824, 762), room(K, 792, 746, 822, 762, "wood"), K.air(790, 754, 792, 762), K.air(822, 754, 824, 762), wood(K, 788, 738, 826, 742);
-  wood(K, 842, 744, 866, 760), room(K, 844, 748, 864, 760, "wood"), K.air(842, 752, 844, 760), K.air(864, 752, 866, 760);
-  P_(K, 800, 762, "p_crates"), P_(K, 814, 762, "p_nest"), P_(K, 852, 760, "p_urn");
-  K.tag(792, 746, 822, 762, "arena"), K.tag(844, 748, 864, 760, "treasure");
-  // 낮은 가지 둘 (그네 매는 곳)
-  limb(K, [[652, 952], [600, 946], [560, 944]], 5, 3);
-  limb(K, [[748, 952], [830, 946], [902, 944]], 5, 3);
-  K.swing(898, 948, 40);
-  // 4 올빼미 회랑 (바닥 640): 옹이 창, 서·동 가지 문
-  K.air(684, 640, 716, 704), K.wall(684, 640, 716, 704, "wood"), K.vine(684, 688, 640, 768), climb(K, 712, 640, 704, "rope", "wood");
-  room(K, 666, 596, 734, 640, "wood");
-  K.plank(670, 690, 618), K.plank(710, 730, 618);
-  for (const [x, y] of [[664, 612], [734, 606]]) K.air(x, y, x + 3, y + 4);
-  P_(K, 680, 618, "p_nest"), P_(K, 720, 618, "p_nest", { v: 1 }), P_(K, 700, 640, "p_rack");
-  K.tag(666, 618, 734, 640, "arena"), K.tag(670, 600, 730, 618, "treasure");
-  K.air(636, 632, 666, 640), K.air(734, 632, 766, 640);
-  limb(K, [[648, 640], [590, 620], [528, 596]], 6, 4);
-  limb(K, [[752, 640], [800, 640], [856, 638]], 6, 4);
-  // 5 덩굴 굴뚝 (420 → 596)
-  K.air(684, 426, 716, 596), K.wall(684, 426, 716, 596, "wood"), K.vine(684, 688, 426, 640), K.vine(712, 716, 426, 640);
-  for (const [x, y] of [[680, 520], [716, 470]]) K.air(x, y, x + 4, y + 5);
-  K.rock(690, 510, 710, 512), K.mat(690, 510, 710, 512, "stem"), K.rock(690, 470, 702, 472), K.mat(690, 470, 702, 472, "stem");
-  // 6 심장 방 (바닥 420, 정예): 둥근 큰 방, 서·동 가지 문
-  for (let y = 336; y < 420; y++) {
-    const hw = Math.round(28 * Math.sqrt(Math.max(0, 1 - ((y - 392) / 58) ** 2)));
-    hw > 0 && K.air(X - hw, y, X + hw, y + 1);
-  }
-  K.wall(672, 336, 728, 420, "wood");
-  K.rock(676, 392, 688, 394), K.rock(712, 380, 724, 382), K.mat(676, 380, 724, 394, "stem");
-  P_(K, 700, 420, "p_altar", { sc: 1.3 }), P_(K, 684, 420, "p_shroom", { acc: 0x60f0c0 }), P_(K, 716, 420, "p_shroom", { acc: 0xffd070 });
-  K.tag(674, 360, 726, 420, "arena", { big: 1, elite: 1 });
-  K.air(632, 412, 672, 420), K.air(728, 412, 768, 420);
-  limb(K, [[644, 420], [580, 400], [500, 384], [446, 380]], 6, 3);
-  K.swing(450, 383, 40);
-  limb(K, [[756, 420], [820, 404], [884, 396]], 6, 3);
-  // 7 수관 잎 홀 (바닥 200) → 위 잎 방 → 꼭대기
-  climb(K, 700, 200, 336, "ladder", "wood"), K.ladder(700, 200, 420);
-  K.air(684, 420, 690, 426), K.vine(684, 688, 412, 430), K.air(710, 420, 716, 426), K.vine(712, 716, 412, 430);
-  pocket(K, 618, 168, 782, 200, 101), pocket(K, 664, 120, 744, 152, 102);
-  climb(K, 734, 152, 168, "vine", "leaf"), K.vine(733, 736, 149, 200);
-  climb(K, 676, surf(K, 676, 80), 120, "vine", "leaf");
-  for (const [a, b] of [[620, 650], [752, 780]]) K.wall(a - 18, 192, a, 200, "leaf"), K.wall(b, 192, b + 18, 200, "leaf"), K.air(a - 18, 192, a, 200), K.air(b, 192, b + 18, 200);
-  K.peak(X, surf(K, X, 76));
-  P_(K, 640, 200, "p_nest"), P_(K, 700, 200, "p_flowers"), P_(K, 760, 200, "p_shroom", { acc: 0xffa040 }), P_(K, 690, 152, "p_hive"), P_(K, 718, 152, "p_fern");
-  K.tag(620, 168, 780, 200, "arena"), K.tag(666, 124, 742, 152, "treasure"), K.tag(X - 30, 60, X + 30, 78, "rest", { safe: 1 });
-  K.struct("거목", "출구·정예·보물고·오르는 길", 510, 70, 900, 1000);
-}
-
-// ═══ 참나무 (서, 길 위) ═══
-function oak(K) {
-  const X = 216;
-  canopy(K, X, 600, 112, 48, 21, 0.38);
-  canopy(K, X - 96, 632, 36, 18, 22), canopy(K, X + 100, 626, 40, 20, 23);
-  trunk(K, X, 1000, 640, 30, 20, 2);
-  // 속 빈 줄기 나무집 네 층 (층마다 모양이 다르다)
-  room(K, 200, 958, 232, 1000, "wood"), K.air(168, 990, 200, 1000), K.air(232, 990, 266, 1000);
-  room(K, 202, 904, 230, 944, "wood"), climb(K, 226, 944, 958, "ladder", "wood"), K.ladder(226, 944, 1000);
-  K.plank(204, 216, 926), K.ladder(214, 926, 944);
-  room(K, 204, 842, 228, 890, "wood"), climb(K, 208, 890, 904, "vine", "wood"), K.vine(207, 210, 887, 944);
-  room(K, 202, 770, 230, 828, "wood"), climb(K, 224, 828, 842, "rope", "wood"), K.rope(224, 825, 890);
-  K.plank(214, 230, 800), K.rope(220, 797, 828);
-  for (const [x, y] of [[196, 920], [232, 868], [196, 800]]) K.air(x, y, x + 3, y + 4);
-  room(K, 206, 690, 226, 756, "wood"), climb(K, 212, 756, 770, "ladder", "wood"), K.ladder(212, 756, 828);
-  // 수관 속 잎 방 둘 + 윗면
-  pocket(K, 150, 594, 204, 612, 103), pocket(K, 230, 586, 296, 606, 104);
-  climb(K, 216, 612, 690, "ladder", "wood"), K.ladder(216, 612, 756);
-  K.wall(204, 600, 230, 612, "leaf"), K.air(204, 600, 230, 612), climb(K, 284, surf(K, 284, 560), 586, "vine", "leaf"), climb(K, 160, surf(K, 160, 560), 594, "vine", "leaf");
-  K.vine(283, 286, 586, 606), K.vine(159, 162, 594, 612);
-  // 가지: 동 (780 문 → 버드나무 쪽 잎 다발), 서 (880, 버섯 섬 쪽), 낮은 동 (그네)
-  K.air(230, 820, 252, 828), limb(K, [[240, 828], [290, 812], [334, 796]], 5, 3), canopy(K, 348, 790, 18, 8, 24);
-  K.air(184, 882, 204, 890), limb(K, [[194, 890], [150, 878], [110, 872]], 5, 3), canopy(K, 96, 866, 20, 8, 25);
-  limb(K, [[240, 952], [290, 948], [322, 946]], 5, 3);
-  K.swing(318, 950, 40);
-  P_(K, 210, 1000, "p_log"), P_(K, 214, 944, "p_shelf"), P_(K, 210, 890, "p_crates"), P_(K, 210, 828, "p_nest"), P_(K, 216, 756, "p_urn");
-  P_(K, 170, 612, "p_shroom", { acc: 0xc060e0 }), P_(K, 250, 606, "p_hive"), P_(K, 270, 606, "p_flowers");
-  K.tag(202, 904, 230, 944, "arena"), K.tag(204, 842, 228, 890, "treasure"), K.tag(202, 770, 230, 828, "arena"), K.tag(150, 594, 204, 612, "rest"), K.tag(230, 586, 296, 606, "treasure"), K.tag(130, 540, 300, 556, "arena");
-  K.struct("참나무", "전투·보물고·오르는 길", 100, 548, 356, 1000);
-}
-
-// ═══ 버드나무 (떠 있는 뿌리섬) ═══
-function willow(K) {
-  nat(K, 360, 500, jag(PL([[360, 786], [400, 778], [470, 780], [500, 788]]), 0.5, 30), jag(PL([[360, 794], [380, 818], [430, 834], [480, 820], [500, 794]]), 1.3, 31), { fingers: 2 });
-  for (const [x, l, s, c] of [[384, 70, 1, 1], [410, 96, 2, 1], [440, 84, 3, 0], [470, 62, 4, 1]]) root(K, x, 826, l, s, c);
-  room(K, 380, 788, 480, 804), climb(K, 470, 778, 804, "ladder");
-  dropTo(K, 410, 804, "vine");
-  mark(true);
-  canopy(K, 430, 566, 92, 26, 32, 0.3);
-  trunk(K, 434, 780, 584, 14, 9, 3);
-  room(K, 424, 700, 444, 744, "wood"), K.air(420, 736, 424, 744), climb(K, 436, 744, 780, "ladder", "wood");
-  climb(K, 430, 576, 700, "vine", "wood");
-  pocket(K, 380, 556, 486, 576, 105);
-  mark(false);
-  // 덩굴 커튼 (수관 밑에서 길게)
-  for (let x = 346, i = 0; x < 518; x += 9 + (i % 3) * 3, i++) {
-    if (x > 420 && x < 448) continue;
-    let y = 560;
-    while (y < 640 && K.get(x, y) !== -1) y++;
-    K.vine(x - 1, x + 2, y - 2, y + 40 + ((i * 17) % 50));
-  }
-  P_(K, 400, 804, "p_shroom", { acc: 0x40e0c0 }), P_(K, 440, 804, "p_log"), P_(K, 432, 744, "p_nest"), P_(K, 420, 576, "p_flowers"), P_(K, 470, 576, "p_fern"), P_(K, 390, 778, "p_fern");
-  K.tag(380, 788, 460, 804, "arena"), K.tag(424, 700, 444, 744, "treasure"), K.tag(380, 556, 486, 576, "rest"), K.tag(360, 520, 510, 540, "arena");
-  K.struct("버드나무", "전투·보물고·쉼터", 340, 530, 520, 920);
-}
-
-// ═══ 소나무 (떠 있는 뿌리섬, 동) ═══
-function pine(K) {
-  nat(K, 850, 1004, jag(PL([[850, 646], [880, 638], [980, 640], [1004, 648]]), 0.5, 40), jag(PL([[850, 654], [870, 690], [920, 712], [970, 698], [1004, 654]]), 1.3, 41), { fingers: 3 });
-  for (const [x, l, s] of [[880, 50, 5], [940, 70, 6], [980, 44, 7]]) root(K, x, 700, l, s, x === 940);
-  room(K, 872, 648, 990, 662), climb(K, 980, 640, 662, "ladder");
-  room(K, 900, 670, 950, 684), climb(K, 910, 662, 684, "rope");
-  P_(K, 890, 662, "p_log"), P_(K, 930, 662, "p_shroom", { acc: 0xffa040 }), P_(K, 924, 684, "p_urn");
-  K.tag(872, 648, 990, 662, "arena"), K.tag(900, 670, 950, 684, "treasure");
-  mark(true);
-  trunk(K, 922, 640, 256, 9, 4, 4);
-  // 층층 잎 단: 아래가 넓고 위로 좁아진다 (단마다 폭·높이가 조금씩 다르다)
-  const tiers = [[604, 66], [574, 58], [548, 60], [520, 50], [494, 46], [466, 44], [440, 36], [412, 34], [384, 28], [356, 24], [328, 20], [300, 16], [274, 10]];
-  for (const [y, w] of tiers) {
-    for (let k = 0; k < 7; k++) {
-      const hw = Math.round(w * (1 - k / 9) + Math.sin(y + k) * 1.5);
-      K.rock(922 - hw, y + k, 922 + hw, y + k + 1), K.mat(922 - hw, y + k, 922 + hw, y + k + 1, "leaf");
+// ══ 거대한 나무 다섯 (섬 여덟 크기) — 가지가 휘며 갈라지고, 잎은 가지 끝 뭉치, 속은 갈래진 굴 ══
+// 나무 속 굴: 흔들린 타원, 바닥은 평평, 뒷벽은 나무 속 결
+function hollowWood(K, cx, y0, y1, rx, s) {
+  const cy = (y0 + y1) / 2, ry = (y1 - y0) / 2;
+  for (let y = y0 - 2; y <= y1; y++) {
+    let a = null;
+    for (let x = Math.floor(cx - rx * 1.25); x <= cx + rx * 1.25 + 1; x++) {
+      const dx = (x - cx) / rx, dy = (y - cy) / (ry + 1.5), inside = y >= y1 - 5 ? Math.abs(dx) < 0.92 : dx * dx + dy * dy < 1 + (fbm(x / 7, y / 7, s) - 0.5) * 0.35;
+      if (inside && a === null) a = x;
+      if ((!inside || x > cx + rx * 1.25) && a !== null) (K.air(a, y, x, y + 1), K.wall(a, y, x, y + 1, "inwood"), (a = null));
     }
   }
-  mark(false);
-  // 줄기를 감은 덩굴 (단과 단 사이)
-  K.vine(912, 932, 270, 640);
-  P_(K, 900, 604, "p_nest"), P_(K, 950, 520, "p_nest", { v: 1 }), P_(K, 922, 274, "p_flags");
-  K.tag(870, 590, 980, 604, "arena"), K.tag(890, 480, 960, 494, "arena"), K.tag(900, 370, 950, 384, "treasure"), K.tag(900, 250, 944, 268, "vista");
-  K.struct("소나무", "전투·보물고·전망", 850, 250, 1004, 712);
+  const r = { x0: Math.round(cx - rx * 0.9), x1: Math.round(cx + rx * 0.9), y0, y1, cx };
+  wood(K, r.x0 - 2, y1, r.x1 + 2, y1 + 2);
+  return r;
 }
-
-// ═══ 자작나무 숲섬 ═══
-function birches(K) {
-  nat(K, 180, 400, jag(PL([[180, 406], [220, 398], [360, 400], [400, 408]]), 0.5, 50), jag(PL([[180, 414], [200, 440], [260, 456], [330, 452], [380, 432], [400, 412]]), 1.3, 51), { fingers: 3 });
-  for (const [x, l, s] of [[230, 70, 8], [300, 100, 9], [360, 56, 10]]) root(K, x, 450, l, s, true);
-  room(K, 200, 408, 380, 424), climb(K, 370, 398, 424, "ladder");
-  dropTo(K, 266, 424, "vine");
-  P_(K, 230, 424, "p_log"), P_(K, 300, 424, "p_shroom", { acc: 0xc060e0 }), K.tag(200, 408, 380, 424, "arena");
-  // 가는 줄기 셋 (흰 껍질 = 크림 재질), 줄기마다 오두막 높이가 다르다
-  const bark = (x, top) => {
-    for (let y = top; y < 400; y++) K.rock(x - 2, y, x + 3, y + 1);
-    K.mat(x - 2, top, x + 3, 400, "stem");
-    for (let y = top + 6; y < 396; y += 9 + ((x + y) % 5)) K.mat(x - 2, y, x + 3, y + 1, "wood");
-  };
-  bark(224, 216), bark(290, 196), bark(356, 236);
-  const hut = (x0, x1, f, h) => {
-    wood(K, x0, f - h - 2, x1, f + 2), room(K, x0 + 2, f - h, x1 - 2, f, "wood");
-    K.air(x0, f - 7, x0 + 2, f), K.air(x1 - 2, f - 7, x1, f);
-    for (let k = 0; k < 4; k++) (K.rock(x0 - 2 + k, f - h - 3 - k, x1 + 2 - k, f - h - 2 - k), K.mat(x0 - 2, f - h - 6, x1 + 2, f - h - 2, "leaf"));
-  };
-  hut(210, 240, 330, 12), hut(276, 306, 286, 14), hut(342, 372, 352, 11), hut(270, 312, 236, 12);
-  climb(K, 228, 330, 332, "ladder", "wood"), K.ladder(228, 330, 398);
-  climb(K, 294, 286, 288, "ladder", "wood"), K.ladder(294, 286, 398);
-  climb(K, 360, 352, 354, "ladder", "wood"), K.ladder(360, 352, 398);
-  climb(K, 298, 236, 286, "ladder", "wood");
-  rope_bridge(K, 240, 276, 330, 4, 3, 1), rope_bridge(K, 306, 342, 300, 3, 3, 2);
-  for (const [cx, cy, rx] of [[224, 206, 22], [290, 186, 26], [356, 226, 20]]) canopy(K, cx, cy, rx, 12, cx, 0.4);
-  P_(K, 226, 330, "p_crates"), P_(K, 290, 286, "p_rack"), P_(K, 356, 352, "p_nest"), P_(K, 290, 236, "p_shelf");
-  K.tag(212, 318, 238, 330, "arena"), K.tag(278, 272, 304, 286, "treasure"), K.tag(344, 341, 370, 352, "arena"), K.tag(272, 224, 310, 236, "treasure");
-  K.struct("자작나무 숲섬", "전투·보물고", 180, 170, 400, 456);
+// 가지 끝에서 아래 무엇에든 덩굴
+function tipVine(K, x, top, reach = 220) {
+  let y = top;
+  while (y < K.NY - 2 && K.get(x, y) === 1) y++;
+  const yb = y;
+  while (y < K.NY - 2 && y - yb < reach && K.get(x, y) !== 1) y++;
+  if (y - yb >= reach || y >= K.NY - 2 || y - yb < 4) return;
+  K.air(x - 1, top, x + 2, yb), K.plank(x - 1, x + 2, top), K.vine(x - 1, x + 2, top - 3, y);
 }
-
-// ═══ 거대 버섯 섬 (서) ═══
-function shroomIsle(K) {
-  nat(K, 24, 160, jag(PL([[24, 786], [60, 778], [130, 780], [160, 788]]), 0.5, 60), jag(PL([[24, 794], [44, 820], [90, 836], [140, 818], [160, 794]]), 1.3, 61), { fingers: 2 });
-  for (const [x, l, s] of [[60, 50, 11], [100, 72, 12], [140, 44, 13]]) root(K, x, 828, l, s, x === 100);
-  room(K, 40, 788, 146, 804), climb(K, 136, 778, 804, "ladder");
-  dropTo(K, 100, 804, "vine");
-  // 큰 버섯 집: 갓 속에 방
-  K.rock(78, 700, 94, 780), K.mat(78, 700, 94, 780, "stem");
-  for (let y = 664; y < 704; y++) {
-    const hw = Math.round(48 * Math.sqrt(Math.max(0, 1 - ((y - 704) / 40) ** 2)));
-    hw > 0 && (K.rock(86 - hw, y, 86 + hw, y + 1), K.mat(86 - hw, y, 86 + hw, y + 1, "cap"));
+// 섬 윗면에서 섬을 통째로 꿰뚫고 섬 밑 하늘로 늘어지는 덩굴 (섬 속 굴은 지나간다)
+const DECKS = [];
+export function islandVine(K, x, t, reach = 400, dry = false, force = false) {
+  let y = t, yb = -1;
+  while (y < K.NY - 2) {
+    while (y < K.NY - 2 && K.get(x, y) === 1) y++;
+    let e = y;
+    // 섬 속 굴(높이 40칸 미만)은 지나가고, 그보다 긴 빈 하늘이 섬 밑이다
+    while (e < K.NY - 2 && K.get(x, e) !== 1 && e - y < 40) e++;
+    if (e - y >= 40) {
+      yb = y;
+      break;
+    }
+    y = e;
   }
-  room(K, 56, 680, 116, 700, "wood"), K.air(80, 700, 92, 778), K.ladder(86, 700, 778), K.wall(80, 700, 92, 778, "wood");
-  K.air(78, 770, 94, 778);
-  K.bounce(70, 102, 663);
-  shroom(K, 40, 778, 26, 12), shroom(K, 134, 778, 40, 16);
-  P_(K, 70, 700, "p_shelf"), P_(K, 102, 700, "p_cheese"), P_(K, 60, 804, "p_shroom", { acc: 0xffa040 }), P_(K, 100, 804, "p_log");
-  K.tag(56, 680, 116, 700, "treasure"), K.tag(40, 788, 130, 804, "arena"), K.tag(30, 760, 150, 778, "arena");
-  K.struct("거대 버섯 섬", "전투·보물고", 24, 650, 160, 900);
+  if (yb < 0) return -1;
+  // 넓은 발판(9칸)이 나올 때까지 내려간다, 그 사이 얇은 가지·뿌리는 덩굴 자리만 뚫는다
+  let z = yb;
+  for (;;) {
+    while (z < K.NY - 2 && z - yb < reach && K.get(x, z) !== 1) z++;
+    if (z - yb >= reach || z >= K.NY - 2) return -1;
+    const crown = CR && [-1, 0, 1, 2].every((d) => CR[z * K.NX + x + d] === 1);
+    const wide = !crown && [-4, -2, 2, 4].every((d) => K.get(x + d, z) === 1);
+    let th = 0;
+    const lim = crown || (force && CR && CR[z * K.NX + x] === 1) ? (force ? 80 : 30) : 12;
+    while (K.get(x, z + th) === 1 && th < lim) th++;
+    if (wide || th >= lim) break;
+    dry || K.air(x - 1, z, x + 2, z + th);
+    z += th;
+  }
+  if (dry) return z - t;
+  K.air(x - 1, t, x + 2, yb), K.wall(x - 1, t, x + 2, yb, "rock"), K.plank(x - 1, x + 2, t), K.vine(x - 1, x + 2, t - 3, z);
+  return z - t;
+}
+// 점들을 잇는 굽은 가지 (둥근 마디, 반지름 r0 → r1)
+function limbPath(K, pts, r0, r1, cr) {
+  let L = 0;
+  for (let k = 0; k + 1 < pts.length; k++) L += Math.hypot(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]);
+  let acc = 0;
+  for (let k = 0; k + 1 < pts.length; k++) {
+    const [xa, ya] = pts[k], [xb, yb] = pts[k + 1], l = Math.hypot(xb - xa, yb - ya), n = Math.max(1, Math.ceil(l * 1.6));
+    for (let i = 0; i <= n; i++) knob(K, xa + (xb - xa) * (i / n), ya + (yb - ya) * (i / n), r0 + (r1 - r0) * ((acc + (l * i) / n) / Math.max(1, L)), "bough", cr);
+    acc += l;
+  }
+}
+// 자라는 가지: 마디마다 조금씩 휘고 끝에서 둘·셋으로 갈라진다 (위로 조금 끌린다), 맨 끝은 작은 잎 뭉치
+function grow(K, x, y, ang, len, r, depth, s, tips) {
+  const pts = [[x, y]];
+  let a = ang, cx = x, cy = y;
+  for (let k = 1; k <= 4; k++) {
+    a += (rnd(k + depth * 7, s) - 0.5) * 0.42;
+    cx += (Math.cos(a) * len) / 4, cy += (Math.sin(a) * len) / 4;
+    pts.push([cx, cy]);
+  }
+  const r1 = Math.max(1, r * 0.6);
+  limbPath(K, pts, r, r1, 1);
+  if (depth <= 0 || len < 9) {
+    leaves(K, cx, cy - 2, 8 + len * 0.55 + rnd(1, s) * 6, 6 + len * 0.3 + rnd(2, s) * 3, s);
+    tips && tips.push([cx, cy]);
+    return;
+  }
+  depth <= 1 && leaves(K, pts[2][0], pts[2][1] - 3, 7 + len * 0.2, 5, s + 13);
+  const kids = 2 + (rnd(depth, s + 3) > 0.55 ? 1 : 0);
+  for (let c = 0; c < kids; c++) {
+    const spread = (c - (kids - 1) / 2) * (0.5 + rnd(c, s + 5) * 0.35), up = (-Math.PI / 2 - a) * 0.22;
+    grow(K, cx, cy, a + spread + up, len * (0.6 + rnd(c, s + 9) * 0.2), r1, depth - 1, s * 3 + c + 1, tips);
+  }
+}
+// 걷는 굵은 가지: 줄기에서 옆으로 완만히 오르내리며 뻗고(비탈 ≤ 0.6), 중간에서 위로 잔가지, 끝은 갈라져 잎
+function walkLimb(K, x0, y0, side, len, rise, r0, s) {
+  const pts = [];
+  for (let k = 0; k <= 6; k++) {
+    const t = k / 6, wob = k && k < 6 ? (rnd(k, s) - 0.5) * 4 : 0;
+    pts.push([x0 + side * len * t, y0 - rise * (t * (2 - t)) + wob]);
+  }
+  limbPath(K, pts, r0, Math.max(2.5, r0 * 0.45));
+  // 걷는 윗면을 막지 않게: 잔가지는 가지 밑에서 비스듬히 아래로 늘어지고, 위엔 잎만
+  for (const k of [2, 4]) {
+    grow(K, pts[k][0], pts[k][1] + r0 * 0.5, side > 0 ? 0.6 + rnd(k, s + 2) * 0.4 : Math.PI - 0.6 - rnd(k, s + 2) * 0.4, 14 + rnd(k, s + 3) * 12, Math.max(1.5, r0 * 0.3), 1, s + k * 17);
+    leaves(K, pts[k][0], pts[k][1] - r0 - 10, 14, 7, s + k * 19);
+  }
+  const [ex, ey] = pts[6];
+  grow(K, ex, ey, side > 0 ? -0.35 : Math.PI + 0.35, 14 + rnd(9, s) * 10, Math.max(1.5, r0 * 0.3), 2, s + 99);
+  return pts;
+}
+// 굽은 줄기: 조절점마다 옆으로 흔들리며 가늘어진다, 혹 · 벌어진 밑동
+function trunk2(K, X, yb, yt, wb, wt, amp, s) {
+  const P = [];
+  for (let y = yb, k = 0; y > yt - 30; y -= 36, k++) P.push([y, X + (k ? (rnd(k, s) - 0.5) * 2 * amp : 0)]);
+  const c = (y) => {
+    for (let k = 0; k + 1 < P.length; k++)
+      if (y <= P[k][0] && y >= P[k + 1][0]) {
+        const t = (P[k][0] - y) / (P[k][0] - P[k + 1][0]), u = t * t * (3 - 2 * t);
+        return P[k][1] + (P[k + 1][1] - P[k][1]) * u;
+      }
+    return P[P.length - 1][1];
+  };
+  const w = (y) => wt + (wb - wt) * Math.max(0, (y - yt) / (yb - yt)) ** 1.25 + (y > yb - 14 ? ((y - (yb - 14)) / 14) ** 2 * wb * 0.45 : 0);
+  for (let y = yt; y < yb; y++) {
+    const hw = w(y) + Math.sin(y * 0.31 + s) * 0.6 + (fbm(y / 9, s, s) - 0.5) * 2.2;
+    wood(K, Math.round(c(y) - hw), y, Math.round(c(y) + hw), y + 1);
+  }
+  // 혹 (줄기 옆 불룩한 곳)
+  for (let k = 0; k < 4; k++) {
+    const y = Math.round(yt + (yb - yt) * (0.2 + 0.6 * rnd(k, s + 30))), side = k % 2 ? 1 : -1;
+    knob(K, c(y) + side * (w(y) - 1), y, 3 + rnd(k, s + 31) * 3, "wood");
+  }
+  return { c, w };
+}
+// 밑동 뿌리: 섬 윗면을 따라 기어 나가다 섬 속으로 박힌다
+function rootFlare(K, T, base, s, n = 4) {
+  for (let k = 0; k < n; k++) {
+    const side = k % 2 ? 1 : -1, len = 16 + rnd(k, s) * 22, x0 = T.c(base - 6) + side * T.w(base - 6) * 0.6;
+    limbPath(K, [[x0, base - 6], [x0 + side * len * 0.5, base - 1], [x0 + side * len, base + 4]], 4.5 - k * 0.4, 1.5);
+  }
+}
+// 큰 받침 섬: 넓은 흙섬, 속은 짜임이 다른 굴 무리 셋을 비탈 굴로 잇는다, 밑으로 뿌리 커튼
+function baseIsle(K, x0, x1, t, d, s, lays, flat, vx) {
+  nat(K, x0, x1, flat ? () => t : jag(PL([[x0, t + 5], [x0 + 24, t], [x1 - 24, t], [x1, t + 5]]), 0.6, s), jag(PL([[x0, t + 10], [x0 + (x1 - x0) * 0.18, t + d * 0.65], [(x0 + x1) / 2 - 20, t + d], [(x0 + x1) / 2 + 30, t + d * 0.9], [x1 - (x1 - x0) * 0.16, t + d * 0.6], [x1, t + 10]]), 1.4, s + 1), { sh: flat ? 0 : 4, roll: flat ? 0 : 0.6, fingers: 5, flat: flat ? 1 : 0 });
+  const w = (x1 - x0) / lays.length, all = [];
+  lays.forEach((lay, k) => {
+    const a = Math.round(x0 + w * k + 6), b = Math.round(x0 + w * (k + 1) - 6), R = rooms(K, a, b, t + (k % 2 ? 4 : 0), d - 8, lay, s + k * 5);
+    R.forEach((r, j) => K.tag(r.x0, r.y0, r.x1, r.y1, (k + j) % 3 === 0 ? "treasure" : "arena"));
+    const top = R.slice().sort((p, q) => p.y1 - q.y1)[0], hx = top.x0 + 4;
+    climb(K, hx, t, top.y1, ["vine", "ladder", "rope"][k % 3]);
+    all.push(R);
+  });
+  for (let k = 0; k + 1 < all.length; k++) {
+    const A = all[k].slice().sort((p, q) => q.y1 - p.y1)[0], B = all[k + 1].slice().sort((p, q) => q.y1 - p.y1)[0];
+    K.wiggle([[A.x1 - 2, A.y1], [B.x0 + 2, B.y1]], 7, 0.4);
+  }
+  for (let k = 0; k < 9; k++) root(K, Math.round(x0 + (x1 - x0) * (0.08 + k * 0.105)), t + Math.round(d * 0.55), 24 + Math.round(rnd(k, s) * 70), s + k, k % 3 === 1);
+  for (const x of vx ?? []) islandVine(K, x, t);
+  return all.flat();
+}
+// 나무 하나 o: x · base · top · wb · wt · amp · s · lv 줄기 속 층 [[위, 바닥, dx, 반폭]] · limbs [{h, side, len, rise, r0, hut}] · lead 수관 갈래 [[각, 길이, 굵기]]
+function giant(K, o) {
+  const T = trunk2(K, o.x, o.base + 1, o.top, o.wb, o.wt, o.amp, o.s), c = T.c;
+  rootFlare(K, T, o.base, o.s, o.roots ?? 4);
+  // 수관: 줄기 끝에서 큰 갈래가 자라며 갈라진다
+  const tips = [];
+  for (const [ang, len, r] of o.lead) grow(K, c(o.top) + Math.cos(ang) * o.wt * 0.4, o.top + 6, ang, len, r, 3, o.s + Math.round(ang * 100), tips);
+  for (const [x, y] of tips.filter((_, k) => k % 3 === 0)) leaves(K, (x + c(o.top)) / 2, (y + o.top) / 2, 26, 14, o.s + x);
+  // 줄기 속 굴: 층마다 한두 개, 좌우로 엇갈린다
+  const H = o.lv.map(([y0, y1, dx, rx], k) => hollowWood(K, c((y0 + y1) / 2) + dx, y0, y1, rx, o.s + k));
+  for (let k = 0; k + 1 < H.length; k++) {
+    const lo = H[k], up = H[k + 1];
+    if (lo.y1 === up.y1) {
+      // 같은 층 옆방: 문
+      K.air(Math.min(lo.x1, up.x1) - 2, lo.y1 - 8, Math.max(lo.x0, up.x0) + 2, lo.y1), K.wall(Math.min(lo.x1, up.x1) - 2, lo.y1 - 8, Math.max(lo.x0, up.x0) + 2, lo.y1, "inwood");
+      continue;
+    }
+    const a = Math.max(lo.x0, up.x0) + 3, b = Math.min(lo.x1, up.x1) - 3;
+    if (b - a >= 2) {
+      const x = Math.round(a + (b - a) * (0.35 + 0.3 * rnd(k, o.s))), kind = ["vine", "ladder", "rope"][(k + o.s) % 3];
+      K.air(x - 1, up.y1, x + 2, lo.y0 + 3), K.wall(x - 1, up.y1, x + 2, lo.y0 + 3, "inwood"), K.plank(x - 1, x + 2, up.y1), hang(K, x, up.y1, lo.y1, kind);
+    } else {
+      // 겹치지 않으면: 위 굴 바닥에서 옆으로 판 굴감을 지나 아래 굴로 내려가는 세로 굴
+      const x = Math.round(Math.max(lo.x0 + 3, Math.min(lo.x1 - 3, up.cx))), kind = ["rope", "vine", "ladder"][(k + o.s) % 3];
+      const ea = Math.min(x - 2, up.x1 - 2), eb = Math.max(x + 3, up.x0 + 2);
+      K.air(ea, up.y1 - 8, eb, up.y1), K.wall(ea, up.y1 - 8, eb, up.y1, "inwood");
+      K.air(x - 1, up.y1, x + 2, lo.y0 + 3), K.wall(x - 1, up.y1, x + 2, lo.y0 + 3, "inwood"), K.plank(x - 1, x + 2, up.y1), hang(K, x, up.y1, lo.y1, kind);
+    }
+  }
+  // 밑동 문 (길·섬 윗면이 줄기를 지나간다)
+  const f0 = H[0].y1;
+  K.air(Math.round(c(f0 - 4) - T.w(f0 - 4)) - 4, f0 - 9, H[0].x0 + 2, f0), K.wall(Math.round(c(f0 - 4) - T.w(f0 - 4)) - 4, f0 - 9, H[0].x0 + 2, f0, "inwood");
+  K.air(H[0].x1 - 2, f0 - 9, Math.round(c(f0 - 4) + T.w(f0 - 4)) + 5, f0), K.wall(H[0].x1 - 2, f0 - 9, Math.round(c(f0 - 4) + T.w(f0 - 4)) + 5, f0, "inwood");
+  // 걷는 가지: 굴 바닥 문에서 나간다, 끝 나무집, 끝에서 덩굴
+  for (const L of o.limbs) {
+    const h = H[L.h], f = h.y1, side = L.side, r0 = L.r0 ?? 6;
+    const e = Math.round(c(f - 4) + side * (T.w(f - 4) + 3)), fx = side < 0 ? h.x0 + 2 : h.x1 - 2;
+    // 가지는 줄기 가장자리에서 시작 (굴 속을 메우지 않게), 문은 가지를 그린 뒤 판다
+    const pts = walkLimb(K, e - side * 3, f + r0, side, L.len, L.rise, r0, o.s + L.h * 31 + side);
+    K.air(Math.min(fx, e), f - 9, Math.max(fx, e), f), K.wall(Math.min(fx, e), f - 9, Math.max(fx, e), f, "inwood");
+    const [ex, ey] = pts[5];
+    if (L.hut) {
+      const hx0 = Math.round(ex - L.hut / 2), ty = surf(K, Math.round(ex), Math.round(ey - 8));
+      hut(K, hx0, hx0 + L.hut, ty, 11 + (L.h % 3), L.roof ?? "peak", { posts: 3 });
+      K.tag(hx0 + 2, ty - 10, hx0 + L.hut - 2, ty, L.h % 2 ? "treasure" : "arena");
+      P_(K, hx0 + 6, ty, ["p_crates", "p_nest", "p_shelf", "p_urn", "p_hive"][(o.s + L.h) % 5]);
+    }
+    const vx = Math.round(pts[6][0] - side * 3);
+    tipVine(K, vx, surf(K, vx, Math.round(pts[6][1] - 8)));
+  }
+  // 수관 마루 (줄기 끝 갈래목) + 맨 위 굴에서 사다리
+  const top = H[H.length - 1], lx = Math.round(top.cx), dy = o.top + 4;
+  K.air(lx - 14, dy - 9, lx + 15, dy), K.wall(lx - 14, dy - 9, lx + 15, dy, "inwood"), DECKS.push([lx - 14, lx + 15, dy]), K.plank(lx - 14, lx + 15, dy), K.air(lx - 1, dy, lx + 2, top.y0 + 2), K.wall(lx - 1, dy, lx + 2, top.y0 + 2, "inwood"), K.ladder(lx, dy, top.y1);
+  K.tag(lx - 14, dy - 12, lx + 15, dy, "arena");
+  // 굴 역할 · 소품
+  H.forEach((h, k) => {
+    K.tag(h.x0, h.y0 + 2, h.x1, h.y1, k % 4 === 1 ? "treasure" : k % 4 === 3 ? "rest" : "arena");
+    P_(K, Math.round(h.cx + (k % 2 ? 6 : -6)), h.y1, ["p_shroom", "p_nest", "p_log", "p_urn", "p_hive", "p_fern"][(o.s + k) % 6], { acc: 0x60f0c0 });
+  });
+  K.struct(o.name, "전투·보물고·오르는 길", Math.round(o.x - 160), o.top - 120, Math.round(o.x + 160), o.base);
+  return { T, H };
+}
+let G3 = null;
+function giants(K) {
+  // 1 넓은 참나무 (서, 길 위)
+  const G1 = giant(K, {
+    name: "넓은 참나무", x: 150, base: 1000, top: 712, wb: 30, wt: 15, amp: 10, s: 501, roots: 5,
+    lv: [[958, 1000, 0, 20], [914, 948, -10, 12], [914, 948, 12, 10], [864, 902, 8, 13], [818, 852, -8, 12], [770, 808, 6, 12], [726, 760, -4, 9]],
+    limbs: [{ h: 1, side: -1, len: 96, rise: 20, hut: 26, roof: "round" }, { h: 3, side: 1, len: 104, rise: 26, hut: 24, roof: "leaf" }, { h: 4, side: -1, len: 80, rise: 16 }, { h: 5, side: 1, len: 70, rise: 22, hut: 22 }],
+    lead: [[-2.7, 56, 8], [-2.1, 40, 7], [-1.0, 40, 7], [-0.45, 56, 8]],
+  });
+  // 2 반얀나무 (동, 길 위): 굵고 낮다, 가지가 길게 옆으로, 가지에서 공기뿌리
+  const G2 = giant(K, {
+    name: "반얀나무", x: 860, base: 1000, top: 690, wb: 38, wt: 24, amp: 8, s: 502, roots: 6,
+    lv: [[952, 1000, 0, 28], [902, 942, 14, 14], [902, 942, -14, 12], [852, 892, -6, 16], [800, 842, 10, 14], [748, 790, -4, 15], [706, 740, 4, 11]],
+    limbs: [{ h: 1, side: 1, len: 110, rise: 8, hut: 26, roof: "peak", r0: 7 }, { h: 3, side: -1, len: 130, rise: 10, r0: 7 }, { h: 4, side: 1, len: 100, rise: 18, hut: 24, roof: "round" }, { h: 5, side: -1, len: 90, rise: 24, hut: 22, roof: "leaf" }],
+    lead: [[-2.75, 66, 9], [-2.15, 44, 8], [-1.0, 44, 8], [-0.4, 66, 9]],
+  });
+  for (const [x, y] of [[742, 900], [770, 896], [956, 928], [988, 930], [800, 846]]) {
+    for (let j = 0; j < 990 - y; j++) K.wall(x - 1 + Math.round(Math.sin(j * 0.07 + x) * 1.5), y + j, x + 2 + Math.round(Math.sin(j * 0.07 + x) * 1.5), y + j + 1, "wood");
+    K.vine(x - 1, x + 3, y, 996);
+  }
+  // 3 속 빈 고목 (가운데, 넓은 받침 섬)
+  baseIsle(K, 340, 664, 790, 76, 503, ["burrow", "hall", "ring"], 0, [394]);
+  G3 = giant(K, {
+    name: "속 빈 고목", x: 500, base: 790, top: 450, wb: 36, wt: 20, amp: 12, s: 504, roots: 6,
+    lv: [[740, 790, 0, 24], [690, 730, -14, 13], [690, 730, 14, 12], [638, 680, 4, 18], [586, 628, -10, 14], [534, 576, 10, 15], [534, 576, -14, 9], [488, 524, 0, 12]],
+    limbs: [{ h: 1, side: -1, len: 120, rise: 14, hut: 26, roof: "leaf" }, { h: 2, side: 1, len: 120, rise: 20 }, { h: 3, side: -1, len: 100, rise: 24, hut: 24, roof: "peak" }, { h: 4, side: 1, len: 110, rise: 28, hut: 26, roof: "round" }, { h: 6, side: -1, len: 80, rise: 18 }],
+    lead: [[-2.55, 84, 10], [-1.95, 66, 9], [-1.2, 66, 9], [-0.6, 84, 10]],
+  });
+  // 4 우산 소나무 (서 위): 곧고 높다, 꼭대기만 옆으로 퍼진 납작한 갈래
+  baseIsle(K, 40, 316, 560, 64, 505, ["cellar", "twin"], 0, [Math.round(G1.H[G1.H.length - 1].cx) + 1]);
+  giant(K, {
+    name: "우산 소나무", x: 176, base: 560, top: 280, wb: 18, wt: 9, amp: 6, s: 506, roots: 4,
+    lv: [[516, 560, 0, 12], [470, 508, 4, 8], [424, 462, -4, 8], [378, 416, 4, 8], [334, 370, -3, 7], [296, 326, 0, 6]],
+    limbs: [{ h: 2, side: 1, len: 70, rise: 6, hut: 22, roof: "round", r0: 5 }, { h: 4, side: -1, len: 80, rise: 10, r0: 5 }, { h: 5, side: 1, len: 100, rise: 16, hut: 24, roof: "peak", r0: 5 }],
+    lead: [[-2.95, 76, 6], [-2.5, 50, 5], [-0.65, 50, 5], [-0.2, 76, 6]],
+  });
+  // 5 갈래 줄기 나무 (동 위): 낮은 데서 두 갈래로 갈라져 각자 수관
+  baseIsle(K, 700, 1010, 520, 66, 507, ["gallery", "nest", "pool"], 0, [Math.round(G2.H[G2.H.length - 1].cx) + 1]);
+  const T5 = giant(K, {
+    name: "갈래 줄기 나무", x: 856, base: 520, top: 410, wb: 24, wt: 16, amp: 6, s: 508, roots: 5,
+    lv: [[476, 520, 0, 16], [436, 468, 0, 11]],
+    limbs: [{ h: 0, side: -1, len: 100, rise: 18, hut: 24, roof: "leaf" }, { h: 1, side: 1, len: 90, rise: 22, hut: 22 }],
+    lead: [[-2.15, 96, 11], [-0.95, 100, 11]],
+  });
+  void T5;
 }
 
-// ═══ 죽은 고목 (속 빈 거미 굴) ═══
-function deadTree(K) {
-  nat(K, 24, 150, jag(PL([[24, 476], [60, 468], [120, 470], [150, 478]]), 0.5, 70), jag(PL([[24, 484], [50, 510], [90, 524], [130, 508], [150, 484]]), 1.3, 71), { fingers: 3 });
-  for (const [x, l, s] of [[50, 40, 14], [96, 60, 15]]) root(K, x, 516, l, s, x === 96);
+// ═══ 섬 하나: 흙 몸통 · 속 굴방 · 나무 · 잎 ═══
+function isle(K, [x0, x1, t, d, lay, tree, tp], i) {
+  const w = x1 - x0, s = 100 + i * 7, mid = (x0 + x1) / 2, lob = (rnd(i, 3) - 0.5) * w * 0.3;
+  nat(K, x0, x1, jag(PL([[x0, t + 4], [x0 + w * 0.2, t], [x1 - w * 0.2, t], [x1, t + 4]]), 0.6, s), jag(PL([[x0, t + 8], [x0 + w * 0.18, t + d * 0.6], [mid + lob, t + d], [x1 - w * 0.2, t + d * 0.7], [x1, t + 8]]), 1.3, s + 1), { sh: 4, roll: 0.8, fingers: 2 + (i % 3) });
+  for (let k = 0; k < 2 + (i % 2); k++) {
+    const rx = Math.round(x0 + w * (0.25 + 0.5 * rnd(k, s))), ry = Math.round(t + d * 0.55);
+    root(K, rx, ry, 18 + Math.round(rnd(k + 9, s) * 34), s + k, 0);
+  }
+  const R = rooms(K, x0, x1, t, d, lay, s);
+  // 윗면 → 맨 위 방 뚜껑 (나무 자리를 피해서)
+  const tx = Math.round(x0 + w * tp), top = R.slice().sort((a, b) => a.y1 - b.y1)[0];
+  if (top) {
+    let hx = Math.abs(top.x0 + 4 - tx) > 10 ? top.x0 + 4 : top.x1 - 5;
+    climb(K, hx, t, top.y1, i % 3 === 0 ? "vine" : i % 3 === 1 ? "ladder" : "rope");
+  }
+  // 나무
   mark(true);
-  trunk(K, 86, 470, 300, 18, 9, 5);
-  K.mat(60, 300, 112, 470, "stem");
-  limb(K, [[96, 360], [126, 340], [150, 330]], 4, 2), limb(K, [[76, 400], [50, 384], [30, 380]], 4, 2);
+  const tr = plant(K, tree, tx, t, s, i);
   mark(false);
-  room(K, 74, 420, 100, 470, "wood"), K.air(64, 462, 74, 470), K.air(100, 462, 110, 470);
-  dropTo(K, 70, 470, "vine");
-  room(K, 76, 356, 98, 410, "wood"), climb(K, 80, 410, 420, "rope", "wood"), K.rope(80, 407, 470);
-  K.crumble(78, 96, 384);
-  climb(K, 92, 300, 356, "ladder", "wood"), K.ladder(92, 300, 410);
-  K.fall(84, 88, 360, 410);
-  P_(K, 86, 470, "p_web", { hang: 0 }), P_(K, 90, 410, "p_bones"), P_(K, 82, 384, "p_nest");
-  K.tag(74, 420, 100, 470, "arena"), K.tag(76, 356, 98, 410, "treasure");
-  rope_bridge(K, 150, 182, 474, 6, 3, 1);
-  K.struct("죽은 고목", "전투·보물고", 24, 296, 150, 524);
+  // 역할: 방마다 번갈아, 윗면 싸움터
+  R.forEach((r, k) => K.tag(r.x0, r.y0, r.x1, r.y1, (i + k) % 3 === 0 ? "treasure" : (i + k) % 3 === 1 ? "arena" : k ? "rest" : "arena"));
+  K.tag(x0 + 6, t - 12, x1 - 6, t, tree === "elder" ? "rest" : "arena", tree === "elder" ? { safe: 1 } : undefined);
+  const LN = { twin: "쌍굴", stack: "겹굴", hall: "뿌리 기둥 홀", pool: "샘 굴", burrow: "굴토끼 굴", cellar: "움막 굴", ring: "고리 굴", nest: "둥지 굴", gallery: "긴 회랑", elder: "고목 사당" };
+  const TN = { oak: "참나무", birch: "자작나무", pine: "소나무", willow: "버드나무", dead: "고사목", shroom: "큰 버섯", bush: "덤불", twin: "쌍둥이 나무", stump: "속 빈 그루터기", elder: "고목" };
+  K.struct(`${TN[tree]} ${LN[lay]} 섬`, "전투·보물고", x0, t - 60, x1, t + d);
+  return { x0, x1, t, d, R, i, tree, tx, tr };
 }
 
-// ═══ 어미새 둥지 섬 (꼭대기 서) ═══
-function nestIsle(K) {
-  nat(K, 30, 200, jag(PL([[30, 116], [70, 108], [160, 110], [200, 118]]), 0.5, 80), jag(PL([[30, 124], [56, 156], [110, 176], [170, 156], [200, 124]]), 1.3, 81), { fingers: 3 });
-  for (const [x, l, s] of [[50, 90, 16], [150, 60, 17]]) root(K, x, 168, l, s, 0);
-  // 큰 둥지: 가지 엮은 테 (나무) — 안이 정예 싸움터
-  for (let x = 50; x < 180; x++) {
-    const d = Math.abs(x - 115) / 65, h = Math.round(10 * (1 - d * d) * 0 + (d > 0.8 ? (d - 0.8) * 40 : 0));
-    h > 0 && wood(K, x, 108 - h, x + 1, 108);
+// ── 속 짜임 아홉 가지 (방 크기·자리는 섬 폭·깊이를 따른다) ──
+function rooms(K, x0, x1, t, d, lay, s) {
+  const w = x1 - x0, R = [], add = (a, b, c, e, k) => (R.push({ x0: Math.round(a), y0: Math.round(b), x1: Math.round(c), y1: Math.round(e), k }), R[R.length - 1]);
+  const P = (r, k, o) => P_(K, Math.round((r.x0 + r.x1) / 2 + (o ?? 0)), r.y1, k);
+  if (lay === "twin") {
+    const a = add(x0 + 8, t + 5, x0 + w * 0.47, t + 17), b = add(x0 + w * 0.53, t + 8, x1 - 8, t + 20);
+    cave(K, a.x0, a.y0, a.x1, a.y1, s), cave(K, b.x0, b.y0, b.x1, b.y1, s + 1);
+    K.air(a.x1 - 3, a.y1 - 7, b.x0 + 3, a.y1), K.rock(a.x1 - 3, a.y1, b.x0 + 3, b.y1 + 1);
+    P(a, "p_shroom"), P(b, "p_log");
+  } else if (lay === "stack") {
+    const a = add(x0 + 8, t + 5, x1 - w * 0.36, t + 16), b = add(x0 + w * 0.34, t + 21, x1 - 8, t + 32);
+    cave(K, a.x0, a.y0, a.x1, a.y1, s), cave(K, b.x0, b.y0, b.x1, b.y1, s + 1);
+    climb(K, Math.round(Math.max(a.x0, b.x0) + 4), a.y1, b.y0, "rope"), hang(K, Math.round(Math.max(a.x0, b.x0) + 4), a.y1, b.y1, "rope");
+    P(a, "p_nest"), P(b, "p_urn");
+  } else if (lay === "hall") {
+    // 뿌리 기둥 홀: 넓은 방에 뿌리 기둥(뒷벽)과 다락 판자
+    const a = add(x0 + 6, t + 5, x1 - 6, t + 22);
+    room(K, a.x0, a.y0, a.x1, a.y1);
+    for (let x = a.x0 + 10; x < a.x1 - 8; x += 13 + Math.round(rnd(x, s) * 6)) K.wall(x, a.y0, x + 2, a.y1, "wood");
+    K.plank(a.x0, a.x0 + Math.round(w * 0.3), a.y0 + 9), K.ladder(a.x0 + Math.round(w * 0.3) - 2, a.y0 + 9, a.y1);
+    P(a, "p_crates", -w * 0.25), P(a, "p_shroom", w * 0.2);
+  } else if (lay === "pool") {
+    // 샘 굴: 바닥 가운데 웅덩이, 왼쪽 위 작은 굴
+    const a = add(x0 + 8, t + 7, x1 - 8, t + 21), b = add(x0 + 6, t + 3, x0 + w * 0.32, t + 9);
+    cave(K, a.x0, a.y0, a.x1, a.y1, s), room(K, b.x0, b.y0, b.x1, b.y1);
+    const m = Math.round((a.x0 + a.x1) / 2);
+    K.air(m - 9, a.y1, m + 9, a.y1 + 4), K.water(m - 9, a.y1 - 2, m + 9, a.y1 + 4);
+    climb(K, b.x1 - 3, b.y1, a.y0 + 2, "vine"), hang(K, b.x1 - 3, b.y1, a.y1, "vine");
+    P(a, "p_fern", -w * 0.3), P(b, "p_nest");
+  } else if (lay === "burrow") {
+    // 굴토끼 굴: 작은 굴 셋을 비탈 굴로
+    const a = add(x0 + 8, t + 5, x0 + w * 0.36, t + 13), b = add(x0 + w * 0.6, t + 9, x1 - 8, t + 17), c = add(x0 + w * 0.3, t + 21, x0 + w * 0.66, t + 29);
+    for (const [r, k] of [[a, 0], [b, 1], [c, 2]]) cave(K, r.x0, r.y0, r.x1, r.y1, s + k);
+    K.wiggle([[a.x1 - 2, a.y1], [b.x0 + 2, b.y1]], 6, 0.5), K.wiggle([[b.x0 + 3, b.y1], [c.x1 - 2, c.y1]], 6, 0.4);
+    P(a, "p_log"), P(b, "p_nest"), P(c, "p_shroom");
+  } else if (lay === "cellar") {
+    // 움막 + 굴: 나무 벽 움막(위) 밑에 둥근 굴
+    const a = add(x0 + 10, t + 5, x0 + w * 0.56, t + 15, "wood"), b = add(x0 + w * 0.3, t + 20, x1 - 10, t + 31);
+    room(K, a.x0, a.y0, a.x1, a.y1, "wood"), cave(K, b.x0, b.y0, b.x1, b.y1, s);
+    climb(K, a.x1 - 4, a.y1, b.y0 + 2, "ladder"), hang(K, a.x1 - 4, a.y1, b.y1, "ladder");
+    P(a, "p_shelf"), P(a, "p_crates", 6), P(b, "p_urn");
+  } else if (lay === "ring") {
+    // 고리 굴: 높이가 다른 두 굴을 윗굴·아랫굴 둘로 이어 빙 돈다
+    const a = add(x0 + 8, t + 6, x0 + w * 0.4, t + 18), b = add(x1 - w * 0.4, t + 14, x1 - 8, t + 26);
+    cave(K, a.x0, a.y0, a.x1, a.y1, s), cave(K, b.x0, b.y0, b.x1, b.y1, s + 1);
+    K.wiggle([[a.x1 - 2, a.y1], [b.x0 + 2, b.y1]], 6, 0.3), K.wiggle([[a.x1 - 3, a.y1 - 8], [b.x0 + 3, b.y0 + 2]], 5, 0.2);
+    P(a, "p_crates"), P(b, "p_nest");
+  } else if (lay === "nest") {
+    // 둥지 굴: 큰 둥근 굴, 벽에 턱
+    const a = add(x0 + w * 0.15, t + 4, x1 - w * 0.15, t + 26);
+    cave(K, a.x0, a.y0, a.x1, a.y1, s);
+    K.rock(a.x0 + 2, a.y0 + 10, a.x0 + 10, a.y0 + 12), K.rock(a.x1 - 10, a.y0 + 14, a.x1 - 2, a.y0 + 16);
+    P_(K, Math.round((a.x0 + a.x1) / 2), a.y1, "p_nest", { sc: 1.6 }), P(a, "p_bones", 8);
+  } else if (lay === "gallery") {
+    // 긴 회랑: 섬을 가로지르는 낮은 굴 + 위로 패인 굴감 둘
+    const a = add(x0 + 6, t + 14, x1 - 6, t + 22), b = add(x0 + w * 0.2, t + 5, x0 + w * 0.36, t + 14), c = add(x1 - w * 0.38, t + 6, x1 - w * 0.2, t + 14);
+    K.wiggle([[a.x0, a.y1], [a.x1, a.y1]], 8, 1), cave(K, b.x0, b.y0, b.x1, b.y1 + 1, s), cave(K, c.x0, c.y0, c.x1, c.y1 + 1, s + 1);
+    P(a, "p_log", -w * 0.3), P(a, "p_fern", w * 0.3), P(b, "p_urn"), P(c, "p_nest");
+  } else if (lay === "elder") {
+    // 고목 섬: 사당 굴 (회복 샘) · 아래 보물 굴
+    const a = add(x0 + 12, t + 6, x1 - 12, t + 20), b = add(x0 + w * 0.3, t + 26, x1 - w * 0.3, t + 36);
+    cave(K, a.x0, a.y0, a.x1, a.y1, s), cave(K, b.x0, b.y0, b.x1, b.y1, s + 1);
+    climb(K, Math.round(b.x0 + 4), a.y1, b.y0 + 2, "ladder"), hang(K, Math.round(b.x0 + 4), a.y1, b.y1, "ladder");
+    P_(K, Math.round((a.x0 + a.x1) / 2), a.y1, "p_font", { sc: 1.3 }), K.heal(Math.round((a.x0 + a.x1) / 2) - 5, Math.round((a.x0 + a.x1) / 2) + 5, a.y1 - 4, a.y1), P(b, "p_altar");
   }
-  room(K, 60, 124, 170, 140), climb(K, 160, 108, 140, "vine");
-  dropTo(K, 84, 140, "vine");
-  P_(K, 115, 108, "p_nest", { sc: 3 }), P_(K, 90, 140, "p_bones"), P_(K, 140, 140, "p_nest");
-  K.tag(56, 90, 176, 108, "arena", { big: 1, elite: 1 }), K.tag(60, 124, 170, 140, "treasure");
-  K.struct("어미새 둥지 섬", "정예·보물고", 30, 84, 200, 176);
+  return R;
 }
 
-// ═══ 반딧불 이끼 연못 섬 (꼭대기 동) ═══
-function mossPond(K) {
-  nat(K, 860, 1012, jag(PL([[860, 150], [890, 142], [980, 142], [1012, 152]]), 0.5, 90), jag(PL([[860, 158], [884, 190], [936, 208], [990, 190], [1012, 158]]), 1.3, 91), { fingers: 3 });
-  for (const [x, l, s] of [[922, 70, 18], [970, 50, 19]]) root(K, x, 200, l, s, x === 922);
-  K.air(890, 138, 960, 150), K.water(890, 142, 960, 150);
-  room(K, 880, 160, 990, 176), climb(K, 980, 142, 176, "ladder");
-  dropTo(K, 950, 176, "vine");
-  P_(K, 900, 176, "p_shroom", { acc: 0x60f0c0 }), P_(K, 930, 176, "p_shroom", { acc: 0x80e0ff }), P_(K, 960, 176, "p_moss", { hang: 0 }), P_(K, 970, 142, "p_fern"), P_(K, 996, 142, "p_flowers");
-  K.tag(880, 160, 990, 176, "treasure"), K.tag(870, 128, 1004, 142, "rest");
-  K.struct("반딧불 이끼 연못 섬", "쉼터·보물고", 860, 128, 1012, 208);
+// ── 나무 (섬 윗면 t, 자리 x) — 위 섬에 닿지 않게 키를 줄인다 ──
+function plant(K, type, x, t, s, i) {
+  let room_ = 200;
+  for (let y = t - 4; y > t - 200 && y > 2; y--) if ([-34, -20, -8, 0, 8, 20, 34].some((d) => K.get(x + d, y) === 1)) ((room_ = t - y), (y = 0));
+  const H = (want) => Math.max(12, Math.min(want, room_ - 40));
+  const r = (k) => rnd(i * 13 + k, s);
+  if (type === "oak" || type === "elder") {
+    const h = H(type === "elder" ? 64 : 40 + Math.round(r(1) * 18)), T = trunk(K, x, t + 1, t - h, type === "elder" ? 9 : 6, type === "elder" ? 4 : 3, 2, s), top = t - h;
+    const n = type === "elder" ? 5 : 3 + (i % 2);
+    for (let k = 0; k < n; k++) {
+      const side = k % 2 ? 1 : -1, y0 = top + 4 + Math.round(h * 0.15 * k), len = 14 + r(k + 2) * 16 + (type === "elder" ? 12 : 0);
+      const p2 = [T.c(y0) + side * len, y0 - 6 - r(k + 5) * 8];
+      bough(K, [T.c(y0), y0], [T.c(y0) + side * len * 0.5, y0 - 2], p2, 3, 1.5);
+      leaves(K, p2[0], p2[1] - 4, 14 + r(k) * 8, 9, s + k);
+    }
+    leaves(K, T.c(top), top - 4, 22 + h * 0.3, 14, s + 9), leaves(K, T.c(top) + 10, top + 8, 18, 10, s + 10);
+    // 속 빈 줄기 방 (큰 나무만)
+    if (h >= 44) {
+      const c = Math.round(T.c(t - 8)), hw = Math.max(3, Math.round(T.w(t - 8)) - 2);
+      room(K, c - hw, t - 14, c + hw, t, "wood"), K.air(c - hw - 4, t - 8, c - hw, t), K.air(c + hw, t - 8, c + hw + 4, t);
+      P_(K, c, t, "p_shelf"), K.tag(c - hw, t - 14, c + hw, t, "treasure");
+    }
+    h < 44 && baseDoor(K, T, t);
+    if (type === "elder") {
+      const pk = Math.round(T.c(top));
+      K.plank(pk - 8, pk + 8, top - 2), climb(K, pk, top - 2, t - 14, "ladder", "wood"), hang(K, pk, top - 2, t, "ladder");
+      K.peak(pk, top - 2);
+    }
+    return { top: t - h };
+  }
+  if (type === "birch") {
+    const h = H(36 + Math.round(r(1) * 16));
+    for (let k = 0; k < 2; k++) {
+      const bx = x + (k ? 7 : -3), hh = h - k * 8;
+      // 흰 줄기 + 검은 띠, 밑동은 지나다닌다
+      K.rock(bx - 1, t - hh, bx + 2, t), K.mat(bx - 1, t - hh, bx + 2, t, "stem");
+      for (let y = t - hh + 4; y < t - 10; y += 7 + ((bx + y) % 4)) K.mat(bx - 1, y, bx + 2, y + 1, "wood");
+      K.air(bx - 1, t - 8, bx + 2, t), K.wall(bx - 1, t - 8, bx + 2, t, "stem");
+      bough(K, [bx, t - hh * 0.6], [bx + (k ? 6 : -6), t - hh * 0.7], [bx + (k ? 11 : -11), t - hh * 0.8], 1.4, 0.8);
+      leaves(K, bx, t - hh - 2, 12, 10, s + k);
+    }
+    return { top: t - h };
+  }
+  if (type === "pine") {
+    const h = H(44 + Math.round(r(1) * 20)), T = trunk(K, x, t + 1, t - h, 3, 1, 1, s);
+    baseDoor(K, T, t);
+    for (let k = 0, y = t - 8; y > t - h + 4; k++) {
+      const u = (t - y) / h, len = (1 - u) * 22 + 4 + r(k) * 4;
+      bough(K, [T.c(y), y], [T.c(y) - len * 0.5, y - 1], [T.c(y) - len, y + 3], 1.5, 1), bough(K, [T.c(y), y], [T.c(y) + len * 0.5, y - 1], [T.c(y) + len * 0.9, y + 3], 1.5, 1);
+      leaves(K, T.c(y), y - 2, len + 2, 5, s + k, 1);
+      y -= 8 + Math.round(r(k + 30) * 5);
+    }
+    leaves(K, T.c(t - h), t - h - 2, 6, 6, s + 77, 1);
+    return { top: t - h };
+  }
+  if (type === "willow") {
+    const h = H(34 + Math.round(r(1) * 12)), T = trunk(K, x, t + 1, t - h, 5, 3, 2, s), top = t - h;
+    baseDoor(K, T, t);
+    for (const [dx, dy] of [[-26, 10], [-12, 16], [14, 14], [28, 8]]) {
+      const p0 = [T.c(top + 2), top + 2], p1 = [x + dx * 0.6, top - 8], p2 = [x + dx, top + dy];
+      bough(K, p0, p1, p2, 2.5, 1.2);
+      for (const tt of [0.7, 0.9]) {
+        const [vx, vy] = qpt(p0, p1, p2, tt);
+        K.vine(Math.round(vx) - 1, Math.round(vx) + 2, Math.round(vy) + 1, Math.round(vy) + 16 + ((Math.round(vx) * 7) % 14));
+      }
+    }
+    leaves(K, x, top - 4, 34, 12, s), leaves(K, x - 22, top + 4, 16, 9, s + 1), leaves(K, x + 22, top + 4, 16, 9, s + 2);
+    return { top };
+  }
+  if (type === "dead") {
+    const h = H(30 + Math.round(r(1) * 14)), T = trunk(K, x, t + 1, t - h, 4, 2, 2, s), top = t - h;
+    baseDoor(K, T, t);
+    for (const [dx, dy, yy] of [[-14, -8, 0.4], [12, -12, 0.6], [-8, -14, 0.85]]) {
+      const y0 = Math.round(t - h * yy);
+      bough(K, [T.c(y0), y0], [T.c(y0) + dx * 0.5, y0 + dy * 0.3], [T.c(y0) + dx, y0 + dy], 2, 1);
+    }
+    K.mat(x - 20, top - 16, x + 20, t + 1, "stem");
+    P_(K, x + 10, t, "p_bones");
+    return { top };
+  }
+  if (type === "shroom") {
+    for (const [dx, h, rr] of [[0, 26, 13], [-14, 12, 7], [15, 16, 8]]) {
+      const hh = H(h), mx = x + dx;
+      K.wall(mx - 2, t - hh, mx + 3, t, "stem");
+      const top = t - hh;
+      for (let y = top - Math.round(rr * 0.55); y < top + 3; y++) {
+        const hw = Math.round(rr * Math.sqrt(Math.max(0, 1 - ((y - top + 1) / (rr * 0.6)) ** 2)));
+        hw > 0 && (K.rock(mx - hw, y, mx + hw + 1, y + 1), K.mat(mx - hw, y, mx + hw + 1, y + 1, "cap"));
+      }
+      K.bounce(mx - Math.round(rr * 0.4), mx + Math.round(rr * 0.4) + 1, top - Math.round(rr * 0.55));
+    }
+    return { top: t - 30 };
+  }
+  if (type === "bush") {
+    leaves(K, x, t - 6, 20, 8, s), leaves(K, x - 16, t - 4, 12, 6, s + 1), leaves(K, x + 16, t - 4, 12, 6, s + 2);
+    P_(K, x - 8, t, "p_flowers"), P_(K, x + 10, t, "p_flowers");
+    return { top: t - 12 };
+  }
+  if (type === "twin") {
+    for (const [dx, hh] of [[-10, 30], [10, 22]]) {
+      const h = H(hh), T = trunk(K, x + dx, t + 1, t - h, 3, 2, 1, s + dx);
+      baseDoor(K, T, t);
+      bough(K, [T.c(t - h + 4), t - h + 4], [x + dx + Math.sign(dx) * 6, t - h], [x + dx + Math.sign(dx) * 12, t - h - 4], 2, 1);
+      leaves(K, x + dx, t - h - 2, 16, 10, s + dx);
+    }
+    return { top: t - 30 };
+  }
+  if (type === "stump") {
+    // 속 빈 그루터기: 넓은 그루터기 안에 방, 위가 뚫려 있다
+    const T = trunk(K, x, t + 1, t - 18, 14, 12, 1, s);
+    room(K, x - 10, t - 16, x + 10, t, "wood"), K.air(x - 16, t - 8, x - 10, t), K.air(x + 10, t - 8, x + 16, t), K.air(x - 6, t - 20, x + 6, t - 16);
+    for (let k = 0; k < 6; k++) wood(K, x - 13 + k * 5, t - 20 - (k % 2) * 2, x - 11 + k * 5, t - 18);
+    P_(K, x, t, "p_nest"), K.tag(x - 10, t - 16, x + 10, t, "treasure");
+    return { top: t - 20 };
+  }
+  return { top: t };
+}
+
+// ═══ 덩굴로 아래 섬까지 (맨 아래 방에서, 가장 가까이 닿는 자리) ═══
+function linkDown(K, I, i) {
+  let best = null;
+  for (let x = I.x0 + 8; x < I.x1 - 8; x += 3) {
+    if (Math.abs(x - I.tx) < 10) continue;
+    const d = islandVine(K, x, surf(K, x, I.t), 260, true);
+    d > 0 && (!best || d < best[1]) && (best = [x, d]);
+  }
+  best && islandVine(K, best[0], surf(K, best[0], I.t), 260);
+}
+// ═══ 이웃 섬 잇기 (같은 층, 높이 차가 크지 않으면 통나무 다리 / 판자 출렁다리) ═══
+function linkSide(K, B) {
+  for (let a = 0; a < B.length; a++)
+    for (let b = 0; b < B.length; b++) {
+      const A = B[a], C = B[b];
+      if (C.x0 <= A.x1 || C.x0 - A.x1 > 64 || Math.abs(C.t - A.t) > 60) continue;
+      if (B.some((D) => D !== A && D !== C && D.x0 > A.x1 - 4 && D.x1 < C.x0 + 4 && Math.abs(D.t - (A.t + C.t) / 2) < 50)) continue;
+      const xa = A.x1 - 3, xb = C.x0 + 3, ya = surf(K, xa, A.t), yb = surf(K, xb, C.t), gap = xb - xa, dt = Math.abs(ya - yb);
+      if (dt <= gap * 0.8) {
+        if ((a + b) % 2 && dt <= 4) rope_bridge(K, xa, xb, Math.min(ya, yb), 3 + ((a * 3) % 4), 4, a % 3);
+        else bough(K, [xa - 2, ya + 2], [(xa + xb) / 2, (ya + yb) / 2 + 2], [xb + 2, yb + 2], 2.4, 2.4);
+      } else {
+        // 높이 차가 크면: 높은 섬 끝에서 덩굴을 늘어뜨리고, 낮은 섬에서 그 밑까지 통나무
+        const hi = ya < yb ? { x: xa + 3, y: ya } : { x: xb - 3, y: yb }, lo = ya < yb ? { x: xb + 2, y: yb } : { x: xa - 2, y: ya };
+        bough(K, [lo.x, lo.y + 2], [(lo.x + hi.x) / 2, lo.y + 2], [hi.x, lo.y + 2], 2.4, 2.4);
+        K.vine(hi.x - 1, hi.x + 2, hi.y - 2, lo.y);
+      }
+    }
+}
+
+// ═══ 뿌리섬 길 (줄 1000): 양 끝은 거대 나무가 선 넓은 섬, 가운데는 작은 섬 넷 + 그네 둘 ═══
+function road(K) {
+  const F = 1000;
+  // 서쪽 넓은 섬 (출구 · 넓은 참나무)
+  baseIsle(K, 0, 306, F, 48, 401, ["pool", "cellar", "burrow"], 1);
+  P_(K, 20, F, "p_font"), K.heal(16, 24, F - 4, F), K.tag(2, F - 14, 50, F, "rest", { safe: 1 });
+  bough(K, [304, F + 2], [318, F + 3], [332, F + 2], 2.4, 2.4);
+  const isl = (x0, x1, bot, s) => nat(K, x0, x1, () => F, jag(PL(bot), 1.3, s), { flat: 1, fingers: 3 });
+  isl(330, 436, [[330, 1006], [350, 1030], [390, 1044], [420, 1030], [436, 1006]], 3);
+  cave(K, 342, 1008, 388, 1022, 3), climb(K, 350, F, 1012, "ladder"), cave(K, 394, 1010, 428, 1022, 4), K.air(386, 1014, 396, 1020);
+  P_(K, 360, 1022, "p_shroom", { acc: 0x40e0c0 }), P_(K, 410, 1022, "p_log"), K.tag(342, 1008, 388, 1022, "treasure"), K.tag(394, 1010, 428, 1022, "arena");
+  K.swing(446, F - 40, 34);
+  mark(true);
+  const Ta = trunk2(K, 420, F + 1, F - 34, 5, 3, 3, 33);
+  grow(K, Ta.c(F - 30), F - 30, -0.5, 30, 3, 2, 33);
+  K.air(Math.round(Ta.c(F - 4)) - 9, F - 9, Math.round(Ta.c(F - 4)) + 10, F), K.wall(Math.round(Ta.c(F - 4)) - 8, F - 9, Math.round(Ta.c(F - 4)) + 9, F, "inwood");
+  mark(false);
+  isl(470, 560, [[470, 1006], [490, 1032], [520, 1044], [550, 1030], [560, 1006]], 4);
+  cave(K, 480, 1008, 520, 1020, 5), climb(K, 512, F, 1012, "rope"), cave(K, 524, 1012, 552, 1024, 6), K.air(518, 1016, 526, 1020);
+  P_(K, 496, 1020, "p_urn"), P_(K, 540, 1024, "p_nest"), K.tag(480, 1008, 520, 1020, "arena"), K.tag(524, 1012, 552, 1024, "treasure");
+  bough(K, [558, F + 2], [572, F + 3], [588, F + 2], 2.4, 2.4);
+  isl(586, 680, [[586, 1006], [606, 1032], [640, 1046], [670, 1030], [680, 1006]], 5);
+  cave(K, 598, 1008, 640, 1022, 7), climb(K, 606, F, 1012, "ladder"), room(K, 646, 1010, 674, 1022, "wood"), K.air(638, 1014, 648, 1020);
+  P_(K, 616, 1022, "p_shroom", { acc: 0xffa040 }), P_(K, 660, 1022, "p_crates"), K.tag(598, 1008, 640, 1022, "arena"), K.tag(646, 1010, 674, 1022, "treasure");
+  K.swing(690, F - 38, 32);
+  mark(true);
+  const Tb = trunk2(K, 664, F + 1, F - 30, 5, 3, 3, 44);
+  grow(K, Tb.c(F - 26), F - 26, -0.4, 28, 3, 2, 44);
+  K.air(Math.round(Tb.c(F - 4)) - 9, F - 9, Math.round(Tb.c(F - 4)) + 10, F), K.wall(Math.round(Tb.c(F - 4)) - 8, F - 9, Math.round(Tb.c(F - 4)) + 9, F, "inwood");
+  mark(false);
+  // 동쪽 넓은 섬 (출구 · 반얀나무)
+  baseIsle(K, 714, 1024, F, 50, 402, ["twin", "hall", "stack"], 1);
+  P_(K, 1004, F, "p_font"), K.heal(1000, 1008, F - 4, F), K.tag(976, F - 14, 1022, F, "rest", { safe: 1 });
+  K.struct("뿌리섬 길", "거점·출구", 0, 960, 1024, 1050);
 }

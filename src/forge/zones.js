@@ -72,6 +72,10 @@ export const DANGER = [
 ];
 export const HUB_ID = "hub";
 export const ZONES = []; // 줄 위 순서 (던전·구역 모두)
+// 공사 중 (파랑 지역 다시 짓기 중, 아직 확인받지 않은 곳): 들어갈 수 없고 지도에 표시한다
+//   확인받으면 여기서 빼면 열린다. 개발 도구는 window.__devUnlock = 1 로 들어간다
+export const LOCKED = new Set(["gm1_m1", "gm1_0", "g0_1", "g1_1", "gm1_1"]);
+export const isLocked = (id) => LOCKED.has(id) && !(typeof window !== "undefined" && window.__devUnlock);
 export const BY_ID = {};
 export const CELLS = {}; // "x,y" → 구역
 export const FR_WORLD = []; // 엔진 지역 목록 (칸마다 하나: 던전 + 구역)
@@ -262,8 +266,9 @@ export function drawMap(hud, R, cur, seen, extra = {}) {
   const info = (z) => {
     if (!z) return void (iName.setText("거점").setColor("#ffe08a"), iSub.setText("안전 지대"), iMore.setText("동·서 문은 지상, 위 계단은 하늘, 아래 갱도는 지하로 이어진다."));
     const D = dangerOf(z), s = seen[z.id] || here === z;
-    iName.setText(s ? z.name : "가 보지 않은 땅").setColor(s ? D.css : "#a89070");
+    if (isLocked(z.id)) return void (iName.setText(`${z.name} (공사 중)`).setColor("#9a9aa0"), iSub.setText(`${LAYER_NAME(z.y)} · 아직 갈 수 없다`), iMore.setText("이 지역은 다시 짓는 중이라 문이 닫혀 있다."));
     iSub.setText(`${LAYER_NAME(z.y)} · ${D.name} ${D.label}`);
+    iName.setText(s ? z.name : "가 보지 않은 땅").setColor(s ? D.css : "#a89070");
     const m = [];
     here === z && m.push("지금 여기 있다");
     z.boss && m.push("보스가 산다");
@@ -284,6 +289,18 @@ export function drawMap(hud, R, cur, seen, extra = {}) {
         continue;
       }
       const z = CELLS[key(x, y)], D = dangerOf(z), s = seen[z.id];
+      if (isLocked(z.id)) {
+        // 공사 중: 어두운 칸 + 빗금 + 자물쇠
+        g.fillStyle(0x1c1a20, 1).fillRect(px - h2, py - h2, SZ, SZ);
+        g.lineStyle(1, 0x5a5860, 1).strokeRect(px - h2, py - h2, SZ, SZ);
+        for (let k = -SZ; k < SZ; k += 7) g.lineStyle(1, 0x3a3840, 1).lineBetween(px - h2 + Math.max(0, k), py - h2 + Math.max(0, -k), px - h2 + Math.min(SZ, k + SZ), py - h2 + Math.min(SZ, SZ - k));
+        g.fillStyle(0x9a9aa0, 1).fillRect(px - 5, py - 1, 10, 8);
+        g.lineStyle(2, 0x9a9aa0, 1).strokeCircle(px, py - 3, 4);
+        g.fillStyle(0x1c1a20, 1).fillRect(px - 4, py - 3, 8, 2);
+        hit.on("pointerover", () => info(z));
+        hit.on("pointerout", () => info(here ?? null));
+        continue;
+      }
       g.fillStyle(D.color, s ? 0.6 : 0.16).fillRect(px - h2, py - h2, SZ, SZ);
       g.lineStyle(1, D.color, s ? 1 : 0.45).strokeRect(px - h2, py - h2, SZ, SZ);
       // 층 표시: 하늘 = 위쪽 띠, 지하 = 아래쪽 띠
@@ -308,5 +325,6 @@ export function drawMap(hud, R, cur, seen, extra = {}) {
     ly += 12;
   }
   add(ct(hud, IX, ly + 2, "■ 보스  ▲ 숨은 던전  · 가 본 곳", "tiny", "#a89070"), 2);
+  add(ct(hud, IX, ly + 14, "빗금 칸 = 공사 중 (갈 수 없다)", "tiny", "#9a9aa0"), 2);
   return objs;
 }

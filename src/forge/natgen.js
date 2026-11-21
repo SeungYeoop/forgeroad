@@ -281,10 +281,19 @@ function placeDeco(P) {
 function placeProps(P) {
   const { F, WP, HP } = P, R = rng((P.seed ^ 0x9e0b5) >>> 0), out = [];
   const solid = (x, y) => y >= HP || (x >= 0 && x < WP && y >= 0 && F.solid(x, y));
-  const brickAt = (x, y) => (P.mats ?? []).some((m) => m.m === "brick" && x >= m.x0 && x < m.x1 && y >= m.y0 && y < m.y1);
+  // 벽돌 재질·뒷벽·나무 뒷벽 자리: 8px 칸 지도로 한 번에 (사각형이 수천 개여도 빠르게)
+  const GW = Math.ceil(WP / 8) + 1, GH = Math.ceil(HP / 8) + 1, BR = new Uint8Array(GW * GH), WL = new Uint8Array(GW * GH);
+  const paint = (G, r, v) => {
+    const x0 = Math.max(0, Math.floor(r.x0 / 8)), x1 = Math.min(GW, Math.ceil(r.x1 / 8)), y0 = Math.max(0, Math.floor(r.y0 / 8)), y1 = Math.min(GH, Math.ceil(r.y1 / 8));
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) G[y * GW + x] |= v;
+  };
+  for (const m of P.mats ?? []) m.m === "brick" && paint(BR, m, 1);
+  for (const w of P.walls ?? []) w.m !== "stem" && paint(WL, w, w.m === "wood" ? 3 : 1);
+  const gAt = (G, x, y) => (x < 0 || y < 0 || x >= WP || y >= HP ? 0 : G[Math.floor(y / 8) * GW + Math.floor(x / 8)]);
+  const brickAt = (x, y) => gAt(BR, x, y) === 1;
   const surf = (x) => (P.h ? P.h[clamp(Math.round(x / Q), 0, P.h.length - 1)] : 0);
   // 뒷벽이 있는 자리 (횃불·창·벽감은 뒷벽에만 단다)
-  const wallAt = (x, y) => (P.walls ?? []).some((w) => w.m !== "stem" && x >= w.x0 && x < w.x1 && y >= w.y0 && y < w.y1);
+  const wallAt = (x, y) => gAt(WL, x, y) > 0;
   const avoid = [P.peak, P.deep, ...(P.mouths ?? [])].filter(Boolean);
   const pads = P.pads ?? [];
   const water = (P.spec ?? []).filter((r) => r.t === 3 || r.t === 11 || r.t === 12);
@@ -368,7 +377,7 @@ function placeProps(P) {
     stone: [["p_rubble", 18], ["p_urn", 14], ["p_brokencol", 10], ["p_crates", 10], ["p_boulder", 8], ["p_statue", 5], ["p_candles", 5]],
   }[GS ? "green" : SB ? "stone" : LC ? "grove" : CS];
   const CAVE_CEIL = { drip: [["p_stalac", 70], ["p_moss", 8], ["p_web", 6]], mine: [["p_chain", 20], ["p_web", 18], ["p_stalac", 14], ["p_cage", 6], ["p_moss", 6]], root: [["p_roots", 50], ["p_moss", 26], ["p_web", 8], ["p_stalac", 6]], green: [["p_roots", 44], ["p_moss", 36], ["p_web", 6]], stone: [["p_chain", 24], ["p_web", 12], ["p_moss", 6]], grove: [["p_roots", 40], ["p_moss", 30], ["p_web", 10]] }[GS ? "green" : SB ? "stone" : LC ? "grove" : CS];
-  const woodAt = (x, y) => (P.walls ?? []).some((w) => w.m === "wood" && x >= w.x0 && x < w.x1 && y >= w.y0 && y < w.y1);
+  const woodAt = (x, y) => (gAt(WL, x, y) & 2) > 0;
   // 구름 디딤돌: 위에도 아래에도 아무것도 두지 않는다
   const CL = (P.spec ?? []).filter((s) => s.t === 2);
   const onCloud = (x, y) => CL.some((s) => x >= s.x0 - 8 && x < s.x1 + 8 && y >= s.y0 - 14 && y <= s.y1 + 14);

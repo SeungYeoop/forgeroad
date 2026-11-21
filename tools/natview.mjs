@@ -38,7 +38,7 @@ try {
   await ev('window.__game.scene.start("Run")');
   for (let i = 0; i < 160 && !(await ev("!!window.__run?.world")); i++) await sleep(500);
   await sleep(5000);
-  await ev(`(() => { const sc = window.__run; sc.player.hp = sc.player.maxHp; sc.player.iframes = 1e9; window.__FG.travel(sc, ${JSON.stringify(zid)}, "L"); })()`);
+  await ev(`(() => { const sc = window.__run; sc.player.hp = sc.player.maxHp; sc.player.iframes = 1e9; (window.__devUnlock = 1), window.__FG.travel(sc, ${JSON.stringify(zid)}, "L"); })()`);
   await sleep(6000);
   for (const p of points) {
     const info = await ev(`(() => { const sc = window.__run;

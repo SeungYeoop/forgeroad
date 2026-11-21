@@ -226,7 +226,7 @@ export function* pixFine(ch, base, region, S) {
   };
 
   // ── 재질 구역 (나무줄기·잎·벽돌·버섯): 세계 좌표 사각형 → 이 조각의 픽셀 지도 ──
-  const MATC = { wood: 1, leaf: 2, brick: 3, stem: 4, cap: 5, rock: 6, ice: 7, jelly: 8, trim: 9 };
+  const MATC = { wood: 1, leaf: 2, brick: 3, stem: 4, cap: 5, rock: 6, ice: 7, jelly: 8, trim: 9, bough: 10 };
   let MM = null;
   const MX = S.ox ?? X0; // 재질·뒷벽 사각형은 구역 기준 좌표
   if (S.mats && S.mats.length) {
@@ -249,8 +249,41 @@ export function* pixFine(ch, base, region, S) {
       for (let y = y0; y < y1; y++) x1 > x0 && IW.fill(1, y * PW + x0, y * PW + x1);
     }
   }
+  // 잎 무늬: 6px 격자마다 비스듬한 잎사귀 하나 — 가장 가까운 잎의 안쪽 거리 d(<1 = 잎), 잎 안 위치(빛 방향)
+  const leafPat = (wx, yw) => {
+    const g = 6, gx = Math.floor(wx / g), gy = Math.floor(yw / g);
+    let best = 9, bu = 0, bv = 0, bh = 0;
+    for (let dj = -1; dj <= 1; dj++)
+      for (let di = -1; di <= 1; di++) {
+        const ix = gx + di, iy = gy + dj, cx = (ix + H(ix, iy, 201)) * g, cy = (iy + H(ix, iy, 202)) * g, a = H(ix, iy, 203) * 3.1416;
+        const dx = wx - cx, dy = yw - cy, ca = Math.cos(a), sa = Math.sin(a), u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+        const d = (u / 4.6) ** 2 + (v / 2.5) ** 2;
+        d < best && ((best = d), (bu = dx), (bv = dy), (bh = H(ix, iy, 204)));
+      }
+    return { d: best, lit: -(bu + bv) / 5, h: bh };
+  };
+  const leafL = (wx, yw) => {
+    const q = leafPat(wx, yw);
+    if (q.d > 1) return 4;
+    let L = q.lit > 0.35 ? 1 : q.lit < -0.45 ? 3 : 2;
+    q.h > 0.86 && L > 1 && L--;
+    const cl = vn2(wx / 34, yw / 26, 205);
+    cl > 0.66 ? (L = Math.max(0, L - 1)) : cl < 0.3 && (L = Math.min(4, L + 1));
+    return L;
+  };
+  // 나무껍질: 굽이치는 세로 골(어둡게)과 판(왼쪽 밝게), 판마다 가끔 가로 금 — rot = 가로 결 (가지)
+  const barkL = (wx, yw, rot) => {
+    const a = rot ? yw : wx, b = rot ? wx : yw;
+    const u = a + vn1(b / 23, 41) * 7 + vn1(b / 7, 43) * 1.6, p = ((u % 6) + 6) % 6, id = Math.floor(u / 6);
+    if (p < 1.1) return 4;
+    let L = p < 2.2 ? 1 : p < 4 ? 2 : 3;
+    ((b + Math.floor(H(id, 7, 206) * 40)) % (13 + (id % 5))) === 0 && (L = 4);
+    // 껍질 판마다 밝기 조금씩 (얼룩이 아니라 판 단위)
+    H(id, Math.floor(b / 30), 207) > 0.8 && L > 1 && L < 4 && L--;
+    return L;
+  };
   const inIW = (x, y) => IW !== null && x >= 0 && x < PW && y >= 0 && y < PH && IW[y * PW + x] === 1;
-  const BARK = rampOf(mix(0x6e4628, P.soil, 0.25)), LEAF = rampOf(mix(P.top, 0x2e6a30, 0.3)), BRICK = rampOf(mix(P.rock, 0xc0b098, 0.45));
+  const BARK = rampOf(mix(0x6a4428, P.soil, 0.2)), LEAF = rampOf(mix(P.top, 0x2e6a30, 0.3)), BRICK = rampOf(mix(P.rock, 0xc0b098, 0.45));
   // 다듬은 돌 (아치 테·처마 띠·교각 머리): 어두운 회청색 큰 석재
   const TRIM = rampOf(mix(mix(P.rock, 0x6a7488, 0.5), 0xd8d4cc, 0.15));
   const STEM = rampOf(0xe0d4b8), CAPR = rampOf(mix(P.accent ?? 0xd04040, 0xc83838, 0.55));
@@ -260,20 +293,21 @@ export function* pixFine(ch, base, region, S) {
     if (m === 1) {
       // 나무껍질: 세로 결 + 옹이
       R6 = BARK;
-      const g = (wx + Math.floor(vn1(yw / 19, 41) * 5)) % 7;
-      L = g < 1 ? 3 : g < 3 ? 2 : 1;
-      if (H(wx >> 3, yw >> 4, 42) > 0.93) L = 4;
+      L = barkL(wx, yw, 0);
+      // 옹이는 드물게, 결을 따라 길쭉하게
+      if (H(wx >> 2, yw >> 4, 42) > 0.985) L = 3;
     } else if (m === 2) {
       // 잎: 뭉친 덩어리 (돌 무늬를 잎 크기로)
       R6 = LEAF;
-      L = lvq(wx + 500, yw, 9);
-      L = L === 5 ? 3 : L;
-      if (H(wx, yw, 43) > 0.95) L = 0;
+      L = leafL(wx, yw);
     } else if (m === 3) {
       R6 = BRICK;
       const row = Math.floor(yw / 8), off = row & 1 ? 8 : 0;
       L = yw % 8 === 7 || (wx + off) % 16 === 15 ? 4 : H((wx + off) >> 4, row, 44) > 0.7 ? 2 : 1;
       if (H(wx >> 1, yw >> 1, 45) > 0.96) L = 3;
+    } else if (m === 10) {
+      R6 = BARK;
+      L = barkL(wx, yw, 1);
     } else if (m === 9) {
       // 다듬은 돌: 24×12 큰 석재, 위·왼 모 밝게, 줄눈 어둡게, 돌마다 밝기
       R6 = TRIM;
@@ -618,8 +652,17 @@ export function* pixFine(ch, base, region, S) {
       brick: rampOf(mix(mix(P.rock, 0xc0b098, 0.45), 0x1a1420, 0.6)),
       rock: rampOf(mix(regionBase, 0x2a2430, 0.45)),
       stem: rampOf(0xd8ccb0),
-      leaf: rampOf(mix(P.top ?? 0x4a8a3a, 0x12301a, 0.58)),
+      leaf: rampOf(mix(P.top ?? 0x4a8a3a, 0x1a3a1e, 0.34)),
+      inwood: rampOf(mix(0x4a2c18, P.soil, 0.15)),
     };
+    // 잎 뒷벽 덮인 자리 (가장자리 판별용)
+    const LM = new Uint8Array(PW * PH);
+    for (const r of S.walls) {
+      if (r.m !== "leaf") continue;
+      const x0 = Math.max(0, Math.floor(r.x0 - MX)), x1 = Math.min(PW, Math.ceil(r.x1 - MX)), y0 = Math.max(0, Math.floor(r.y0 - OY)), y1 = Math.min(PH, Math.ceil(r.y1 - OY));
+      for (let y = y0; y < y1; y++) x1 > x0 && LM.fill(1, y * PW + x0, y * PW + x1);
+    }
+    const lmAt = (x, y) => (x < 0 || y < 0 || x >= PW || y >= PH ? 1 : LM[y * PW + x]);
     // 그린스텝: 바위 뒷벽도 사암 지층 (그늘진 색)
     const SW = STEP ? [0xe6c49a, 0xd89a76, 0xc07a58, 0xd8aa6a, 0xead2b2, 0xb86a4e, 0xcc8c64].map((c) => rampOf(mix(mix(c, P.rock, 0.4), 0x2a1a20, 0.52))) : null;
     const wdef = new Uint8Array(PW * PH);
@@ -660,10 +703,17 @@ export function* pixFine(ch, base, region, S) {
             }
             vn2(wx / 60, yw / 48, 141) > 0.74 && L < 5 && (L = Math.min(4, L + 1));
           } else if (r.m === "leaf") {
-            // 잎 뒷벽: 뭉친 잎 덩어리 + 드문 밝은 잎
-            const L0 = lvq(wx + 700, yw, 8);
-            L = Math.min(5, Math.max(2, L0 + 1));
-            H(wx >> 1, yw >> 1, 145) > 0.96 && (L = 1);
+            // 잎: 잎사귀가 겹친 무늬, 가장자리(4px 안에 잎이 없는 쪽)에선 잎 틈을 비워 들쭉날쭉한 윤곽
+            const q = leafPat(wx, yw), edge = !lmAt(x - 4, y) || !lmAt(x + 4, y) || !lmAt(x, y - 4) || !lmAt(x, y + 4);
+            if (edge && q.d > 0.8) {
+              wdef[y * PW + x] = 0;
+              continue;
+            }
+            L = leafL(wx, yw);
+            edge && L > 0 && L--;
+          } else if (r.m === "inwood") {
+            // 나무 속 (파낸 줄기 안): 어두운 세로 결 + 나이테 줄
+            L = barkL(wx, yw, 0) >= 4 ? 4 : (((Math.hypot(wx % 64 - 32, yw % 96 - 48) | 0) % 5) === 0 ? 3 : 2);
           } else if (SW && r.m === "rock") {
             // 사암 지층 띠 (완만히 휜다) + 띠 사이 어두운 줄 + 드문 세로 금
             const yb = yw + bandWarp(wx) * 0.7, b = Math.floor(yb / 9);

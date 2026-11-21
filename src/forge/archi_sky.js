@@ -132,7 +132,7 @@ export function skyHole(K, cx, cy, rx, ry) {
   for (let y = Math.floor(cy - ry); y <= cy + ry; y++)
     for (let x = Math.floor(cx - rx); x <= cx + rx; x++) ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1 && x >= 0 && y >= 0 && x < K.NX && y < K.NY && (BODY[y * K.NX + x] = 0);
 }
-export function backfill(K) {
+export function backfill(K, mat = "rock") {
   const { NX, NY } = K, cov = new Uint8Array(NX * NY);
   for (const w of K.P.walls) {
     const x0 = Math.max(0, Math.floor(w.x0 / 8)), x1 = Math.min(NX, Math.ceil(w.x1 / 8)), y0 = Math.max(0, Math.floor(w.y0 / 8)), y1 = Math.min(NY, Math.ceil(w.y1 / 8));
@@ -141,7 +141,7 @@ export function backfill(K) {
   // 줄마다 빈 칸 구간 → 위 줄과 같은 구간이면 이어 붙인다 (뒷벽 사각형 수를 줄인다)
   let open = new Map();
   const flush = (keep) => {
-    for (const [k, r] of open) if (!keep.has(k)) K.wall(r.a, r.y0, r.b, r.y1, "rock");
+    for (const [k, r] of open) if (!keep.has(k)) K.wall(r.a, r.y0, r.b, r.y1, mat);
   };
   for (let y = 1; y < NY - 1; y++) {
     const next = new Map();
@@ -170,8 +170,8 @@ export function skyBegin(K) {
     if (MARK) for (let y = Math.max(0, y0 | 0); y < y1; y++) for (let x = Math.max(0, x0 | 0); x < x1; x++) body(K, x, y);
   };
 }
-export function skyEnd(K) {
-  backfill(K);
+export function skyEnd(K, mat) {
+  backfill(K, mat);
   K.rock = ROCK0;
   MARK = false;
 }

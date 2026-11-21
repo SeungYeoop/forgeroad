@@ -844,6 +844,16 @@ const KINDS = {
     for (const y of [1, 10, 19]) for (let k = 0; k < 3; k++) R() < 0.85 && parts.push({ d: S.cyl(-6.5 + k * 6.5 + (R() - 0.5), 0, 2.8, y + 0.7, y + 3.7, 0.8), m: 1 });
     return { W: 30, H: 30, parts, mats: [{ c: 0x7a5434, tex: woodTex(13) }, { c: 0xf0c050, gloss: 0.3 }] };
   },
+  // 잎 덩어리 (수관을 이루는 큰 잎 뭉치): 잎 공 여럿을 겹친 덩이, 위는 밝고 아래는 어둡게 · s 4 이상 = 바늘잎(짙은 초록)
+  p_foliage(s, R, c) {
+    const conif = s >= 4, ss = conif ? s - 4 : s, rx = 16 + ss * 11, ry = 10 + ss * 6, parts = [], n = 10 + ss * 6;
+    const base = conif ? mix(c.top, 0x1e4a2a, 0.45) : c.top;
+    for (let k = 0; k < n; k++) {
+      const a = R() * 6.283, r = Math.sqrt(R()), x = Math.cos(a) * rx * 0.78 * r, y = ry + 2 + Math.sin(a) * ry * 0.72 * r;
+      parts.push({ d: S.sphere(x, y, (R() - 0.5) * rx * 0.5, (4.5 + ss * 2.3) * (0.7 + R() * 0.6)), m: R() < 0.3 ? 1 : R() < 0.15 ? 2 : 0, k: 2.2 });
+    }
+    return { W: rx * 2 + 18, H: ry * 2 + 16, parts, mats: [{ c: base, tex: leafTex(7) }, { c: mix(base, 0xe0f490, 0.28), tex: leafTex(9) }, { c: mix(base, 0x0e2a14, 0.35), tex: leafTex(11) }] };
+  },
   // 돌난간 한 칸 (아래 띠 · 병 모양 난간동자 다섯 · 위 손잡이)
   p_balus(s, R, c) {
     const st = mix(c.rock, 0xe8e2d4, 0.55), L = 14, parts = [{ d: S.box(0, 1.2, 0, L, 1.2, 2.2, 0.3), m: 0 }, { d: S.box(0, 12.6, 0, L + 0.8, 1.2, 2.6, 0.4), m: 0, k: 0.5 }];

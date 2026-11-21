@@ -4242,6 +4242,7 @@ export function travel(sc, to, back) {
   if (sc.zoneBusy || sc.dying) return;
   const z = ZN.BY_ID[to];
   if (!z) return;
+  if (ZN.isLocked(to)) return void sc.hud?.()?.toast(`${z.name}: 공사 중인 지역이라 아직 갈 수 없다`, "#c8c8d0");
   sc.zoneBusy = 1;
   R.j.play("portal");
   ensurePlan(sc, z);
@@ -4375,8 +4376,10 @@ function exitObj(sc, chunk, x, y, z, e) {
   const glow = sc.add.image(x, y - 18, "fr_gate_glow").setTint(D.color).setBlendMode(ADD).setDepth(4).setAlpha(0.7);
   const what = !dst ? "거점으로 귀환 (안전)" : e.at === "DG" ? "숨은 던전" : z.kind === "dungeon" ? "던전 밖으로" : dst.name;
   const prompt = `${L.arrow} ${what}${dst && z.kind !== "dungeon" ? ` · ${D.name}` : ""}`;
-  const tagTxt = !dst ? "거점" : e.at === "DG" ? "숨은 던전" : e.at === "U" ? `▲ ${dst.short}` : e.at === "D" ? `▼ ${dst.short}` : dst.short;
-  const tag = R.ct(sc, x, y - 52, tagTxt, "tiny", D.css, { stroke: "#140e18", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(6);
+  const shut = dst && ZN.isLocked(dst.id);
+  const tagTxt = (!dst ? "거점" : e.at === "DG" ? "숨은 던전" : e.at === "U" ? `▲ ${dst.short}` : e.at === "D" ? `▼ ${dst.short}` : dst.short) + (shut ? " · 공사 중" : "");
+  shut && (glow.setTint(0x6a6a72), arch.setTint(0x8a8a90));
+  const tag = R.ct(sc, x, y - 52, tagTxt, "tiny", shut ? "#9a9aa0" : D.css, { stroke: "#140e18", strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(6);
   e.at === "DG" && sc.fr && ((sc.fr.dgSeen ??= []).includes(z.id) || sc.fr.dgSeen.push(z.id));
   const o = { chunk, x, y, sprites: [arch, glow, tag], alive: !0, prompt };
   let t = Math.random() * 6, fxT = 0;

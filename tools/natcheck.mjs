@@ -40,7 +40,7 @@ try {
   for (let i = 0; i < 160 && !(await ev("!!window.__run?.world")); i++) await sleep(500);
   await sleep(5000);
   for (const zid of zones) {
-    await ev(`(() => { const sc = window.__run; sc.player.hp = sc.player.maxHp; sc.player.iframes = 999; window.__FG.travel(sc, ${JSON.stringify(zid)}, "L"); })()`);
+    await ev(`(() => { const sc = window.__run; sc.player.hp = sc.player.maxHp; sc.player.iframes = 999; (window.__devUnlock = 1), window.__FG.travel(sc, ${JSON.stringify(zid)}, "L"); })()`);
     await sleep(Number(process.env.TRAVEL_WAIT || 3500));
     // 구역에 들어설 때까지 (설계가 오래 걸리면 늦게 들어선다)
     for (let i = 0; i < 20 && !(await ev("!!window.__FG.zoneOfPlayer(window.__run)")); i++) await sleep(500);

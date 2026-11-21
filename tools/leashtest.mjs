@@ -36,7 +36,7 @@ try {
   await ev('window.__game.scene.start("Run")');
   for (let i = 0; i < 160 && !(await ev("!!window.__run?.world")); i++) await sleep(500);
   await sleep(5000);
-  await ev(`(() => { const sc = window.__run; sc.player.iframes = 1e9; window.__FG.travel(sc, "g1_0", "L"); })()`);
+  await ev(`(() => { const sc = window.__run; sc.player.iframes = 1e9; (window.__devUnlock = 1), window.__FG.travel(sc, "g1_0", "L"); })()`);
   await sleep(9000);
   const god = `const sc = window.__run; sc.player.hp = sc.player.maxHp; sc.player.iframes = 1e9;`;
   // 1) 층별 몬스터: 구역을 훑으며 불러온 적을 층마다 센다
