@@ -226,7 +226,7 @@ export function* pixFine(ch, base, region, S) {
   };
 
   // ── 재질 구역 (나무줄기·잎·벽돌·버섯): 세계 좌표 사각형 → 이 조각의 픽셀 지도 ──
-  const MATC = { wood: 1, leaf: 2, brick: 3, stem: 4, cap: 5, rock: 6, ice: 7, jelly: 8 };
+  const MATC = { wood: 1, leaf: 2, brick: 3, stem: 4, cap: 5, rock: 6, ice: 7, jelly: 8, trim: 9 };
   let MM = null;
   const MX = S.ox ?? X0; // 재질·뒷벽 사각형은 구역 기준 좌표
   if (S.mats && S.mats.length) {
@@ -251,6 +251,8 @@ export function* pixFine(ch, base, region, S) {
   }
   const inIW = (x, y) => IW !== null && x >= 0 && x < PW && y >= 0 && y < PH && IW[y * PW + x] === 1;
   const BARK = rampOf(mix(0x6e4628, P.soil, 0.25)), LEAF = rampOf(mix(P.top, 0x2e6a30, 0.3)), BRICK = rampOf(mix(P.rock, 0xc0b098, 0.45));
+  // 다듬은 돌 (아치 테·처마 띠·교각 머리): 어두운 회청색 큰 석재
+  const TRIM = rampOf(mix(mix(P.rock, 0x6a7488, 0.5), 0xd8d4cc, 0.15));
   const STEM = rampOf(0xe0d4b8), CAPR = rampOf(mix(P.accent ?? 0xd04040, 0xc83838, 0.55));
   const ICE = rampOf(0xa8dcf4), JELLY = rampOf(0xe070c0);
   const matCol = (m, x, y, wx, yw, dd, ex) => {
@@ -272,6 +274,11 @@ export function* pixFine(ch, base, region, S) {
       const row = Math.floor(yw / 8), off = row & 1 ? 8 : 0;
       L = yw % 8 === 7 || (wx + off) % 16 === 15 ? 4 : H((wx + off) >> 4, row, 44) > 0.7 ? 2 : 1;
       if (H(wx >> 1, yw >> 1, 45) > 0.96) L = 3;
+    } else if (m === 9) {
+      // 다듬은 돌: 24×12 큰 석재, 위·왼 모 밝게, 줄눈 어둡게, 돌마다 밝기
+      R6 = TRIM;
+      const row = Math.floor(yw / 12), off = row & 1 ? 12 : 0, bx = (((wx + off) % 24) + 24) % 24, by = ((yw % 12) + 12) % 12;
+      L = by === 11 || bx === 23 ? 4 : by === 0 || bx === 0 ? 1 : H(Math.floor((wx + off) / 24), row, 51) > 0.75 ? 3 : 2;
     } else if (m === 4) {
       R6 = STEM;
       L = (wx % 5 === 0 ? 2 : 1) + (H(wx, yw >> 2, 46) > 0.9 ? 1 : 0);
@@ -671,7 +678,7 @@ export function* pixFine(ch, base, region, S) {
     }
   }
   // ── 7) 장식 (실제 윤곽에) ──
-  const onBrick = (x, y) => MM && x >= 0 && x < PW && y >= 0 && y < PH && MM[y * PW + x] === 3;
+  const onBrick = (x, y) => MM && x >= 0 && x < PW && y >= 0 && y < PH && (MM[y * PW + x] === 3 || MM[y * PW + x] === 9);
   const decoFloor = (x, y, wx, r) => {
     if (onBrick(x, y) || inIW(x, y - 2)) return;
     const h = H(wx, r, 21);

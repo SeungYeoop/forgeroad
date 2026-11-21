@@ -213,11 +213,11 @@ function clipWalls(P) {
 //   매달려 오르내리는 곳: 6 사다리 7 밧줄 8 덩굴 (위아래 키) · 9 짚라인(줄, ax·ay→bx·by) · 10 바람 기둥(떠오른다)
 //   11·12 물살(왼쪽·오른쪽으로 미는 물) · 13 무너지는 발판 · 14 금 간 벽(때려 부순다) · 15 승강기 길(발판이 오르내린다)
 //   13·14는 검사 때는 바위, 마지막에 장에서 빼고 장치(gizmo.js)가 그리고 막는다
-export const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5, ladder: 6, rope: 7, vine: 8, zip: 9, wind: 10, curL: 11, curR: 12, crumble: 13, crack: 14, lift: 15, fall: 16, geyser: 17, heal: 18, lever: 19, ferry: 20 };
+export const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5, ladder: 6, rope: 7, vine: 8, zip: 9, wind: 10, curL: 11, curR: 12, crumble: 13, crack: 14, lift: 15, fall: 16, geyser: 17, heal: 18, lever: 19, ferry: 20, draw: 21 };
 // 금 간 벽(14)은 길찾기에서 지나갈 수 있는 것으로 본다 (언제든 부수고 지나간다) — 뒤 숨은 방에도 상자가 놓인다
-const SOLID_SPEC = new Set([1, 2, 4, 5, 13]);
+const SOLID_SPEC = new Set([1, 2, 4, 5, 13, 21]);
 export const CLIMB_SPEC = new Set([6, 7, 8, 10, 15, 17]);
-const DYN_SPEC = new Set([1, 2, 13, 14]);
+const DYN_SPEC = new Set([1, 2, 13, 14, 21]);
 function spec(P, x0, y0, x1, y1, kind, ex) {
   const sn = (v) => Math.round(v / BLK) * BLK;
   [x0, y0, x1, y1] = [sn(x0), sn(y0), sn(x1), sn(y1)];
@@ -268,6 +268,8 @@ function placeDeco(P) {
       if (P.bp && !(FOREST && P.h && Math.abs(y - (surfMax(x) - 8)) < 48)) for (let yy = y - 8; ok && yy > 0; yy -= 16) ok = !F.solid(x, yy);
       // 위 공간이 비었는가
       for (let dx = -w / 2; ok && dx <= w / 2; dx += 8) for (let yy = y - 4; ok && yy > y - h; yy -= 8) ok = !F.solid(x + dx, yy);
+      // 벽돌(다리·탑) 위엔 나무를 심지 않는다
+      if (ok && (P.mats ?? []).some((m) => (m.m === "brick" || m.m === "trim") && x >= m.x0 && x < m.x1 && y + 4 >= m.y0 && y + 4 < m.y1)) ok = false;
       if (ok && !P.trees.some((T) => Math.abs(T.x - x) < (T.w + w) * 0.3 && Math.abs(T.y - y) < 40)) P.trees.push({ x: Math.round(x), y, w, key: decoKey(kind, sz, R.int(0, 5), reg.pal) });
     }
   }
@@ -349,6 +351,8 @@ function placeProps(P) {
   }
   // 지역 장식 표: 그린스텝은 고원 풀밭 소품, 굴·계단엔 종유석·수정 대신 이끼·뿌리·고사리
   const GS = P.z?.reg?.look === "greenstep";
+  // 스톤브리지: 돌 도시 — 바위 방엔 수정·종유석 대신 무너진 석재·항아리, 천장엔 사슬
+  const SB = P.z?.reg?.look === "stonebridge";
   // 동굴 구역 짜임별 소품 (설계도 cave.style): 바닥·천장 소품표, 뒷벽 큰 소품, 수정·버섯 색
   const CS = P.bp?.cave?.style ?? null;
   const CRY = CS === "drip" ? [0x80e0ff, 0xd8f4ff, 0x60c8e8] : CS === "mine" ? [0xc080ff, 0xffa040, 0xa070f0] : [0x60d0ff, 0xc080ff, 0xffd070];
@@ -358,8 +362,9 @@ function placeProps(P) {
     mine: [["p_crates", 16], ["p_rubble", 18], ["p_crystal", 20], ["p_boulder", 10], ["p_rack", 8], ["p_log", 8], ["p_bones", 6], ["p_skulls", 3], ["p_stalag", 6]],
     root: [["p_shroom", 34], ["p_fern", 18], ["p_log", 10], ["p_boulder", 8], ["p_flowers", 6], ["p_stalag", 6], ["p_bones", 5]],
     green: [["p_fern", 18], ["p_boulder", 14], ["p_rubble", 10], ["p_crates", 6], ["p_flowers", 4]],
-  }[GS ? "green" : CS];
-  const CAVE_CEIL = { drip: [["p_stalac", 70], ["p_moss", 8], ["p_web", 6]], mine: [["p_chain", 20], ["p_web", 18], ["p_stalac", 14], ["p_cage", 6], ["p_moss", 6]], root: [["p_roots", 50], ["p_moss", 26], ["p_web", 8], ["p_stalac", 6]], green: [["p_roots", 44], ["p_moss", 36], ["p_web", 6]] }[GS ? "green" : CS];
+    stone: [["p_rubble", 18], ["p_urn", 14], ["p_brokencol", 10], ["p_crates", 10], ["p_boulder", 8], ["p_statue", 5], ["p_candles", 5]],
+  }[GS ? "green" : SB ? "stone" : CS];
+  const CAVE_CEIL = { drip: [["p_stalac", 70], ["p_moss", 8], ["p_web", 6]], mine: [["p_chain", 20], ["p_web", 18], ["p_stalac", 14], ["p_cage", 6], ["p_moss", 6]], root: [["p_roots", 50], ["p_moss", 26], ["p_web", 8], ["p_stalac", 6]], green: [["p_roots", 44], ["p_moss", 36], ["p_web", 6]], stone: [["p_chain", 24], ["p_web", 12], ["p_moss", 6]] }[GS ? "green" : SB ? "stone" : CS];
   const woodAt = (x, y) => (P.walls ?? []).some((w) => w.m === "wood" && x >= w.x0 && x < w.x1 && y >= w.y0 && y < w.y1);
   // 구름 디딤돌: 위에도 아래에도 아무것도 두지 않는다
   const CL = (P.spec ?? []).filter((s) => s.t === 2);
@@ -408,7 +413,7 @@ function placeProps(P) {
           bgAt.push({ x, y: yy });
           const tap = clear >= 170 && R() < 0.35;
           out.push({ x, y: tap ? yy - clear + 6 : yy - 30 - R.int(0, 20), k: tap ? "p_tapestry" : "p_niche", s: 1, v: R.int(0, 1), sc: tap ? 1 : R() < 0.5 ? 1 : 1.25, acc: null, hang: tap ? 1 : 0, bg: 1, g: 1 });
-        } else if (ctx === "cave" && !GS && clear >= 150 && !out.some((q) => q.bg && !q.hang && Math.abs(q.x - x) < 170 && Math.abs(q.y - yy) < 140) && R() < 0.85) {
+        } else if (ctx === "cave" && !GS && !SB && clear >= 150 && !out.some((q) => q.bg && !q.hang && Math.abs(q.x - x) < 170 && Math.abs(q.y - yy) < 140) && R() < 0.85) {
           const big = Math.min(2.6, clear / 70);
           const bk = CS === "root" ? (R() < 0.6 ? "p_shroom" : "p_stalag") : CS === "mine" ? (R() < 0.6 ? "p_crystal" : "p_rockcol") : R() < (CS === "drip" ? 0.85 : 0.7) ? "p_stalag" : "p_crystal";
           bk === "p_rockcol"
@@ -437,10 +442,10 @@ function placeProps(P) {
         // 바깥 하늘의 섬 밑면(뒷벽 없는 곳)에는 종유석·사슬을 달지 않는다
         if (!ug && !brk && !wallAt(x, yy + 30)) continue;
         // 그린스텝: 벽돌 다리 밑 같은 바깥 하늘에도 달지 않는다
-        if (GS && !wallAt(x, yy + 30)) continue;
+        if ((GS || SB) && !wallAt(x, yy + 30)) continue;
         const ctx = brk ? (ug ? "ugb" : "skb") : "cave";
         // 큰 동굴 천장 뒷벽: 흐릿한 큰 종유석 (바위에 묻혀 붙는다)
-        if (ctx === "cave" && !GS && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < (CS === "drip" ? 130 : 190) && Math.abs(q.y - yy) < 120) && R() < (CS === "mine" ? 0.35 : 0.8) && ceilOK(x, yy, 30, 60))
+        if (ctx === "cave" && !GS && !SB && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < (CS === "drip" ? 130 : 190) && Math.abs(q.y - yy) < 120) && R() < (CS === "mine" ? 0.35 : 0.8) && ceilOK(x, yy, 30, 60))
           out.push({ x, y: yy - 6, k: CS === "root" && R() < 0.7 ? "p_roots" : "p_stalac", s: 2, v: R.int(0, 1), sc: snapSc(Math.min(2.6, 1.25 + R() * below / 160)), acc: null, hang: 1, bg: 1, g: 1 });
         if (R() > (ctx === "cave" ? (CS === "drip" ? 0.2 : 0.12) : 0.08)) continue;
         const tall = below > 170;

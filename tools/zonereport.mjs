@@ -35,7 +35,7 @@ for (const t of P.roomTags ?? []) {
   for (let y = Math.floor(t.y0 / SC); y < t.y1 / SC; y++) for (let x = Math.floor(t.x0 / SC); x < t.x1 / SC; x++) put(x, y, c, solidAt[y * W + x] ? 0.18 : 0.42);
 }
 // 장치
-const DC = { 1: 0xc89060, 2: 0xffffff, 3: 0x3070e0, 4: 0xb0e0ff, 5: 0xff70c0, 6: 0x8a5a2a, 7: 0x2a9a3a, 8: 0x2a9a3a, 10: 0xffffff, 11: 0x2050c0, 12: 0x2050c0, 13: 0xff9020, 14: 0xff2020, 15: 0x606870, 16: 0xc0c0d0, 17: 0x80e0ff, 18: 0x20e0d0, 19: 0xffff40, 20: 0xff40ff };
+const DC = { 1: 0xc89060, 2: 0xffffff, 3: 0x3070e0, 4: 0xb0e0ff, 5: 0xff70c0, 6: 0x8a5a2a, 7: 0x2a9a3a, 8: 0x2a9a3a, 10: 0xffffff, 11: 0x2050c0, 12: 0x2050c0, 13: 0xff9020, 14: 0xff2020, 15: 0x606870, 16: 0xc0c0d0, 17: 0x80e0ff, 18: 0x20e0d0, 19: 0xffff40, 20: 0xff40ff, 21: 0xff2080 };
 for (const r of P.spec ?? []) {
   if (r.t === 9 && r.ax != null) {
     const n = Math.ceil(Math.hypot(r.bx - r.ax, r.by - r.ay) / SC);

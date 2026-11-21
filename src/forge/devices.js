@@ -10,6 +10,7 @@
 //     떨어지는 종유석(16): 밑을 지나면 떨어져 다친다, 다시 자란다
 //     간헐천(17): 몇 초마다 물기둥(포자)이 뿜어 높이 띄운다
 //     하늘 나룻 바구니(20): 줄에 매달린 바구니가 두 섬 나루 사이를 옆으로 오간다
+//     도개교(21): 다리 판이 주기마다 경첩 쪽으로 들렸다 내려온다 (놓였을 때 건넌다)
 let R = null;
 export const bindDevices = (r) => (R = r);
 const near = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
@@ -111,6 +112,13 @@ function mkTex(sc) {
     x.fillStyle = "#4a4250"; x.fillRect(0, 7, 16, 1); x.fillRect(8, 0, 1, 16);
     x.fillStyle = "#e8d8a0"; x.fillRect(3, 3, 1, 1); x.fillRect(4, 4, 1, 2); x.fillRect(5, 6, 2, 1); x.fillRect(7, 7, 1, 2); x.fillRect(10, 9, 2, 1); x.fillRect(12, 10, 1, 2);
   });
+  // 도개교 판: 두꺼운 나무에 쇠띠
+  cv("dv_draw", 16, 8, (x) => {
+    x.fillStyle = "#6a4426"; x.fillRect(0, 0, 16, 8);
+    x.fillStyle = "#9a6a3c"; x.fillRect(0, 0, 16, 2);
+    x.fillStyle = "#3a2414"; x.fillRect(0, 7, 16, 1); x.fillRect(7, 2, 1, 5);
+    x.fillStyle = "#8a8c96"; x.fillRect(12, 0, 2, 8); x.fillStyle = "#c0c2cc"; x.fillRect(12, 1, 2, 1);
+  });
   // 승강기 발판
   cv("dv_lift", 16, 10, (x) => {
     x.fillStyle = "#6a4a2c"; x.fillRect(0, 0, 16, 10);
@@ -158,6 +166,7 @@ function build(sc, src) {
     else if (r.t === 18) A.items.push({ k: "heal", r, t: 0 });
     else if (r.t === 19) A.items.push({ k: "lever", r, cd: 0, spr: null });
     else if (r.t === 20) A.items.push({ k: "ferry", r, x: r.x0, dir: 1, wait: 1, spr: null, cab: null });
+    else if (r.t === 21) A.items.push({ k: "draw", r, t: r.ph ?? 0, spr: null });
   }
   // 레버로 잠긴 승강기: 처음엔 정한 끝(park)에 멈춰 있다
   for (const it of A.items) if (it.k === "lift" && it.r.lock) it.r.park === "up" ? ((it.y = it.r.y0), (it.dir = 1)) : ((it.y = it.r.y1), (it.dir = -1));
@@ -273,6 +282,18 @@ export function update(sc, dt, src) {
       it.spr.setVisible(true).setPosition(ox + bx, r.y1);
       it.cab ??= sc.add.tileSprite(0, 0, 2, 8, "dv_cable").setOrigin(0.5, 0).setDepth(2.3);
       it.cab.setVisible(true).setPosition(ox + bx + w / 2, r.y0 + 2).setSize(2, Math.max(2, r.y1 - r.y0 - 2));
+    } else if (it.k === "draw") {
+      // 도개교: 3.4초 놓임 → 0.7초 들림 → 2.2초 서 있음 → 0.7초 내려옴 (한 바퀴 7초)
+      it.t = (it.t + dt) % 7;
+      const t = it.t, a = t < 3.4 ? 0 : t < 4.1 ? (t - 3.4) / 0.7 : t < 6.3 ? 1 : 1 - (t - 6.3) / 0.7;
+      const was = it.a ?? 0;
+      it.a = a;
+      a > 0 && was === 0 && vis && R.j.play("block", 0.45);
+      a < 0.12 && dyn.push({ on: 1, x0: GX + r.x0, x1: GX + r.x1, y0: r.y0, y1: r.y0 + 8 });
+      if (!vis) { hide(it); continue; }
+      const L = r.hinge === "R";
+      it.spr ??= sc.add.tileSprite(0, 0, r.x1 - r.x0, 8, "dv_draw").setOrigin(L ? 1 : 0, 0).setDepth(2.4);
+      it.spr.setVisible(true).setPosition(ox + (L ? r.x1 : r.x0), r.y0).setAngle((L ? 1 : -1) * a * 78);
     } else if (it.k === "fall") {
       if (it.st === "hang") {
         if (px > r.x0 - 10 && px < r.x1 + 10 && py > r.y0 && py < r.y1 + 20) ((it.st = "shake"), (it.t = 0.35));

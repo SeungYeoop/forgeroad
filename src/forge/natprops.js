@@ -844,6 +844,26 @@ const KINDS = {
     for (const y of [1, 10, 19]) for (let k = 0; k < 3; k++) R() < 0.85 && parts.push({ d: S.cyl(-6.5 + k * 6.5 + (R() - 0.5), 0, 2.8, y + 0.7, y + 3.7, 0.8), m: 1 });
     return { W: 30, H: 30, parts, mats: [{ c: 0x7a5434, tex: woodTex(13) }, { c: 0xf0c050, gloss: 0.3 }] };
   },
+  // 돌난간 한 칸 (아래 띠 · 병 모양 난간동자 다섯 · 위 손잡이)
+  p_balus(s, R, c) {
+    const st = mix(c.rock, 0xe8e2d4, 0.55), L = 14, parts = [{ d: S.box(0, 1.2, 0, L, 1.2, 2.2, 0.3), m: 0 }, { d: S.box(0, 12.6, 0, L + 0.8, 1.2, 2.6, 0.4), m: 0, k: 0.5 }];
+    for (let k = 0; k < 5; k++) {
+      const x = -L + 2.6 + k * ((2 * L - 5.2) / 4);
+      parts.push({ d: S.ellip(x, 5.6, 0, 1.7, 2.6, 1.7), m: 0, k: 0.8 }, { d: S.cyl(x, 0, 0.9, 2, 11.5, 0.3), m: 0 }, { d: S.ellip(x, 10, 0, 1.3, 1, 1.3), m: 0 });
+    }
+    return { W: L * 2 + 8, H: 20, parts, mats: [{ c: st, tex: stoneTex(31) }] };
+  },
+  // 가로등 (쇠기둥 · 굽은 팔 · 빛나는 등)
+  p_lamp(s, R, c) {
+    const H = 30 + s * 4, parts = [
+      { d: S.box(0, 1, 0, 3, 1, 3, 0.4), m: 0 },
+      { d: S.cyl(0, 0, 0.9, 1, H, 0.3), m: 0 },
+      { d: S.capsule(0, H, 0, 4.5, H + 2, 0, 0.6), m: 0 },
+      { d: S.box(5, H - 3, 0, 2.2, 3, 2.2, 0.4), m: 1 },
+      { d: S.box(5, H + 0.4, 0, 2.8, 0.6, 2.8, 0.3), m: 0 },
+    ];
+    return { W: 22, H: H + 8, parts, mats: [{ c: 0x3a3c48, gloss: 0.6 }, { c: 0xffd27a, emit: [0xfff4d0, 0xffd27a, 0xe0a040] }], glow: 0xffe0a0 };
+  },
   // 유목 천막 (펠트 벽 · 원뿔 지붕 · 붉은 띠 · 나무 문 · 꼭대기 연기 구멍)
   p_yurt(s, R, c) {
     const r = 13 + s * 2, wh = 9 + s, rh = 9 + s * 1.5;

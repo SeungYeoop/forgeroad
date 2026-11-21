@@ -3,6 +3,7 @@
 //   ARCHI[구역 id](K) — K는 아래 kit: 파기·채우기·비탈 굴·장치·뒷벽·재질·방 역할
 import { rng } from "./noise.js";
 import { greenstep as greenstepTepui } from "./archi_greenstep.js";
+import { stonebridge as stonebridgeCity } from "./archi_stonebridge.js";
 
 export function kit(P, C) {
   const { cell, NX, NY } = C;
@@ -104,6 +105,10 @@ export function kit(P, C) {
     // 하늘 나룻 바구니: 바구니(폭 w칸) 윗면이 줄 f, 길 [x0, x1) 사이를 옆으로 오간다 (줄은 cab칸 위)
     ferry(x0, x1, f, w = 6, cab = 12) {
       P.specReq.push({ x0, x1, y0: f - cab, y1: f, k: "ferry", ex: { w: w * 8 } });
+    },
+    // 도개교: [x0, x1) 판이 줄 f에 놓였다가 주기마다 경첩(hinge "L"|"R") 쪽으로 들린다 (길찾기는 놓인 것으로 본다)
+    draw(x0, x1, f, hinge = "L", ph = 0) {
+      P.specReq.push({ x0, x1, y0: f, y1: f + 1, k: "draw", ex: { hinge, ph } });
     },
     // 회복 샘: 들어가 있으면 체력이 찬다
     heal(x0, x1, y0, f) {
@@ -1105,4 +1110,4 @@ function mossbark(K, o) {
   return rooms;
 }
 
-export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone, g1_m1: stonebridge, g0_m1: greenstepTepui, gm1_m1: leafcrown, gm1_0: mossbark };
+export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone, g1_m1: stonebridgeCity, g0_m1: greenstepTepui, gm1_m1: leafcrown, gm1_0: mossbark };
