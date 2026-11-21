@@ -618,6 +618,7 @@ export function* pixFine(ch, base, region, S) {
       brick: rampOf(mix(mix(P.rock, 0xc0b098, 0.45), 0x1a1420, 0.6)),
       rock: rampOf(mix(regionBase, 0x2a2430, 0.45)),
       stem: rampOf(0xd8ccb0),
+      leaf: rampOf(mix(P.top ?? 0x4a8a3a, 0x12301a, 0.58)),
     };
     // 그린스텝: 바위 뒷벽도 사암 지층 (그늘진 색)
     const SW = STEP ? [0xe6c49a, 0xd89a76, 0xc07a58, 0xd8aa6a, 0xead2b2, 0xb86a4e, 0xcc8c64].map((c) => rampOf(mix(mix(c, P.rock, 0.4), 0x2a1a20, 0.52))) : null;
@@ -658,6 +659,11 @@ export function* pixFine(ch, base, region, S) {
               H(wx, yw, 9) > 0.965 && (L = Math.min(5, L + 1));
             }
             vn2(wx / 60, yw / 48, 141) > 0.74 && L < 5 && (L = Math.min(4, L + 1));
+          } else if (r.m === "leaf") {
+            // 잎 뒷벽: 뭉친 잎 덩어리 + 드문 밝은 잎
+            const L0 = lvq(wx + 700, yw, 8);
+            L = Math.min(5, Math.max(2, L0 + 1));
+            H(wx >> 1, yw >> 1, 145) > 0.96 && (L = 1);
           } else if (SW && r.m === "rock") {
             // 사암 지층 띠 (완만히 휜다) + 띠 사이 어두운 줄 + 드문 세로 금
             const yb = yw + bandWarp(wx) * 0.7, b = Math.floor(yb / 9);

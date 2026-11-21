@@ -11,6 +11,7 @@
 //     간헐천(17): 몇 초마다 물기둥(포자)이 뿜어 높이 띄운다
 //     하늘 나룻 바구니(20): 줄에 매달린 바구니가 두 섬 나루 사이를 옆으로 오간다
 //     도개교(21): 다리 판이 주기마다 경첩 쪽으로 들렸다 내려온다 (놓였을 때 건넌다)
+//     덩굴 그네(22): 위 키로 잡아 진자처럼 흔들고, 점프로 놓아 날아간다
 let R = null;
 export const bindDevices = (r) => (R = r);
 const near = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
@@ -45,6 +46,38 @@ export function devMove(pl, C, T, dt, spd, h) {
     const dir = r.ay === r.by ? (h || pl.facing || 1) : Math.sign((r.ay > r.by ? r.ax : r.bx) - (r.ay > r.by ? r.bx : r.ax));
     pl.zip = { r, dir, v: Math.max(120, Math.abs(C.vx)) };
     pl.zipT = 0.3;
+    pl.climb = 0;
+    R?.j.play("swing", 0.7);
+    return;
+  }
+  // 덩굴 그네: 잡은 자리 길이로 매달려 진자처럼 흔들린다 (좌우 키로 구른다), 점프로 놓으면 흔들리던 힘으로 날아간다
+  pl.swingT = Math.max(0, (pl.swingT ?? 0) - dt);
+  if (pl.swing) {
+    const s = pl.swing, r = s.r, L = s.L;
+    if ((T.jump && s.t <= 0) || T.down) {
+      const vx = s.w * L * Math.cos(s.a), vy = -s.w * L * Math.sin(s.a);
+      pl.swing = null;
+      pl.swingT = 0.35;
+      C.vx = Math.max(-520, Math.min(520, vx));
+      C.vy = Math.min(0, vy) - (T.jump ? 380 : 0);
+      pl.airJumps = Math.max(pl.airJumps, 1);
+      return;
+    }
+    s.t -= dt;
+    s.w += (-(1500 / L) * Math.sin(s.a) + h * 3 * Math.cos(s.a)) * dt;
+    s.w *= 1 - 0.12 * dt;
+    s.a = Math.max(-1.35, Math.min(1.35, s.a + s.w * dt));
+    const tx = r.ax + Math.sin(s.a) * L, ty = r.ay + Math.cos(s.a) * L;
+    C.vx = (tx - d.zx) / Math.max(dt, 1 / 120);
+    C.vy = (ty + (C.h ?? 22) + 3 - C.y) / Math.max(dt, 1 / 120);
+    pl.facing = s.w >= 0 ? 1 : -1;
+    pl.airJumps = 1 + (pl.run?.extraJumps ?? 0);
+    pl.climb = 0;
+    return;
+  } else if (d.swing && T.up && pl.swingT <= 0) {
+    const r = d.swing, hy = C.y - (C.h ?? 22) - 3, L = Math.max(24, Math.min(r.len, hy - r.ay));
+    const a = Math.asin(Math.max(-0.95, Math.min(0.95, (d.zx - r.ax) / L)));
+    pl.swing = { r, a, L, w: ((C.vx || 0) / L) * Math.cos(a), t: 0.25 };
     pl.climb = 0;
     R?.j.play("swing", 0.7);
     return;
@@ -180,6 +213,7 @@ export function update(sc, dt, src) {
   if (!R || !sc.world || !sc.player) return;
   const W = sc.world;
   if (!src) {
+    sc._dv?.gfx?.clear();
     if (sc._dv) for (const it of sc._dv.items) hide(it);
     W.dyn && (W.dyn.length = 0);
     return;
@@ -187,6 +221,7 @@ export function update(sc, dt, src) {
   mkTex(sc);
   if (!sc._dv || sc._dv.key !== src.key || sc._dv.scene !== sc) {
     if (sc._dv) for (const it of sc._dv.items) (it.spr && it.spr.destroy(), it.cab && it.cab.destroy());
+    sc._dv?.gfx?.destroy();
     sc._dv = build(sc, src);
     sc._dv.scene = sc;
   }
@@ -347,6 +382,21 @@ export function update(sc, dt, src) {
       it.spr ??= sc.add.image(0, 0, "dv_lever0").setOrigin(0.5, 1).setDepth(2.4);
       it.spr.setVisible(true).setTexture(SWITCH.has(key) ? "dv_lever1" : "dv_lever0").setPosition(ox + (r.x0 + r.x1) / 2, r.y1);
     }
+  }
+  // 덩굴 그네 그리기: 매달린 동안은 잡은 손까지, 아니면 곧게 늘어진다
+  A.gfx ??= sc.add.graphics().setDepth(2.35);
+  A.gfx.clear();
+  for (const r of src.P.spec ?? []) {
+    if (r.t !== 22 || r.x1 < vx0 || r.x0 > vx1 || r.y1 < vy0 || r.y0 > vy1) continue;
+    const att = pl.swing && pl.swing.r === r;
+    const ex = att ? px : r.ax, ey = att ? py - (B.h ?? 22) - 3 : r.ay + r.len;
+    A.gfx.lineStyle(3, 0x2e5a22, 1).lineBetween(ox + r.ax, r.ay, ox + ex, ey);
+    A.gfx.lineStyle(1, 0x8ad060, 1).lineBetween(ox + r.ax - 1, r.ay, ox + ex - 1, ey);
+    for (let k = 1; k < 7; k++) {
+      const t = k / 7;
+      A.gfx.fillStyle(k % 3 ? 0x5aa040 : 0x86c858, 1).fillCircle(ox + r.ax + (ex - r.ax) * t + (k % 2 ? 2 : -2), r.ay + (ey - r.ay) * t, 2);
+    }
+    A.gfx.fillStyle(0x6a4a2a, 1).fillCircle(ox + r.ax, r.ay + 1, 3);
   }
   // 바람: 떠오르는 결 / 옆으로 흐르는 바람결 (화면 근처)
   A.st ??= [];

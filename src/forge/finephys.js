@@ -63,7 +63,7 @@ export function installFinePhysics(proto, K) {
   // 몸 자리의 장치: 가운데가 든 매달림·바람·물살 칸, 머리 근처를 지나는 짚라인 (구역 좌표)
   proto.devAt = function (S) {
     const gx = Math.floor(S.x + this.originChunk * CPX), tx = Math.floor(gx / gt);
-    const out = { sp: 0, wind: null, cur: 0, zip: null, zx: 0 };
+    const out = { sp: 0, wind: null, cur: 0, zip: null, zx: 0, swing: null };
     if (tx < 0) return out;
     const C = Math.floor(tx / vt), f = this.gen.get(C)?.fine;
     if (!f || !f.spec || !f.spec.length) return out;
@@ -76,6 +76,11 @@ export function installFinePhysics(proto, K) {
         if (zx < lo || zx > hi) continue;
         const ly = hi > lo ? r.ay + ((r.by - r.ay) * (zx - r.ax)) / (r.bx - r.ax) : r.ay;
         top >= ly - 8 && top <= ly + 16 && (out.zip = r);
+        continue;
+      }
+      if (r.t === 22) {
+        // 덩굴 그네: 늘어진 줄 (ax, ay ~ ay+len) 옆 12px 안에 손이 닿으면
+        Math.abs(zx - r.ax) < 12 && top >= r.ay - 4 && top <= r.ay + r.len + 6 && (out.swing = r);
         continue;
       }
       if (zx < r.x0 || zx >= r.x1 || cy < r.y0 || cy >= r.y1) continue;

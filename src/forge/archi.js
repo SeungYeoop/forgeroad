@@ -4,6 +4,7 @@
 import { rng } from "./noise.js";
 import { greenstep as greenstepTepui } from "./archi_greenstep.js";
 import { stonebridge as stonebridgeCity } from "./archi_stonebridge.js";
+import { leafcrown as leafcrownForest } from "./archi_leafcrown.js";
 
 export function kit(P, C) {
   const { cell, NX, NY } = C;
@@ -109,6 +110,10 @@ export function kit(P, C) {
     // 도개교: [x0, x1) 판이 줄 f에 놓였다가 주기마다 경첩(hinge "L"|"R") 쪽으로 들린다 (길찾기는 놓인 것으로 본다)
     draw(x0, x1, f, hinge = "L", ph = 0) {
       P.specReq.push({ x0, x1, y0: f, y1: f + 1, k: "draw", ex: { hinge, ph } });
+    },
+    // 덩굴 그네: 칸 (ax, ay)에 매여 len칸 늘어진 덩굴 — 매달려 흔들다 놓으면 날아간다
+    swing(ax, ay, len) {
+      P.specReq.push({ x0: ax - 1, x1: ax + 1, y0: ay, y1: ay + len, k: "swing", ex: { ax: ax * 8 + 4, ay: ay * 8, len: len * 8 } });
     },
     // 회복 샘: 들어가 있으면 체력이 찬다
     heal(x0, x1, y0, f) {
@@ -1110,4 +1115,4 @@ function mossbark(K, o) {
   return rooms;
 }
 
-export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone, g1_m1: stonebridgeCity, g0_m1: greenstepTepui, gm1_m1: leafcrown, gm1_0: mossbark };
+export const ARCHI = { g0_1: ironvein, gm1_1: roothollow, g1_1: dripstone, g1_m1: stonebridgeCity, g0_m1: greenstepTepui, gm1_m1: leafcrownForest, gm1_0: mossbark };
