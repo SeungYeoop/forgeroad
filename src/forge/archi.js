@@ -101,6 +101,10 @@ export function kit(P, C) {
     lift(x0, x1, fu, fd, top, lock, park = "up") {
       P.specReq.push({ x0, x1, y0: fu, y1: fd, k: "lift", ex: { top: (top ?? fu - 8) * 8, ...(lock ? { lock, park } : {}) } });
     },
+    // 하늘 나룻 바구니: 바구니(폭 w칸) 윗면이 줄 f, 길 [x0, x1) 사이를 옆으로 오간다 (줄은 cab칸 위)
+    ferry(x0, x1, f, w = 6, cab = 12) {
+      P.specReq.push({ x0, x1, y0: f - cab, y1: f, k: "ferry", ex: { w: w * 8 } });
+    },
     // 회복 샘: 들어가 있으면 체력이 찬다
     heal(x0, x1, y0, f) {
       P.specReq.push({ x0, x1, y0, y1: f, k: "heal" });

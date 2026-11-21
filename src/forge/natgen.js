@@ -213,7 +213,7 @@ function clipWalls(P) {
 //   매달려 오르내리는 곳: 6 사다리 7 밧줄 8 덩굴 (위아래 키) · 9 짚라인(줄, ax·ay→bx·by) · 10 바람 기둥(떠오른다)
 //   11·12 물살(왼쪽·오른쪽으로 미는 물) · 13 무너지는 발판 · 14 금 간 벽(때려 부순다) · 15 승강기 길(발판이 오르내린다)
 //   13·14는 검사 때는 바위, 마지막에 장에서 빼고 장치(gizmo.js)가 그리고 막는다
-export const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5, ladder: 6, rope: 7, vine: 8, zip: 9, wind: 10, curL: 11, curR: 12, crumble: 13, crack: 14, lift: 15, fall: 16, geyser: 17, heal: 18, lever: 19 };
+export const SPEC = { plank: 1, cloud: 2, water: 3, ice: 4, bounce: 5, ladder: 6, rope: 7, vine: 8, zip: 9, wind: 10, curL: 11, curR: 12, crumble: 13, crack: 14, lift: 15, fall: 16, geyser: 17, heal: 18, lever: 19, ferry: 20 };
 // 금 간 벽(14)은 길찾기에서 지나갈 수 있는 것으로 본다 (언제든 부수고 지나간다) — 뒤 숨은 방에도 상자가 놓인다
 const SOLID_SPEC = new Set([1, 2, 4, 5, 13]);
 export const CLIMB_SPEC = new Set([6, 7, 8, 10, 15, 17]);
@@ -417,7 +417,9 @@ function placeProps(P) {
         }
         const rate = ctx === "open" ? 0.075 : ctx === "cave" ? 0.15 : 0.12;
         if (R() > rate) continue;
-        const k = ctx === "open" ? pickW(T_OPEN) : ctx === "ugb" ? pickW(T_UGB) : ctx === "skb" ? pickW(T_SKB) : CAVE_FLOOR ? pickW(CAVE_FLOOR) : pickW([["p_stalag", 28], ["p_shroom", 16], ["p_crystal", deep ? 24 : 12], ["p_boulder", 14], ["p_bones", 7], ["p_rubble", 8], ["p_skulls", 3]]);
+        // 그린스텝 나무 벽 방 = 사람 사는 곳 (살림 소품)
+        const home = GS && ctx === "cave" && woodAt(x, yy - 24);
+        const k = home ? pickW([["p_crates", 18], ["p_hay", 16], ["p_urn", 14], ["p_wool", 8], ["p_cheese", 6], ["p_shelf", 6]]) : ctx === "open" ? pickW(T_OPEN) : ctx === "ugb" ? pickW(T_UGB) : ctx === "skb" ? pickW(T_SKB) : CAVE_FLOOR ? pickW(CAVE_FLOOR) : pickW([["p_stalag", 28], ["p_shroom", 16], ["p_crystal", deep ? 24 : 12], ["p_boulder", 14], ["p_bones", 7], ["p_rubble", 8], ["p_skulls", 3]]);
         tryPut(x, yy, k, false, { room: clear, g: ug ? 1 : 0, acc: k === "p_crystal" ? CRY[R.int(0, 2)] : k === "p_shroom" ? SHR[R.int(0, SHR.length - 1)] : null });
         // 벽돌 방: 뒷벽 횃불 (천장이 높은 방, 220px마다)
         const mineW = CS === "mine" && woodAt(x + 40, yy - 60);
@@ -434,13 +436,15 @@ function placeProps(P) {
         if (below < 100) continue;
         // 바깥 하늘의 섬 밑면(뒷벽 없는 곳)에는 종유석·사슬을 달지 않는다
         if (!ug && !brk && !wallAt(x, yy + 30)) continue;
+        // 그린스텝: 벽돌 다리 밑 같은 바깥 하늘에도 달지 않는다
+        if (GS && !wallAt(x, yy + 30)) continue;
         const ctx = brk ? (ug ? "ugb" : "skb") : "cave";
         // 큰 동굴 천장 뒷벽: 흐릿한 큰 종유석 (바위에 묻혀 붙는다)
         if (ctx === "cave" && !GS && below >= 170 && !out.some((q) => q.bg && q.hang && Math.abs(q.x - x) < (CS === "drip" ? 130 : 190) && Math.abs(q.y - yy) < 120) && R() < (CS === "mine" ? 0.35 : 0.8) && ceilOK(x, yy, 30, 60))
           out.push({ x, y: yy - 6, k: CS === "root" && R() < 0.7 ? "p_roots" : "p_stalac", s: 2, v: R.int(0, 1), sc: snapSc(Math.min(2.6, 1.25 + R() * below / 160)), acc: null, hang: 1, bg: 1, g: 1 });
         if (R() > (ctx === "cave" ? (CS === "drip" ? 0.2 : 0.12) : 0.08)) continue;
         const tall = below > 170;
-        const k = ctx === "ugb" ? pickW([["p_chain", 18], ["p_cage", 14], ["p_web", 16], ["p_moss", 16], ["p_chand", tall ? 10 : 0], ["p_banner", tall ? 8 : 0]]) : ctx === "skb" ? pickW([["p_banner", tall ? 30 : 0], ["p_chand", tall ? 20 : 0], ["p_chain", 12], ["p_web", 6]]) : CAVE_CEIL ? pickW(CAVE_CEIL) : pickW([["p_stalac", 50], ["p_roots", ug ? 10 : 40], ["p_moss", 24]]);
+        const k = GS && ctx === "cave" && woodAt(x, yy + 30) ? pickW([["p_web", 10], ["p_chain", 6]]) : ctx === "ugb" ? pickW([["p_chain", 18], ["p_cage", 14], ["p_web", 16], ["p_moss", 16], ["p_chand", tall ? 10 : 0], ["p_banner", tall ? 8 : 0]]) : ctx === "skb" ? pickW([["p_banner", tall ? 30 : 0], ["p_chand", tall ? 20 : 0], ["p_chain", 12], ["p_web", 6]]) : CAVE_CEIL ? pickW(CAVE_CEIL) : pickW([["p_stalac", 50], ["p_roots", ug ? 10 : 40], ["p_moss", 24]]);
         tryPut(x, yy, k, true, { room: below - 60, g: ug ? 1 : 0 });
       }
     }
@@ -2808,6 +2812,22 @@ function buildSky(P) {
   // 섬 길(맨 아래 기초 땅) 높이: 설계도 skyBase가 있으면 그 높이 (출구도 그 높이)
   const base = (P.base = P.bp?.skyBase ?? FLOOR * TS);
   const fl = S.floor;
+  // 지역 설계 코드가 지도 전체(맨 아래 섬 길까지)를 직접 짓는 하늘 구역: 기초 섬·맨 아래 바닥 없이 빈 하늘에서 시작
+  {
+    const AR = ARCHI[P.z.id];
+    if (AR?.own) {
+      P.skyZone = 1;
+      P.skyWalk = 1;
+      P.skyFloorY = P.HP;
+      const C = cellsOf(P);
+      C.cell.fill(-1);
+      AR(kit(P, C), { base });
+      writeCells(P, C);
+      applySpecReq(P);
+      P.ugTop = P.Ft + 20;
+      return;
+    }
+  }
   // 바닥 섬: 큰 섬 사이 틈 (뛰어넘는다)
   const segs = [];
   let x = 0;
@@ -5099,6 +5119,11 @@ export function analyze(P) {
         // 붙을 수 있는 곳: 그 안·위·아래에 서 있거나, 옆에서 뛰어 닿는다
         const E = new Set([...nodesIn(r.x0 - 12, r.x1 + 12, r.y0 - 6, r.y1 + 24), ...nodesIn(r.x0 - 72, r.x1 + 72, r.y0 + 8, r.y1 + 100)]);
         link(E, X);
+      } else if (r.t === 20) {
+        // 하늘 나룻 바구니: 양쪽 나루(바구니가 닿는 끝)에 선 곳끼리 오간다
+        const w = r.w ?? 48, A1 = nodesIn(r.x0 - 40, r.x0 + w + 8, r.y1 - 10, r.y1 + 10), B1 = nodesIn(r.x1 - w - 8, r.x1 + 40, r.y1 - 10, r.y1 + 10);
+        link(A1, new Set(B1));
+        link(B1, new Set(A1));
       } else if (r.t === 9 && r.ax != null) {
         const n = Math.max(1, Math.ceil(Math.abs(r.bx - r.ax) / 32)), dir = Math.sign(r.by - r.ay);
         const pts = [];

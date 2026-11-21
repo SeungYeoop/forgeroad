@@ -509,6 +509,10 @@ export function* pixFine(ch, base, region, S) {
               // 승강기 길: 양옆 쇠 레일 + 64px마다 버팀목
               if (dx <= 2 || dr <= 2) put(x, y, RAIL[dx === 0 || dr === 0 ? 4 : dx === 1 || dr === 1 ? 2 : 1]);
               else if (dy % 64 < 4 && dy > 8) put(x, y, LAD[dy % 64 === 0 ? 1 : 3]);
+            } else if (r.t === 20) {
+              // 나룻 줄: 위 2px 꼰 줄, 양 끝 나무 기둥
+              if (dy <= 1) put(x, y, ROPE[dy ? 3 : (wx & 3) < 2 ? 1 : 2]);
+              else if (dx <= 2 || dr <= 2) put(x, y, LAD[dx === 0 || dr === 0 ? 3 : 1]);
             } else if (r.t === 17) {
               // 간헐천 구멍: 바닥 가운데 광물 테
               const off = Math.abs(wx - cx);
@@ -608,9 +612,12 @@ export function* pixFine(ch, base, region, S) {
       rock: rampOf(mix(regionBase, 0x2a2430, 0.45)),
       stem: rampOf(0xd8ccb0),
     };
+    // 그린스텝: 바위 뒷벽도 사암 지층 (그늘진 색)
+    const SW = STEP ? [0xe6c49a, 0xd89a76, 0xc07a58, 0xd8aa6a, 0xead2b2, 0xb86a4e, 0xcc8c64].map((c) => rampOf(mix(mix(c, P.rock, 0.4), 0x2a1a20, 0.52))) : null;
     const wdef = new Uint8Array(PW * PH);
     for (const r of S.walls) {
       const R6 = WC[r.m] ?? WC.rock;
+      let RR = R6;
       const x0 = Math.max(0, Math.floor(r.x0 - MX)), x1 = Math.min(PW, Math.ceil(r.x1 - MX));
       const y0 = Math.max(0, Math.floor(r.y0 - OY)), y1 = Math.min(PH, Math.ceil(r.y1 - OY));
       for (let y = y0; y < y1; y++)
@@ -644,6 +651,14 @@ export function* pixFine(ch, base, region, S) {
               H(wx, yw, 9) > 0.965 && (L = Math.min(5, L + 1));
             }
             vn2(wx / 60, yw / 48, 141) > 0.74 && L < 5 && (L = Math.min(4, L + 1));
+          } else if (SW && r.m === "rock") {
+            // 사암 지층 띠 (완만히 휜다) + 띠 사이 어두운 줄 + 드문 세로 금
+            const yb = yw + bandWarp(wx) * 0.7, b = Math.floor(yb / 9);
+            RR = SW[((b % SW.length) + SW.length) % SW.length];
+            const n = vn2(wx / 15, yw / 5, 143);
+            L = n < 0.3 ? 2 : n > 0.74 ? 4 : 3;
+            ((yb % 9) + 9) % 9 < 1 && (L = Math.min(5, L + 1));
+            H(Math.floor(wx / 3), Math.floor(yw / 40), 144) > 0.994 && ((yw % 40) + 40) % 40 < 14 && (L = Math.min(5, L + 1));
           } else {
             const L0 = lvq(wx * 0.8 + 3000, yw * 0.8, 18);
             L = Math.min(5, Math.max(2, L0 + 1));
@@ -651,7 +666,7 @@ export function* pixFine(ch, base, region, S) {
           }
           const da = DA[y * EW + ex];
           da <= 9 && (L = Math.min(5, L + 1));
-          wallBuf[y * PW + x] = pack(R6[L]);
+          wallBuf[y * PW + x] = pack(RR[L]);
         }
     }
   }

@@ -9,6 +9,7 @@
 //     승강기(15): 발판이 길 위아래 끝을 오가며 태워 나른다
 //     떨어지는 종유석(16): 밑을 지나면 떨어져 다친다, 다시 자란다
 //     간헐천(17): 몇 초마다 물기둥(포자)이 뿜어 높이 띄운다
+//     하늘 나룻 바구니(20): 줄에 매달린 바구니가 두 섬 나루 사이를 옆으로 오간다
 let R = null;
 export const bindDevices = (r) => (R = r);
 const near = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
@@ -156,6 +157,7 @@ function build(sc, src) {
     else if (r.t === 17) A.items.push({ k: "geyser", r, t: (r.x0 % 7) * 0.4, on: 0 });
     else if (r.t === 18) A.items.push({ k: "heal", r, t: 0 });
     else if (r.t === 19) A.items.push({ k: "lever", r, cd: 0, spr: null });
+    else if (r.t === 20) A.items.push({ k: "ferry", r, x: r.x0, dir: 1, wait: 1, spr: null, cab: null });
   }
   // 레버로 잠긴 승강기: 처음엔 정한 끝(park)에 멈춰 있다
   for (const it of A.items) if (it.k === "lift" && it.r.lock) it.r.park === "up" ? ((it.y = it.r.y0), (it.dir = 1)) : ((it.y = it.r.y1), (it.dir = -1));
@@ -252,6 +254,25 @@ export function update(sc, dt, src) {
       const top = (r.top ?? r.y0 - 60);
       it.cab ??= sc.add.tileSprite(0, 0, 2, 8, "dv_cable").setOrigin(0.5, 0).setDepth(2.3);
       it.cab.setVisible(true).setPosition(ox + (r.x0 + r.x1) / 2, top).setSize(2, Math.max(2, it.y - top));
+    } else if (it.k === "ferry") {
+      // 하늘 나룻 바구니: 줄에 매달려 두 나루 사이를 오간다 (끝에서 잠시 쉰다), 서 있으면 같이 간다
+      const w = r.w ?? 48, lo = r.x0, hi = r.x1 - w;
+      let dx = 0;
+      if (it.wait > 0) it.wait -= dt;
+      else {
+        const nx = it.x + it.dir * 80 * dt;
+        if (nx >= hi) ((dx = hi - it.x), (it.x = hi), (it.dir = -1), (it.wait = 1.6));
+        else if (nx <= lo) ((dx = lo - it.x), (it.x = lo), (it.dir = 1), (it.wait = 1.6));
+        else ((dx = nx - it.x), (it.x = nx));
+      }
+      if (dx && B.onGround && px >= it.x - dx - 3 && px <= it.x - dx + w + 3 && Math.abs(py - r.y1) <= 3) B.x += dx;
+      const bx = Math.round(it.x);
+      dyn.push({ on: 1, x0: GX + bx, x1: GX + bx + w, y0: r.y1, y1: r.y1 + 10 });
+      if (!vis) { hide(it); continue; }
+      it.spr ??= sc.add.tileSprite(0, 0, w, 10, "dv_lift").setOrigin(0, 0).setDepth(2.4);
+      it.spr.setVisible(true).setPosition(ox + bx, r.y1);
+      it.cab ??= sc.add.tileSprite(0, 0, 2, 8, "dv_cable").setOrigin(0.5, 0).setDepth(2.3);
+      it.cab.setVisible(true).setPosition(ox + bx + w / 2, r.y0 + 2).setSize(2, Math.max(2, r.y1 - r.y0 - 2));
     } else if (it.k === "fall") {
       if (it.st === "hang") {
         if (px > r.x0 - 10 && px < r.x1 + 10 && py > r.y0 && py < r.y1 + 20) ((it.st = "shake"), (it.t = 0.35));

@@ -844,6 +844,45 @@ const KINDS = {
     for (const y of [1, 10, 19]) for (let k = 0; k < 3; k++) R() < 0.85 && parts.push({ d: S.cyl(-6.5 + k * 6.5 + (R() - 0.5), 0, 2.8, y + 0.7, y + 3.7, 0.8), m: 1 });
     return { W: 30, H: 30, parts, mats: [{ c: 0x7a5434, tex: woodTex(13) }, { c: 0xf0c050, gloss: 0.3 }] };
   },
+  // 유목 천막 (펠트 벽 · 원뿔 지붕 · 붉은 띠 · 나무 문 · 꼭대기 연기 구멍)
+  p_yurt(s, R, c) {
+    const r = 13 + s * 2, wh = 9 + s, rh = 9 + s * 1.5;
+    const felt = (x, y, z) => (Math.abs(y - wh * 0.55) < 0.9 ? -0.32 : 0) + (vn3(x * 0.5, y * 0.5, z * 0.5, 4) - 0.5) * 0.18;
+    const roofT = (x, y, z) => {
+      const a = Math.atan2(z, x);
+      return (Math.abs(((a * 8) / Math.PI) % 1) < 0.12 ? -0.18 : 0) + (Math.abs(y - wh - 2.2) < 0.8 ? -0.35 : 0);
+    };
+    const parts = [
+      { d: S.cyl(0, 0, r, 0, wh, 0.8), m: 0 },
+      { d: S.taper(0, 0, r + 1.6, 2.2, wh - 0.3, wh + rh), m: 1, k: 0.8 },
+      { d: S.cyl(0, 0, 2.6, wh + rh - 0.6, wh + rh + 1, 0.3), m: 3 },
+      { d: S.box(-r * 0.25, 4.2, r - 0.4, 2.8, 4.2, 1.2, 0.3), m: 2 },
+      { d: S.box(-r * 0.25, 4.2, r + 0.4, 3.4, 4.6, 0.4, 0.2), m: 3 },
+    ];
+    return { W: r * 2 + 12, H: wh + rh + 10, parts, mats: [{ c: 0xeadfc6, tex: felt }, { c: 0xd8c4a0, tex: roofT }, { c: 0xc8503a, tex: woodTex(19) }, { c: 0x8a5a34, tex: woodTex(23) }] };
+  },
+  // 기둥 풍차 (나무 몸통 · 받침 다리 · 천 날개 넷)
+  p_windmill(s, R, c) {
+    const H = 30 + s * 6, hy = H + 5, L = 16 + s * 3, a0 = 0.35 + R() * 0.5;
+    const rot = (a, f) => (x, y, z) => {
+      const dx = x, dy = y - hy, ca = Math.cos(a), sa = Math.sin(a);
+      return f(dx * ca + dy * sa, -dx * sa + dy * ca, z);
+    };
+    const parts = [
+      { d: S.capsule(-6, 0, -2, 0, 14, 0, 1), m: 0 },
+      { d: S.capsule(6, 0, -2, 0, 14, 0, 1), m: 0 },
+      { d: S.capsule(0, 0, 4, 0, 14, 0, 1), m: 0 },
+      { d: S.box(0, 14 + (H - 14) / 2, 0, 5.5, (H - 14) / 2, 5, 0.6), m: 1 },
+      { d: S.taper(0, 0, 6.5, 2, H - 1, H + 5), m: 2, k: 0.6 },
+      { d: S.capsule(0, hy, 0, 0, hy, 7.5, 1.3), m: 0 },
+    ];
+    for (let k = 0; k < 4; k++) {
+      const a = a0 + (k * Math.PI) / 2;
+      parts.push({ d: rot(a, (u, v, z) => S.box(L * 0.55, 0, 0, L * 0.55, 0.6, 0.6, 0.2)(u, v, z - 7.5)), m: 0 });
+      parts.push({ d: rot(a, (u, v, z) => S.box(L * 0.62, 2.2, 0, L * 0.4, 1.9, 0.25, 0.1)(u, v, z - 7.2)), m: 3 });
+    }
+    return { W: L * 2 + 20, H: hy + L + 8, parts, mats: [{ c: 0x7a5434, tex: woodTex(27) }, { c: 0xa87a4c, tex: woodTex(29, "x") }, { c: 0x8a4a34, tex: woodTex(31) }, { c: 0xf0e8d4, tex: (x, y) => (((Math.floor(x * 0.7) + Math.floor(y * 0.7)) & 1) ? -0.08 : 0.04) }] };
+  },
   // 양털 말리는 줄 (장대 둘 · 줄에 걸린 털뭉치)
   p_wool(s, R, c) {
     const parts = [{ d: S.capsule(-13, 0, 0, -13, 19, 0, 0.7), m: 0 }, { d: S.capsule(13, 0, 0, 13, 19, 0, 0.7), m: 0 }, { d: S.capsule(-13, 18, 0, 13, 17, 0, 0.3), m: 0 }];
