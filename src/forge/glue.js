@@ -251,7 +251,7 @@ export function stats(scene) {
   s.attackSpeed *= 1 + (wm.spd ?? 0);
   const ai = fr.attr?.int ?? 0;
   fr.maxMana = 100 + 6 * ai;
-  fr.manaRegen = 5 * (1 + (fx.manaRegen ?? 0) + 0.06 * ai);
+  fr.manaRegen = 3.5 * (1 + (fx.manaRegen ?? 0) + 0.06 * ai);
   fr.magicDmg = (fx.magicDmg ?? 0) + 0.06 * ai;
   return s;
 }
@@ -292,7 +292,7 @@ function itemCooldown(it) {
   const p = it.tier === 0 ? it.id : it.primary;
   let cd = IT.baseCooldown(p);
   if (it.cat === "SS" || it.cat === "LG") cd = Math.max(cd, IT.baseCooldown(it.secondary)) * 1.1;
-  if (it.cat === "MM") cd = (cd + IT.baseCooldown(it.secondary)) * 0.6;
+  if (it.cat === "MM") cd = (cd + IT.baseCooldown(it.secondary)) * 0.8;
   const cm = castMods(it);
   return Math.max(0.6, cd * (1 - (cm.cdr ?? 0)));
 }
@@ -675,7 +675,7 @@ export function cast(sk, S, T) {
 function base(sc, it, kindMagic) {
   const p = sc.player,
     s = p.stats;
-  return s.atk * p.atkMult() * s.dmgMult * s.skillPower * (it?.power ?? 1) * IT.gradeMult(it) * (kindMagic ? 1 + (sc.fr.magicDmg ?? 0) : 1);
+  return s.atk * p.atkMult() * s.dmgMult * s.skillPower * (it?.power ?? 1) * IT.gradeMult(it) * (kindMagic ? 0.7 * (1 + (sc.fr.magicDmg ?? 0)) : 1);
 }
 function params(sc, it, dmg, extra = {}) {
   const el = extra.el !== void 0 ? extra.el : it?.el;
@@ -2068,8 +2068,8 @@ export function onKill(sc, T) {
   }
   if (T.isElite) {
     dropMat(sc, x, y - 6, 1 + Math.floor(Math.random() * 2));
-    Math.random() < 0.4 * luck && gainStoneDrop(sc, x, y);
-    Math.random() < 0.3 * luck && dropItem(sc, x, y, randomItem(sc, def.frDrop));
+    Math.random() < (T.rare ? 0.8 : 0.5) * luck && gainStoneDrop(sc, x, y);
+    Math.random() < (T.rare ? 0.9 : 0.5) * luck && dropItem(sc, x, y, randomItem(sc, def.frDrop, T.rare ? 1 : 0));
     return;
   }
   const txt = def.frDrop ?? "";

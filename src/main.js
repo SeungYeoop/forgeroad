@@ -8842,7 +8842,7 @@ function ni(A) {
     hpMult: 1 + 0.42 * S + 0.045 * Math.pow(S, 1.4) + C * 0.35,
     atkMult: 1 + 0.26 * S + C * 0.2,
     defAdd: Math.floor(S * 2.2) + C * 4,
-    goldMult: 1 + 0.22 * S + C * 0.25,
+    goldMult: 1 + 0.35 * S + C * 0.3,
     eliteBonus: Math.min(0.25, S * 0.008 + C * 0.02),
     densityMult: 1 + Math.min(0.8, S * 0.03) + Math.min(0.6, C * 0.06),
     windupMult: Math.max(0.65, 1 - S * 0.012 - C * 0.025),
@@ -8851,7 +8851,7 @@ function ni(A) {
     tier: C,
   };
 }
-const Ri = { magnetRange: 70, magnetSpeed: 420, eliteGoldMult: 4, rareEliteGoldMult: 8 };
+const Ri = { magnetRange: 70, magnetSpeed: 420, eliteGoldMult: 6, rareEliteGoldMult: 15 };
 function _i(A, S, T) {
   const C = A * Math.pow(S, T);
   return C < 100 ? Math.round(C / 5) * 5 : C < 1e3 ? Math.round(C / 10) * 10 : Math.round(C / 50) * 50;
@@ -19443,7 +19443,7 @@ class Er extends zt.Scene {
       const a = this.player.buffs.get("berserk");
       a && (a.t += 1);
     }
-    let m = T.def.gold;
+    let m = Math.max(T.def.gold, 0.13 * T.def.hp + 0.4 * T.def.atk);
     (T.def.ai === "golden" &&
       ((m = 60 + this.dist / 25),
       (t = this.hud()) == null || t.toast("황금 고블린 처치! 대량의 골드!", "#ffd84a"),

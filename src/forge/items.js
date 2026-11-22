@@ -279,7 +279,7 @@ const parseCd = (it) => it.cd ?? 6;
 export const baseCooldown = (id) => {
   const b = BASE[id];
   if (!b) return 6;
-  if (b.kind === "magic") return Math.max(1.2, (b.mana ?? 20) / 18);
+  if (b.kind === "magic") return Math.max(2, (b.mana ?? 20) / 9);
   return parseCd(b);
 };
 export const baseMana = (id) => BASE[id]?.mana ?? 0;
