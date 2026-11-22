@@ -872,13 +872,14 @@ export function* pixFine(ch, base, region, S) {
         if (y < 0 || y >= PH) continue;
         for (let i = 0; i < D.w; i++) {
           const x = bx + i, s4 = (j * D.w + i) * 4;
-          if (x < 0 || x >= PW || !D.data[s4 + 3] || buf[y * PW + x] !== 0) continue;
+          if (x < 0 || x >= PW || !D.data[s4 + 3]) continue;
           if (p.bg) {
-            // 뒤 장식: 뒷벽이 있는 곳에만, 조금 어둡게 (깊이감) — 지형 그림 층에 그려 입체 겹 층에 가려지지 않는다
+            // 뒤 장식: 뒷벽이 있는 곳에만, 조금 어둡게 (깊이감) — 뒷벽 층에 그려 뒷벽과 같은 깊이로 움직인다
             if (!wallBuf[y * PW + x]) continue;
-            put(x, y, mix((D.data[s4] << 16) | (D.data[s4 + 1] << 8) | D.data[s4 + 2], 0x140c1e, p.dim ?? 0.22));
+            wallBuf[y * PW + x] = pack(mix((D.data[s4] << 16) | (D.data[s4 + 1] << 8) | D.data[s4 + 2], 0x140c1e, p.dim ?? 0.22));
             continue;
           }
+          if (buf[y * PW + x] !== 0) continue;
           put(x, y, (D.data[s4] << 16) | (D.data[s4 + 1] << 8) | D.data[s4 + 2]);
         }
       }

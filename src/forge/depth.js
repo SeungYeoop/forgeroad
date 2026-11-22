@@ -13,6 +13,7 @@ const LAYERS = [
   { k: 0.056, tint: 0x443a50, d: -0.36 },
   { k: 0.07, tint: 0x2e2638, d: -0.38 },
 ];
+const WALL_K = LAYERS[LAYERS.length - 1].k;
 const shade = (color, factor) => (Math.round((color >> 16 & 255) * factor) << 16) | (Math.round((color >> 8 & 255) * factor) << 8) | Math.round((color & 255) * factor);
 function lightTex(sc) {
   if (sc.textures.exists("dp_light")) return "dp_light";
@@ -124,6 +125,9 @@ export function update(sc) {
   const caveStyle = CAVE_STYLES[biome] ?? CAVE_STYLES.drip;
   // 1) 지형 돌출
   const live = new Set();
+  // 뒷벽 깊이 (뒷벽 소품의 빛무리·창 빛줄기도 같은 깊이로 옮긴다: natanim)
+  const ws = 1 - WALL_K * (1 + deep * 0.65);
+  D.wp = { vx, vy, s: ws };
   // 조각마다 여러 띠(세로로 나눈 그림판)
   const rts = [];
   for (const ch of sc.world.loaded.values()) for (const B of ch.bands?.values() ?? []) rts.push(B.rt);
@@ -138,7 +142,8 @@ export function update(sc) {
       D.walls.set(rt, wall);
     }
     if (wall.texture.key !== wallKey) wall.setTexture(wallKey);
-    wall.setVisible(true).setPosition(rt.x, rt.y);
+    // 뒷벽은 입체 겹의 가장 뒤 층과 같은 깊이에 둔다 (앞면과 같이 움직이면 튀어나온 바위보다 앞에 붙어 보인다)
+    wall.setVisible(true).setPosition(vx + (rt.x - vx) * ws, vy + (rt.y - vy) * ws).setScale(ws).setTint(deep > 0 ? shade(0xffffff, 1 - deep * 0.12) : 0xffffff);
     let bs = D.backs.get(rt);
     if (!bs) {
       bs = LAYERS.map((L) => sc.add.image(0, 0, key).setOrigin(0, 0).setTint(L.tint).setDepth(L.d));

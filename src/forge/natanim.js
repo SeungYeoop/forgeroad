@@ -76,8 +76,8 @@ function build(A, P) {
     const h = h0 * (p.sc ?? 1);
     if (L) {
       const cy = p.hang ? p.y + h * AT[p.k] : p.y - h * AT[p.k];
-      lights.push({ x: p.x, y: cy, r: L[0] * Math.sqrt(p.sc ?? 1), tint: L[1] || (p.acc ?? 0x80d0ff), a: L[2], fire: L[3], ph: hash(p.x, p.y) * 6.28, k: p.k, sp: 0 });
-      p.k === "p_window" && wins.push({ x: p.x, y: p.y - h * 0.8, w: 20 * (p.sc ?? 1) * (1 + p.s * 0.3), len: 150 + p.s * 30, ph: hash(p.y, p.x) * 6.28, dt: 0 });
+      lights.push({ x: p.x, y: cy, r: L[0] * Math.sqrt(p.sc ?? 1), tint: L[1] || (p.acc ?? 0x80d0ff), a: L[2], fire: L[3], ph: hash(p.x, p.y) * 6.28, k: p.k, sp: 0, bg: !!p.bg });
+      p.k === "p_window" && wins.push({ x: p.x, y: p.y - h * 0.8, w: 20 * (p.sc ?? 1) * (1 + p.s * 0.3), len: 150 + p.s * 30, ph: hash(p.y, p.x) * 6.28, dt: 0, bg: !!p.bg });
     }
     if (p.k === "p_stalac" && p.fall > 40 && !p.bg) drips.push({ x: p.x + (hash(p.x, 3) - 0.5) * 6, y: p.y + h * 0.9, fall: p.fall - h * 0.9, t: 1 + hash(p.x, p.y) * 4 });
   }
@@ -146,6 +146,9 @@ export function update(sc, dt, src) {
   if (A.key !== src.key) (build(A, src.P), (A.key = src.key));
   A.t += dt;
   const t = A.t, cam = sc.cameras.main, ox = src.ox, M = 220;
+  // 뒷벽 소품(창·벽감·벽 수정)은 뒷벽 층과 같은 깊이로 (depth.js가 매 프레임 정한다)
+  const wp = sc._dp?.wp;
+  const PX = (b, x) => (b && wp ? wp.vx + (x - wp.vx) * wp.s : x), PY = (b, y) => (b && wp ? wp.vy + (y - wp.vy) * wp.s : y), PS = (b) => (b && wp ? wp.s : 1);
   const vx0 = cam.scrollX - ox - M, vx1 = cam.scrollX + cam.width / cam.zoom - ox + M, vy0 = cam.scrollY - M, vy1 = cam.scrollY + cam.height / cam.zoom + M;
   // ── 빛무리 ──
   let nh = 0;
@@ -157,13 +160,13 @@ export function update(sc, dt, src) {
     if (l.y < vy0 || l.y > vy1) continue;
     const f = l.fire ? 0.8 + 0.13 * Math.sin(t * 11 + l.ph) + 0.09 * Math.sin(t * 23.7 + l.ph * 2) + 0.05 * Math.sin(t * 41 + l.ph * 3) : 0.72 + 0.28 * Math.sin(t * 1.7 + l.ph);
     const o = pool(sc, A.halos, nh++, "na_halo", 1.6);
-    o.setTint(l.tint).setAlpha(l.a * f).setScale((l.r / 32) * (l.fire ? 1 + 0.05 * Math.sin(t * 8.3 + l.ph) : 1)).setPosition(ox + l.x, l.y);
+    o.setTint(l.tint).setAlpha(l.a * f).setScale((l.r / 32) * PS(l.bg) * (l.fire ? 1 + 0.05 * Math.sin(t * 8.3 + l.ph) : 1)).setPosition(PX(l.bg, ox + l.x), PY(l.bg, l.y));
     // 불티: 화로·횃불에서 가끔 위로
     if (l.fire && (l.k === "p_brazier" || l.k === "p_torch") && Math.random() < dt * (l.k === "p_brazier" ? 4 : 1.6))
       spawn(A, sc, { x: ox + l.x + (Math.random() - 0.5) * 6, y: l.y - 4, vx: (Math.random() - 0.5) * 10, vy: -26 - Math.random() * 24, sway: 12, life: 0.7 + Math.random() * 0.8, tint: Math.random() < 0.5 ? 0xffd070 : 0xff7a30, s: 0.5 });
     // 수정·버섯: 가끔 떠오르는 빛 알갱이
     if (!l.fire && l.k !== "p_window" && Math.random() < dt * 0.6)
-      spawn(A, sc, { x: ox + l.x + (Math.random() - 0.5) * 14, y: l.y + 4, vy: -10 - Math.random() * 8, sway: 6, life: 1.6 + Math.random(), tint: l.tint, s: 0.5, a: 0.8 });
+      spawn(A, sc, { x: PX(l.bg, ox + l.x) + (Math.random() - 0.5) * 14, y: PY(l.bg, l.y) + 4, vy: -10 - Math.random() * 8, sway: 6, life: 1.6 + Math.random(), tint: l.tint, s: 0.5, a: 0.8 });
   }
   for (let i = nh; i < A.halos.length; i++) A.halos[i].setVisible(false);
   // ── 창 빛줄기 + 그 안에 떠도는 먼지 ──
@@ -171,10 +174,10 @@ export function update(sc, dt, src) {
   for (const w of A.wins) {
     if (w.x < vx0 || w.x > vx1 || w.y < vy0 || w.y > vy1) continue;
     const o = pool(sc, A.rays, nr++, "na_ray", 1.4);
-    o.setOrigin(0.5, 0).setRotation(-0.42).setTint(0xd8f0ff).setAlpha(0.1 + 0.04 * Math.sin(t * 0.9 + w.ph)).setScale(w.w / 32, w.len / 128).setPosition(ox + w.x, w.y);
+    o.setOrigin(0.5, 0).setRotation(-0.42).setTint(0xd8f0ff).setAlpha(0.1 + 0.04 * Math.sin(t * 0.9 + w.ph)).setScale((w.w / 32) * PS(w.bg), (w.len / 128) * PS(w.bg)).setPosition(PX(w.bg, ox + w.x), PY(w.bg, w.y));
     if (Math.random() < dt * 2.2) {
       const d = Math.random() * w.len * 0.9;
-      spawn(A, sc, { x: ox + w.x + Math.sin(0.42) * d + (Math.random() - 0.5) * w.w * 0.8, y: w.y + Math.cos(0.42) * d, vx: (Math.random() - 0.5) * 4, vy: 3 + Math.random() * 4, sway: 3, life: 2 + Math.random() * 2, tint: 0xfff6e0, s: 0.5, a: 0.7 });
+      spawn(A, sc, { x: PX(w.bg, ox + w.x) + Math.sin(0.42) * d + (Math.random() - 0.5) * w.w * 0.8, y: PY(w.bg, w.y) + Math.cos(0.42) * d, vx: (Math.random() - 0.5) * 4, vy: 3 + Math.random() * 4, sway: 3, life: 2 + Math.random() * 2, tint: 0xfff6e0, s: 0.5, a: 0.7 });
     }
   }
   for (let i = nr; i < A.rays.length; i++) A.rays[i].setVisible(false);
